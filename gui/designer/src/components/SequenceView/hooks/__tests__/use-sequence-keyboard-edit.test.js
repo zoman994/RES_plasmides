@@ -7,15 +7,21 @@
  *   • Linear topology — clamp at edges; circular — wrap.
  *   • Modifier-key chords (Ctrl/Meta/Alt) bypass edit gate.
  */
-import { describe, it, expect, vi } from 'vitest';
+import {
+  afterEach, describe, it, expect, vi,
+} from 'vitest';
 import { useSequenceKeyboard } from '../useSequenceKeyboard';
+
+afterEach(() => { vi.unstubAllGlobals(); });
 
 function mkHandler(opts = {}) {
   const onSequenceEdit = vi.fn();
   const onCaretChange = vi.fn();
+  const fullSeq = opts.fullSeq ?? 'ACGTACGTAC';
+  const seqLength = opts.seqLength ?? fullSeq.length;
   const handler = useSequenceKeyboard({
-    fullSeq: 'ACGTACGTAC',
-    seqLength: 10,
+    fullSeq,
+    seqLength,
     charsPerLine: 5,
     caretPos: opts.caretPos ?? 3,
     caretAnchor: opts.caretAnchor ?? null,
@@ -94,6 +100,78 @@ describe('useSequenceKeyboard — K2 char-apply gate', () => {
     expect(readText).not.toHaveBeenCalled();
     expect(onSequenceEdit).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+
+  it('Ctrl+C copies an origin-crossing selection as tail then head', () => {
+    const writeText = vi.fn();
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const fullSeq = 'AAAACCCCGG';
+    const { handler } = mkHandler({
+      fullSeq,
+      topology: 'circular',
+      caretAnchor: -2,
+      caretPos: 3,
+    });
+    const ev = mkEvent('c', { ctrlKey: true });
+    handler(ev);
+    expect(ev.preventDefault).toHaveBeenCalled();
+    expect(writeText).toHaveBeenCalledWith('GGAAA');
+  });
+
+  it.each(['A', 'Backspace', 'Delete'])(
+    '%s cannot send a raw origin-crossing range to the scalar edit API',
+    (key) => {
+      const { handler, onSequenceEdit } = mkHandler({
+        editable: true,
+        topology: 'circular',
+        caretAnchor: -2,
+        caretPos: 3,
+      });
+      const ev = mkEvent(key);
+      handler(ev);
+      expect(ev.preventDefault).toHaveBeenCalled();
+      expect(onSequenceEdit).not.toHaveBeenCalled();
+    },
+  );
+
+  it('Ctrl+V cannot send a raw origin-crossing range to the scalar edit API', () => {
+    const readText = vi.fn().mockResolvedValue('ATGC');
+    vi.stubGlobal('navigator', { clipboard: { readText } });
+    const { handler, onSequenceEdit } = mkHandler({
+      editable: true,
+      topology: 'circular',
+      caretAnchor: -2,
+      caretPos: 3,
+    });
+    const ev = mkEvent('v', { ctrlKey: true });
+    handler(ev);
+    expect(ev.preventDefault).toHaveBeenCalled();
+    expect(readText).not.toHaveBeenCalled();
+    expect(onSequenceEdit).not.toHaveBeenCalled();
+  });
+
+  it('a local selection inside one wrap row edits through canonical coordinates', () => {
+    const { handler, onSequenceEdit } = mkHandler({
+      editable: true,
+      topology: 'circular',
+      caretAnchor: -6,
+      caretPos: -2,
+    });
+    handler(mkEvent('N'));
+    expect(onSequenceEdit).toHaveBeenCalledWith({
+      kind: 'replace', start: 4, end: 8, replacement: 'N',
+    });
+  });
+
+  it('a collapsed ghost caret inserts at its physical circular coordinate', () => {
+    const { handler, onSequenceEdit } = mkHandler({
+      editable: true,
+      topology: 'circular',
+      caretAnchor: -2,
+      caretPos: -2,
+    });
+    handler(mkEvent('A'));
+    expect(onSequenceEdit).toHaveBeenCalledWith({ kind: 'insert', pos: 8, char: 'A' });
   });
 
   it('Backspace at caret>0 fires delete op', () => {

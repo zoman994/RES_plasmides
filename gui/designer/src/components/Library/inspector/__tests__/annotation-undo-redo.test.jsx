@@ -5,10 +5,30 @@
  * rolling undo stack of editedAnnotations snapshots.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { useState } from 'react';
 import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
 import SingleInspector from '../LibrarySingleInspector';
 import { useStore } from '../../../../store';
 import { ANNOTATOR_DEFAULTS } from '../../../../store/uiSlice.js';
+
+vi.mock('../tabs/SequenceTab', () => ({
+  default: ({ onSequenceEdit }) => (
+    <button
+      type="button"
+      data-testid="sequence-edit-seam"
+      onClick={() => onSequenceEdit?.({ kind: 'insert', pos: 3, char: 'N' })}
+    >
+      insert
+    </button>
+  ),
+}));
+vi.mock('../tabs/OverviewTab', () => ({
+  default: ({ onUpdateTopology }) => (
+    <button type="button" data-testid="topology-edit-seam" onClick={() => onUpdateTopology?.('linear')}>
+      topology
+    </button>
+  ),
+}));
 
 const ITEM = {
   id: 'p1',
@@ -101,5 +121,80 @@ describe('Bug-rush #5 — Ctrl+Z / Ctrl+Y for annotation edits', () => {
     fireEvent.keyDown(input, { code: 'KeyZ', ctrlKey: true });
     expect(onUpdateEdits).not.toHaveBeenCalled();
     document.body.removeChild(input);
+  });
+
+  it('a real sequence edit undoes/redoes sequence + annotations + topology + provenance together', () => {
+    const patches = [];
+    function Harness() {
+      const [edits, setEdits] = useState({});
+      const update = (patch) => {
+        patches.push(patch);
+        setEdits((prev) => ({ ...prev, ...patch }));
+      };
+      return (
+        <SingleInspector
+          item={ITEM}
+          edits={edits}
+          activeTab="sequence"
+          onActiveTabChange={() => {}}
+          onUpdateEdits={update}
+        />
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByTestId('sequence-edit-seam'));
+    const postEdit = patches.at(-1);
+    expect(postEdit.editedSequence).not.toBe(ITEM.sequence);
+
+    fireEvent.keyDown(window, { code: 'KeyZ', ctrlKey: true });
+    expect(patches.at(-1)).toEqual({
+      editedAnnotations: ITEM.annotations,
+      editedSequence: ITEM.sequence,
+      editedTopology: 'circular',
+      editLog: [],
+    });
+
+    fireEvent.keyDown(window, { code: 'KeyY', ctrlKey: true });
+    expect(patches.at(-1)).toEqual({
+      editedAnnotations: postEdit.editedAnnotations,
+      editedSequence: postEdit.editedSequence,
+      editedTopology: 'circular',
+      editLog: postEdit.editLog,
+    });
+  });
+
+  it('a topology edit participates in the same coherent undo snapshot', () => {
+    const patches = [];
+    function Harness() {
+      const [edits, setEdits] = useState({});
+      const update = (patch) => {
+        patches.push(patch);
+        setEdits((prev) => ({ ...prev, ...patch }));
+      };
+      return (
+        <SingleInspector
+          item={ITEM}
+          edits={edits}
+          activeTab="overview"
+          onActiveTabChange={() => {}}
+          onUpdateEdits={update}
+          onUpdateTopology={(next) => update({
+            editedTopology: next,
+            editLog: [{ kind: 'topology', from: 'circular', to: next }],
+          })}
+        />
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByTestId('topology-edit-seam'));
+    expect(patches.at(-1).editedTopology).toBe('linear');
+
+    fireEvent.keyDown(window, { code: 'KeyZ', ctrlKey: true });
+    expect(patches.at(-1)).toEqual({
+      editedAnnotations: ITEM.annotations,
+      editedSequence: ITEM.sequence,
+      editedTopology: 'circular',
+      editLog: [],
+    });
   });
 });

@@ -20,7 +20,10 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { useState } from 'react';
 import FeatureEditorModal from '../FeatureEditorModal';
+import useTabHotkey from '../../../CanvasSkeleton/editor/useTabHotkey';
+import useUndoHotkey from '../../../CanvasSkeleton/editor/useUndoHotkey';
 
 afterEach(cleanup);
 
@@ -60,9 +63,9 @@ describe('FeatureEditorModal — open / close', () => {
     );
     expect(screen.getByTestId('feature-editor-modal')).toBeTruthy();
     expect(screen.getByTestId('feature-editor-name').value).toBe('lacZα');
-    // 1-based UI coords (pre-fix Importer convention): start UI = 101.
-    expect(screen.getByTestId('feature-editor-start').value).toBe('101');
-    expect(screen.getByTestId('feature-editor-end').value).toBe('900');
+    // 1-based inclusive segment row (single-segment feature → exactly one row).
+    expect(screen.getByTestId('feature-location-start-0').value).toBe('101');
+    expect(screen.getByTestId('feature-location-end-0').value).toBe('900');
   });
 
   it('Cancel button calls onClose', () => {
@@ -156,12 +159,14 @@ describe('FeatureEditorModal — Save with edits', () => {
       />
     );
     // User types start=201 (1-based) → store should see 200 (0-based).
-    fireEvent.change(screen.getByTestId('feature-editor-start'), { target: { value: '201' } });
-    fireEvent.change(screen.getByTestId('feature-editor-end'),   { target: { value: '800' } });
+    fireEvent.change(screen.getByTestId('feature-location-start-0'), { target: { value: '201' } });
+    fireEvent.change(screen.getByTestId('feature-location-end-0'),   { target: { value: '800' } });
     fireEvent.click(screen.getByTestId('feature-editor-save'));
     const patch = onSave.mock.calls[0][0].patch;
-    expect(patch.start).toBe(200);
-    expect(patch.end).toBe(800);
+    // Save emits the canonical 0-based half-open location, never scalar start/end.
+    expect(patch.location).toEqual({ kind: 'single', segments: [{ start: 200, end: 800 }] });
+    expect(patch.start).toBeUndefined();
+    expect(patch.end).toBeUndefined();
   });
 
   it('Save with strand toggle to reverse emits patch.strand=-1', () => {
@@ -517,5 +522,267 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
     fireEvent.click(screen.getByTestId('feature-editor-tab-subfeatures'));
     expect(screen.getByTestId('feature-editor-introns')).toBeTruthy();
     expect(screen.getByTestId('feature-editor-add-intron').disabled).toBe(false);
+  });
+});
+
+// ── B1-ui — canonical compound / origin-crossing location editor ──────────────
+// The location UI shows ordered 1-based inclusive segment rows and Save emits a
+// canonical 0-based half-open `location {kind, segments}` in traversal order. A
+// metadata-only save emits NO scalar coordinate patch. Origin crossing is valid
+// only on a circular currentDocument; the same ordering on a linear document
+// shows an inline error and never calls onSave.
+describe('FeatureEditorModal — canonical location editor', () => {
+  const JOIN_FEATURE = {
+    id: 'j1', name: 'splitgene', type: 'CDS', strand: 1, level: 'region',
+    location: { kind: 'join', segments: [{ start: 0, end: 100 }, { start: 200, end: 300 }] },
+    start: 0, end: 300,
+  };
+  // Origin-crossing compound feature: segment 2 wraps back to the 5′ end.
+  const WRAP_FEATURE = {
+    id: 'w1', name: 'oriT', type: 'misc_feature', strand: 1, level: 'region',
+    location: { kind: 'join', segments: [{ start: 900, end: 1000 }, { start: 0, end: 50 }] },
+    start: 900, end: 50,
+  };
+
+  it('opens a JOIN feature as ordered 1-based inclusive rows', () => {
+    render(
+      <FeatureEditorModal
+        feature={JOIN_FEATURE} seqLength={1000} topology="linear" neighbours={[]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    const rows = screen.getAllByTestId('feature-location-row');
+    expect(rows).toHaveLength(2);
+    // 1-based inclusive: [0,100) → 1..100 ; [200,300) → 201..300.
+    expect(screen.getByTestId('feature-location-start-0').value).toBe('1');
+    expect(screen.getByTestId('feature-location-end-0').value).toBe('100');
+    expect(screen.getByTestId('feature-location-start-1').value).toBe('201');
+    expect(screen.getByTestId('feature-location-end-1').value).toBe('300');
+  });
+
+  it('editing one JOIN row emits patch.location with kind + traversal order, no scalar flattening', () => {
+    const onSave = vi.fn();
+    render(
+      <FeatureEditorModal
+        feature={JOIN_FEATURE} seqLength={1000} topology="linear" neighbours={[]}
+        onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    // Shrink segment 2 end 300 → 280.
+    fireEvent.change(screen.getByTestId('feature-location-end-1'), { target: { value: '280' } });
+    fireEvent.click(screen.getByTestId('feature-editor-save'));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const patch = onSave.mock.calls[0][0].patch;
+    expect(patch.location).toEqual({
+      kind: 'join',
+      segments: [{ start: 0, end: 100 }, { start: 200, end: 280 }],
+    });
+    // No scalar flattening — the compound feature keeps every segment.
+    expect(patch.start).toBeUndefined();
+    expect(patch.end).toBeUndefined();
+  });
+
+  it('a metadata-only save (rename) emits NO location and NO scalar coordinate patch', () => {
+    const onSave = vi.fn();
+    render(
+      <FeatureEditorModal
+        feature={JOIN_FEATURE} seqLength={1000} topology="linear" neighbours={[]}
+        onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    fireEvent.change(screen.getByTestId('feature-editor-name'), { target: { value: 'renamed-join' } });
+    fireEvent.click(screen.getByTestId('feature-editor-save'));
+    const patch = onSave.mock.calls[0][0].patch;
+    expect(patch.name).toBe('renamed-join');
+    expect(patch.location).toBeUndefined();
+    expect(patch.start).toBeUndefined();
+    expect(patch.end).toBeUndefined();
+  });
+
+  it('circular currentDocument accepts an origin-crossing save (patch.location wraps)', () => {
+    const onSave = vi.fn();
+    render(
+      <FeatureEditorModal
+        feature={WRAP_FEATURE} seqLength={1000} topology="circular" neighbours={[]}
+        onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    // Grow the wrap tail 50 → 60 (UI end for [0,60) is 60).
+    fireEvent.change(screen.getByTestId('feature-location-end-1'), { target: { value: '60' } });
+    fireEvent.click(screen.getByTestId('feature-editor-save'));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const patch = onSave.mock.calls[0][0].patch;
+    expect(patch.location).toEqual({
+      kind: 'join',
+      segments: [{ start: 900, end: 1000 }, { start: 0, end: 60 }],
+    });
+    expect(screen.queryByTestId('feature-location-error')).toBeNull();
+  });
+
+  it('linear currentDocument rejects the same origin-crossing ordering inline and never calls onSave', () => {
+    const onSave = vi.fn();
+    render(
+      <FeatureEditorModal
+        feature={WRAP_FEATURE} seqLength={1000} topology="linear" neighbours={[]}
+        onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    fireEvent.change(screen.getByTestId('feature-location-end-1'), { target: { value: '60' } });
+    fireEvent.click(screen.getByTestId('feature-editor-save'));
+    // Inline error visible, modal stays open, save suppressed.
+    expect(screen.getByTestId('feature-location-error')).toBeTruthy();
+    expect(screen.getByTestId('feature-editor-modal')).toBeTruthy();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('metadata-only rename still rejects an unchanged wrap on a linear document', () => {
+    const onSave = vi.fn();
+    render(
+      <FeatureEditorModal
+        feature={WRAP_FEATURE} seqLength={1000} topology="linear" neighbours={[]}
+        onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByTestId('feature-editor-name'), {
+      target: { value: 'renamed-but-still-invalid' },
+    });
+    fireEvent.click(screen.getByTestId('feature-editor-save'));
+    expect(screen.getByTestId('feature-location-error')).toBeTruthy();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('compound parent disables scalar merge, split and intron authoring', () => {
+    render(
+      <FeatureEditorModal
+        feature={JOIN_FEATURE} seqLength={1000} topology="linear"
+        neighbours={[{
+          id: 'right', name: 'right', type: 'CDS', level: 'region',
+          start: 300, end: 400, strand: 1,
+        }]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('feature-editor-merge-right')).toBeNull();
+    fireEvent.click(screen.getByTestId('feature-editor-tab-subfeatures'));
+    expect(screen.getByTestId('feature-editor-split').disabled).toBe(true);
+    expect(screen.getByTestId('feature-editor-add-intron').disabled).toBe(true);
+    expect(screen.getByTestId('feature-editor-compound-ops-note')).toBeTruthy();
+  });
+
+  it('compound child coordinates in a parent roster are read-only, not a fake scalar edit', () => {
+    const compoundChild = {
+      id: 'child-join', regionId: JOIN_FEATURE.id, level: 'detail',
+      name: 'joined-domain', type: 'domain', strand: 1, start: 10, end: 250,
+      location: { kind: 'join', segments: [{ start: 10, end: 30 }, { start: 220, end: 250 }] },
+    };
+    render(
+      <FeatureEditorModal
+        feature={JOIN_FEATURE} seqLength={1000} topology="linear"
+        neighbours={[compoundChild]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('feature-editor-tab-subfeatures'));
+    const row = screen.getByTestId('feature-editor-subfeature-row');
+    expect(row.querySelector('[data-testid="subfeature-start"]').disabled).toBe(true);
+    expect(row.querySelector('[data-testid="subfeature-end"]').disabled).toBe(true);
+    expect(row.querySelector('[data-testid="subfeature-compound-note"]')).toBeTruthy();
+  });
+
+  it('location inputs keep the global focus ring, mono font, labels and central remove icon', () => {
+    render(
+      <FeatureEditorModal
+        feature={JOIN_FEATURE} seqLength={1000} topology="linear" neighbours={[]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />,
+    );
+    const startInput = screen.getByTestId('feature-location-start-0');
+    expect(startInput.style.outline).not.toBe('none');
+    expect(startInput.style.fontFamily).toContain('var(--font-mono)');
+    expect(startInput.getAttribute('aria-label')).toBeTruthy();
+    expect(screen.getByTestId('feature-location-remove-0').querySelector('svg')).toBeTruthy();
+  });
+
+  it('a scalar feature never offers a compound adjacent neighbour for Merge', () => {
+    const compoundNeighbour = {
+      id: 'compound-right', name: 'joined-right', type: 'CDS', level: 'region',
+      start: 900, end: 1200, strand: 1,
+      location: {
+        kind: 'join',
+        segments: [{ start: 900, end: 1000 }, { start: 1100, end: 1200 }],
+      },
+    };
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} topology="linear"
+        neighbours={[compoundNeighbour]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('feature-editor-merge-compound-right')).toBeNull();
+  });
+
+  it('adding a second draft segment immediately disables every scalar shortcut', () => {
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} topology="linear" neighbours={NEIGHBOURS}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('feature-editor-merge-n')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('feature-location-add'));
+    expect(screen.queryByTestId('feature-editor-merge-n')).toBeNull();
+    fireEvent.click(screen.getByTestId('feature-editor-tab-subfeatures'));
+    expect(screen.getByTestId('feature-editor-split').disabled).toBe(true);
+    expect(screen.getByTestId('feature-editor-add-intron').disabled).toBe(true);
+    expect(screen.getByTestId('feature-editor-compound-ops-note')).toBeTruthy();
+  });
+});
+
+function ModalHotkeyHarness({ onTab, onUndo }) {
+  const [open, setOpen] = useState(false);
+  useTabHotkey({ onNext: onTab, onPrev: onTab });
+  useUndoHotkey({ onUndo, onRedo: () => {}, canUndo: true, canRedo: false });
+  return (
+    <>
+      <button type="button" data-testid="feature-editor-opener" onClick={() => setOpen(true)}>
+        open
+      </button>
+      {open && (
+        <FeatureEditorModal
+          feature={FEATURE} seqLength={5000} topology="linear" neighbours={[]}
+          onSave={() => {}} onClose={() => setOpen(false)}
+          onMerge={() => {}} onDelete={() => {}}
+        />
+      )}
+    </>
+  );
+}
+
+describe('FeatureEditorModal — modal boundary', () => {
+  it('shields underlying Tab/Ctrl+Z hotkeys and restores opener focus', () => {
+    const onTab = vi.fn();
+    const onUndo = vi.fn();
+    render(<ModalHotkeyHarness onTab={onTab} onUndo={onUndo} />);
+    const opener = screen.getByTestId('feature-editor-opener');
+    opener.focus();
+    fireEvent.click(opener);
+
+    const backdrop = screen.getByTestId('feature-editor-backdrop');
+    expect(backdrop.hasAttribute('data-modal-open')).toBe(true);
+    expect(backdrop.getAttribute('data-block-global-hotkeys')).toBe('true');
+    expect(backdrop.getAttribute('role')).toBe('dialog');
+    expect(backdrop.getAttribute('aria-modal')).toBe('true');
+
+    const save = screen.getByTestId('feature-editor-save');
+    save.focus();
+    fireEvent.keyDown(save, { key: 'Tab', code: 'Tab' });
+    expect(document.activeElement).toBe(screen.getByTestId('feature-editor-close'));
+    fireEvent.keyDown(save, { key: 'z', code: 'KeyZ', ctrlKey: true });
+    expect(onTab).not.toHaveBeenCalled();
+    expect(onUndo).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('feature-editor-cancel'));
+    expect(document.activeElement).toBe(opener);
   });
 });

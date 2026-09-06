@@ -13,13 +13,15 @@
 import { describe, it, expect } from 'vitest';
 import { resolvePcrProduct } from '../pcr-amplicon';
 import { alignPrimerBinding } from '../primer-binding-alignment';
+import { projectPrimerPool } from '../primer-site-projection';
+import { selectedOccurrencesFor } from '../primer-live-workflow';
 
 //        0         1         2         3
 //        0123456789012345678901234567890123456789
 const TPL = 'GGGGAAAACCTTTTGGGGAACCCCTTTTGGAATTCCGGAA'; // 40 nt
 
-const FWD_AT_4 = 'AAAACCTT'; // TPL[4..12)
-const REV_AT_24 = 'TTCCAAAA'; // rc(TPL[24..32)) — the oligo itself
+const FWD_AT_4 = 'AAAACCTTTTGG'; // TPL[4..16)
+const REV_AT_24 = 'GGAATTCCAAAA'; // rc(TPL[24..36)) — the oligo itself
 
 const occ = (over) => ({
   key: over.key || `${over.primerId}#s`,
@@ -47,8 +49,8 @@ describe('linear product', () => {
     r: primer({ id: 'r', sequence: REV_AT_24, strand: -1 }),
   };
   const occurrences = [
-    occ({ primerId: 'f', start: 4, end: 12, strand: 1 }),
-    occ({ primerId: 'r', start: 24, end: 32, strand: -1 }),
+    occ({ primerId: 'f', start: 4, end: 16, strand: 1 }),
+    occ({ primerId: 'r', start: 24, end: 36, strand: -1 }),
   ];
 
   it('is the template between the two landings, inclusive of both', () => {
@@ -56,8 +58,8 @@ describe('linear product', () => {
       template: TPL, topology: 'linear', occurrences, primersById,
     });
     expect(got.ok).toBe(true);
-    expect(got.product.sequence).toBe('AAAACCTTTTGGGGAACCCCTTTTGGAA');
-    expect(got.product.length).toBe(28);
+    expect(got.product.sequence).toBe(`${FWD_AT_4}${TPL.slice(16, 24)}${revComp(REV_AT_24)}`);
+    expect(got.product.length).toBe(32);
     expect(got.product.wrapsOrigin).toBe(false);
   });
 
@@ -66,7 +68,7 @@ describe('linear product', () => {
       template: TPL, topology: 'linear', occurrences: [occurrences[1], occurrences[0]], primersById,
     });
     expect(flipped.ok).toBe(true);
-    expect(flipped.product.sequence).toBe('AAAACCTTTTGGGGAACCCCTTTTGGAA');
+    expect(flipped.product.sequence).toBe(`${FWD_AT_4}${TPL.slice(16, 24)}${revComp(REV_AT_24)}`);
   });
 });
 
@@ -80,20 +82,20 @@ describe('tails and deliberate substitutions travel into the product', () => {
       template: TPL,
       topology: 'linear',
       occurrences: [
-        occ({ primerId: 'f', start: 4, end: 12, strand: 1 }),
-        occ({ primerId: 'r', start: 24, end: 32, strand: -1 }),
+        occ({ primerId: 'f', start: 4, end: 16, strand: 1 }),
+        occ({ primerId: 'r', start: 24, end: 36, strand: -1 }),
       ],
       primersById,
     });
     expect(got.ok).toBe(true);
     expect(got.product.sequence)
-      .toBe('GAATTCAAAACCTTTTGGGGAACCCCTTTTGGAACCCTTT');
-    expect(got.product.length).toBe(40);
+      .toBe(`GAATTC${FWD_AT_4}${TPL.slice(16, 24)}${revComp(REV_AT_24)}CCCTTT`);
+    expect(got.product.length).toBe(44);
   });
 
   it('uses the PRIMER base, not the template base, where the user changed one', () => {
-    // forward oligo differs from TPL[4..12) at its index 2 (absolute 6)
-    const mutated = 'AATACCTT';
+    // The mismatch is internal, with ten canonical bases still anchoring the physical 3' end.
+    const mutated = `${FWD_AT_4[0]}T${FWD_AT_4.slice(2)}`;
     const primersById = {
       f: primer({ id: 'f', sequence: mutated, strand: 1 }),
       r: primer({ id: 'r', sequence: REV_AT_24, strand: -1 }),
@@ -102,13 +104,13 @@ describe('tails and deliberate substitutions travel into the product', () => {
       template: TPL,
       topology: 'linear',
       occurrences: [
-        occ({ primerId: 'f', start: 4, end: 12, strand: 1 }),
-        occ({ primerId: 'r', start: 24, end: 32, strand: -1 }),
+        occ({ primerId: 'f', start: 4, end: 16, strand: 1 }),
+        occ({ primerId: 'r', start: 24, end: 36, strand: -1 }),
       ],
       primersById,
     });
     expect(got.ok).toBe(true);
-    expect(got.product.sequence.startsWith('AATACCTT')).toBe(true);
+    expect(got.product.sequence.startsWith(mutated)).toBe(true);
     const mm = got.warnings.find((w) => w.code === 'mismatch');
     expect(mm).toBeTruthy();
     expect(mm.blocking).toBe(false);
@@ -117,16 +119,16 @@ describe('tails and deliberate substitutions travel into the product', () => {
 
 describe('aligned-v1 indels travel into the product while footprints bound the interior', () => {
   const reverseRecord = primer({ id: 'r', sequence: REV_AT_24, strand: -1 });
-  const reverseOccurrence = occ({ primerId: 'r', start: 24, end: 32, strand: -1 });
+  const reverseOccurrence = occ({ primerId: 'r', start: 24, end: 36, strand: -1 });
 
   it('inserts a query-only forward base and keeps the template interior at footprint end', () => {
-    const body = `${FWD_AT_4.slice(0, 4)}G${FWD_AT_4.slice(4)}`;
+    const body = `${FWD_AT_4[0]}G${FWD_AT_4.slice(1)}`;
     const got = resolvePcrProduct({
       template: TPL,
       topology: 'linear',
       occurrences: [
         occ({
-          primerId: 'f', start: 4, end: 12, strand: 1,
+          primerId: 'f', start: 4, end: 16, strand: 1,
           alignment: alignPrimerBinding(body, FWD_AT_4),
         }),
         reverseOccurrence,
@@ -140,47 +142,65 @@ describe('aligned-v1 indels travel into the product while footprints bound the i
       },
     });
     expect(got.ok).toBe(true);
-    expect(got.product.sequence).toBe(`${body}${TPL.slice(12, 24)}${revComp(REV_AT_24)}`);
+    expect(got.product.sequence).toBe(`${body}${TPL.slice(16, 24)}${revComp(REV_AT_24)}`);
     expect(got.warnings).toContainEqual(expect.objectContaining({ code: 'insertion', count: 1 }));
     expect(got.warnings).toContainEqual(expect.objectContaining({ code: 'gapped-tm-unknown', tm: null }));
   });
 
   it('deletes a target-only forward base without leaking it back from the template', () => {
-    const body = `${FWD_AT_4.slice(0, 4)}${FWD_AT_4.slice(5)}`;
+    // The old AAAACCTT fixture had an equal-cost mismatch/clip answer after
+    // semiglobal P5 alignment. Distinct flanks make this an unambiguous
+    // INTERNAL deletion: ACG[A]GTAC -> ACGGTAC.
+    const anchor = 'ACGTGACCTAGCTTGA';
+    const body = `${anchor.slice(0, 3)}${anchor.slice(4)}`;
+    const reverseBinding = 'AAAATTTTGGCC';
+    const template = `TT${anchor}${'C'.repeat(8)}${revComp(reverseBinding)}GG`;
+    const forwardSegments = [{ start: 2, end: 18 }];
+    const forwardAlignment = alignPrimerBinding(body, anchor);
     const got = resolvePcrProduct({
-      template: TPL,
+      template,
       topology: 'linear',
       occurrences: [
         occ({
-          primerId: 'f', start: 4, end: 12, strand: 1,
-          alignment: alignPrimerBinding(body, FWD_AT_4),
+          primerId: 'f', start: 2, end: 18, strand: 1,
+          segments: forwardSegments,
+          alignment: forwardAlignment,
         }),
-        reverseOccurrence,
+        occ({ primerId: 'r', start: 26, end: 38, strand: -1 }),
       ],
       primersById: {
         f: primer({
           id: 'f', bindingModel: 'aligned-v1', sequence: body,
           bindingSequence: body, strand: 1,
         }),
-        r: reverseRecord,
+        r: primer({ id: 'r', sequence: reverseBinding, strand: -1 }),
       },
     });
     expect(got.ok).toBe(true);
-    expect(got.product.sequence).toBe(`${body}${TPL.slice(12, 24)}${revComp(REV_AT_24)}`);
+    expect(got.product.sequence)
+      .toBe(`${body}${template.slice(18, 26)}${revComp(reverseBinding)}`);
     expect(got.warnings).toContainEqual(expect.objectContaining({ code: 'deletion', count: 1 }));
+    expect(got.product.forward).toMatchObject({
+      bindingModel: 'aligned-v1',
+      segments: [{ start: 2, end: 18 }],
+      alignment: expect.objectContaining({ editDistance: 1 }),
+    });
+    expect(got.product.forward.segments).not.toBe(forwardSegments);
+    expect(got.product.forward.alignment).not.toBe(forwardAlignment);
+    expect(got.product.forward.alignment.runs).not.toBe(forwardAlignment.runs);
   });
 
   it('carries a reverse-primer insertion through a circular origin-wrap product', () => {
-    const fwd = 'AATTCCGG';
-    const reverseAnchor = 'AAAAGGTT';
-    const reverseBody = `${reverseAnchor.slice(0, 4)}G${reverseAnchor.slice(4)}`;
+    const fwd = TPL.slice(28, 40);
+    const reverseAnchor = revComp(TPL.slice(4, 16));
+    const reverseBody = `${reverseAnchor[0]}G${reverseAnchor.slice(1)}`;
     const got = resolvePcrProduct({
       template: TPL,
       topology: 'circular',
       occurrences: [
-        occ({ primerId: 'f', start: 30, end: 38, strand: 1 }),
+        occ({ primerId: 'f', start: 28, end: 40, strand: 1 }),
         occ({
-          primerId: 'r', start: 6, end: 14, strand: -1,
+          primerId: 'r', start: 4, end: 16, strand: -1,
           alignment: alignPrimerBinding(reverseBody, reverseAnchor),
         }),
       ],
@@ -195,14 +215,14 @@ describe('aligned-v1 indels travel into the product while footprints bound the i
     expect(got.ok).toBe(true);
     expect(got.product.wrapsOrigin).toBe(true);
     expect(got.product.sequence.endsWith(revComp(reverseBody))).toBe(true);
-    expect(got.product.length).toBe(25);
+    expect(got.product.length).toBe(29);
   });
 });
 
 describe('circular origin wrap', () => {
   it('produces the wrapped product and does not call it inverse PCR', () => {
-    const fwd = 'AATTCCGG'; // TPL[30..38)
-    const rev = 'AAAAGGTT'; // rc(TPL[6..14))
+    const fwd = TPL.slice(28, 40);
+    const rev = revComp(TPL.slice(4, 16));
     const primersById = {
       f: primer({ id: 'f', sequence: fwd, strand: 1 }),
       r: primer({ id: 'r', sequence: rev, strand: -1 }),
@@ -211,29 +231,31 @@ describe('circular origin wrap', () => {
       template: TPL,
       topology: 'circular',
       occurrences: [
-        occ({ primerId: 'f', start: 30, end: 38, strand: 1 }),
-        occ({ primerId: 'r', start: 6, end: 14, strand: -1 }),
+        occ({ primerId: 'f', start: 28, end: 40, strand: 1 }),
+        occ({ primerId: 'r', start: 4, end: 16, strand: -1 }),
       ],
       primersById,
     });
     expect(got.ok).toBe(true);
-    expect(got.product.sequence).toBe('AATTCCGGAAGGGGAAAACCTTTT');
-    expect(got.product.length).toBe(24);
+    expect(got.product.sequence).toBe(`${fwd}${TPL.slice(0, 16)}`);
+    expect(got.product.length).toBe(28);
     expect(got.product.wrapsOrigin).toBe(true);
     expect(got.product.method).not.toBe('inverse-pcr');
   });
 
   it('refuses the same wrapped geometry on a LINEAR molecule', () => {
+    const fwd = TPL.slice(28, 40);
+    const rev = revComp(TPL.slice(4, 16));
     const primersById = {
-      f: primer({ id: 'f', sequence: 'AATTCCGG', strand: 1 }),
-      r: primer({ id: 'r', sequence: 'AAAAGGTT', strand: -1 }),
+      f: primer({ id: 'f', sequence: fwd, strand: 1 }),
+      r: primer({ id: 'r', sequence: rev, strand: -1 }),
     };
     const got = resolvePcrProduct({
       template: TPL,
       topology: 'linear',
       occurrences: [
-        occ({ primerId: 'f', start: 30, end: 38, strand: 1 }),
-        occ({ primerId: 'r', start: 6, end: 14, strand: -1 }),
+        occ({ primerId: 'f', start: 28, end: 40, strand: 1 }),
+        occ({ primerId: 'r', start: 4, end: 16, strand: -1 }),
       ],
       primersById,
     });
@@ -245,21 +267,21 @@ describe('circular origin wrap', () => {
 describe('the chosen landings are the answer — never indexOf', () => {
   // The forward binding occurs TWICE. A resolver that searched the template
   // would answer about whichever copy it found first.
-  //          0..7      8..15     16..23    24..31    32..39
-  const tpl = 'AAAACCTT' + 'GGGGTTTT' + 'AAAACCTT' + 'CCCCAAAA' + 'CCGGAATT';
-  const revLanding = tpl.slice(32, 40); // 'CCGGAATT'
+  const landing = 'AAAACCTTGGAA';
+  const tpl = landing + 'GGGGTTTT' + landing + 'CCCCAAAA' + 'CCGGAATTGGCC';
+  const revLanding = tpl.slice(40, 52);
 
   it('uses the SECOND occurrence when the second occurrence was selected', () => {
     const primersById = {
-      f: primer({ id: 'f', sequence: 'AAAACCTT', strand: 1 }),
+      f: primer({ id: 'f', sequence: landing, strand: 1 }),
       r: primer({ id: 'r', sequence: revComp(revLanding), strand: -1 }),
     };
     const first = resolvePcrProduct({
       template: tpl,
       topology: 'circular',
       occurrences: [
-        occ({ key: 'f#a', primerId: 'f', start: 0, end: 8, strand: 1 }),
-        occ({ key: 'r#a', primerId: 'r', start: 32, end: 40, strand: -1 }),
+        occ({ key: 'f#a', primerId: 'f', start: 0, end: 12, strand: 1 }),
+        occ({ key: 'r#a', primerId: 'r', start: 40, end: 52, strand: -1 }),
       ],
       primersById,
     });
@@ -267,15 +289,15 @@ describe('the chosen landings are the answer — never indexOf', () => {
       template: tpl,
       topology: 'circular',
       occurrences: [
-        occ({ key: 'f#b', primerId: 'f', start: 16, end: 24, strand: 1 }),
-        occ({ key: 'r#a', primerId: 'r', start: 32, end: 40, strand: -1 }),
+        occ({ key: 'f#b', primerId: 'f', start: 20, end: 32, strand: 1 }),
+        occ({ key: 'r#a', primerId: 'r', start: 40, end: 52, strand: -1 }),
       ],
       primersById,
     });
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
-    expect(second.product.length).toBe(24);
-    expect(first.product.length).toBe(40);
+    expect(second.product.length).toBe(32);
+    expect(first.product.length).toBe(52);
     expect(first.product.sequence).not.toBe(second.product.sequence);
     expect(second.product.forward.key).toBe('f#b');
   });
@@ -284,7 +306,7 @@ describe('the chosen landings are the answer — never indexOf', () => {
 describe('blocking reasons fail closed', () => {
   const primersById = {
     f: primer({ id: 'f', sequence: FWD_AT_4, strand: 1 }),
-    f2: primer({ id: 'f2', sequence: 'TTTTGGGG', strand: 1 }),
+    f2: primer({ id: 'f2', sequence: TPL.slice(24, 36), strand: 1 }),
     r: primer({ id: 'r', sequence: REV_AT_24, strand: -1 }),
   };
 
@@ -293,8 +315,8 @@ describe('blocking reasons fail closed', () => {
       template: TPL,
       topology: 'linear',
       occurrences: [
-        occ({ primerId: 'f', start: 4, end: 12, strand: 1 }),
-        occ({ primerId: 'f2', start: 24, end: 32, strand: 1 }),
+        occ({ primerId: 'f', start: 4, end: 16, strand: 1 }),
+        occ({ primerId: 'f2', start: 24, end: 36, strand: 1 }),
       ],
       primersById,
     });
@@ -307,8 +329,8 @@ describe('blocking reasons fail closed', () => {
       template: TPL,
       topology: 'linear',
       occurrences: [
-        occ({ primerId: 'f', start: 4, end: 12, strand: 1, stale: true }),
-        occ({ primerId: 'r', start: 24, end: 32, strand: -1 }),
+        occ({ primerId: 'f', start: 4, end: 16, strand: 1, stale: true }),
+        occ({ primerId: 'r', start: 24, end: 36, strand: -1 }),
       ],
       primersById,
     });
@@ -321,12 +343,12 @@ describe('blocking reasons fail closed', () => {
       template: TPL,
       topology: 'linear',
       occurrences: [
-        occ({ primerId: 'f', start: 4, end: 12, strand: 1 }),
-        occ({ primerId: 'r', start: 24, end: 32, strand: -1 }),
+        occ({ primerId: 'f', start: 4, end: 16, strand: 1 }),
+        occ({ primerId: 'r', start: 24, end: 36, strand: -1 }),
       ],
       primersById: {
         ...primersById,
-        r: primer({ id: 'r', sequence: null, bindingSequence: REV_AT_24, strand: -1 }),
+        r: primer({ id: 'r', sequence: null, bindingSequence: null, strand: -1 }),
       },
     });
     expect(got.ok).toBe(false);
@@ -338,8 +360,8 @@ describe('blocking reasons fail closed', () => {
       template: TPL,
       topology: 'linear',
       occurrences: [
-        occ({ primerId: 'f', start: 4, end: 12, strand: 1 }),
-        occ({ primerId: 'r', start: 24, end: 32, strand: -1 }),
+        occ({ primerId: 'f', start: 4, end: 16, strand: 1 }),
+        occ({ primerId: 'r', start: 24, end: 36, strand: -1 }),
       ],
       primersById: {
         ...primersById,
@@ -352,13 +374,34 @@ describe('blocking reasons fail closed', () => {
     expect(got.reason).toBe('tail-binding-conflict');
   });
 
+  it('keeps an explicitly empty binding empty even when the full oligo is a 12-nt tail', () => {
+    const got = resolvePcrProduct({
+      template: TPL,
+      topology: 'linear',
+      occurrences: [
+        occ({ primerId: 'f', start: 4, end: 16, strand: 1 }),
+        occ({ primerId: 'r', start: 24, end: 36, strand: -1 }),
+      ],
+      primersById: {
+        f: primer({
+          id: 'f', sequence: FWD_AT_4, bindingSequence: '', tail: FWD_AT_4, strand: 1,
+        }),
+        r: primersById.r,
+      },
+    });
+
+    expect(got).toMatchObject({
+      ok: false, reason: 'no-three-prime-anchor', primerId: 'f',
+    });
+  });
+
   it('blocks an indel landing — the footprint and the oligo disagree in length', () => {
     const got = resolvePcrProduct({
       template: TPL,
       topology: 'linear',
       occurrences: [
-        occ({ primerId: 'f', start: 4, end: 11, strand: 1 }), // 7 bases vs an 8-mer
-        occ({ primerId: 'r', start: 24, end: 32, strand: -1 }),
+        occ({ primerId: 'f', start: 4, end: 15, strand: 1 }), // 11 bases vs a 12-mer
+        occ({ primerId: 'r', start: 24, end: 36, strand: -1 }),
       ],
       primersById,
     });
@@ -370,11 +413,247 @@ describe('blocking reasons fail closed', () => {
     const got = resolvePcrProduct({
       template: TPL,
       topology: 'linear',
-      occurrences: [occ({ primerId: 'f', start: 4, end: 12, strand: 1 })],
+      occurrences: [occ({ primerId: 'f', start: 4, end: 16, strand: 1 })],
       primersById,
     });
     expect(got.ok).toBe(false);
     expect(got.reason).toBe('need-two-occurrences');
+  });
+});
+
+describe('P5 — effective landing geometry reaches the PCR product', () => {
+  const DOC = 'sha256:p5-pcr';
+
+  function sourcePrimer({ id, binding, anchor, start, end, strand }) {
+    return primer({
+      id, bindingModel: 'aligned-v1', sequence: binding,
+      bindingSequence: binding, strand,
+      sites: [{
+        id: `${id}-site`,
+        target: { entryId: 'E5', resourceHash: DOC, topology: 'linear' },
+        location: { kind: 'single', segments: [{ start, end }] },
+        strand, annealedSequence: anchor, tail: '',
+      }],
+    });
+  }
+
+  function projectedPair(records) {
+    const context = {
+      template: TPL, topology: 'linear', entryId: 'E5', documentHash: DOC,
+    };
+    const keys = projectPrimerPool(records, context).map((item) => item.key);
+    return selectedOccurrencesFor(
+      keys.map((key) => ({ hit: { _occKey: key } })), records, context,
+    );
+  }
+
+  function legacySourcePrimer({ id, binding, snapshot = binding, start, end, strand }) {
+    return primer({
+      id, sequence: binding, bindingSequence: binding, strand,
+      sites: [{
+        id: `${id}-site`,
+        target: { entryId: 'E5', resourceHash: DOC, topology: 'linear' },
+        location: { kind: 'single', segments: [{ start, end }] },
+        strand, annealedSequence: snapshot, tail: '',
+      }],
+    });
+  }
+
+  it('shortens the forward 5-prime edge while preserving its 3-prime endpoint', () => {
+    const shortForward = FWD_AT_4.slice(-10);
+    const records = [
+      sourcePrimer({
+        id: 'f', binding: shortForward, anchor: FWD_AT_4,
+        start: 4, end: 16, strand: 1,
+      }),
+      sourcePrimer({
+        id: 'r', binding: REV_AT_24, anchor: REV_AT_24,
+        start: 24, end: 36, strand: -1,
+      }),
+    ];
+    const got = resolvePcrProduct({
+      template: TPL, topology: 'linear', occurrences: projectedPair(records),
+      primersById: Object.fromEntries(records.map((record) => [record.id, record])),
+    });
+    expect(got.ok).toBe(true);
+    expect(got.product.forward).toMatchObject({ start: 6, end: 16 });
+    expect(got.product.sequence)
+      .toBe(`${shortForward}${TPL.slice(16, 24)}${revComp(REV_AT_24)}`);
+  });
+
+  it('shortens the reverse 5-prime edge while preserving its 3-prime endpoint', () => {
+    const shortReverse = REV_AT_24.slice(-10);
+    const records = [
+      sourcePrimer({
+        id: 'f', binding: FWD_AT_4, anchor: FWD_AT_4,
+        start: 4, end: 16, strand: 1,
+      }),
+      sourcePrimer({
+        id: 'r', binding: shortReverse, anchor: REV_AT_24,
+        start: 24, end: 36, strand: -1,
+      }),
+    ];
+    const got = resolvePcrProduct({
+      template: TPL, topology: 'linear', occurrences: projectedPair(records),
+      primersById: Object.fromEntries(records.map((record) => [record.id, record])),
+    });
+    expect(got.ok).toBe(true);
+    expect(got.product.reverse).toMatchObject({ start: 24, end: 34 });
+    expect(got.product.sequence)
+      .toBe(`${FWD_AT_4}${TPL.slice(16, 24)}${revComp(shortReverse)}`);
+  });
+
+  it('fails standard PCR with the exact no-3-prime-anchor reason', () => {
+    const dead = `${FWD_AT_4.slice(0, -1)}A`;
+    const got = resolvePcrProduct({
+      template: TPL,
+      topology: 'linear',
+      occurrences: [
+        occ({
+          primerId: 'f', start: 4, end: 16, strand: 1,
+          alignment: alignPrimerBinding(dead, FWD_AT_4),
+        }),
+        occ({ primerId: 'r', start: 24, end: 36, strand: -1 }),
+      ],
+      primersById: {
+        f: primer({
+          id: 'f', bindingModel: 'aligned-v1', sequence: dead,
+          bindingSequence: dead, strand: 1,
+        }),
+        r: primer({ id: 'r', sequence: REV_AT_24, strand: -1 }),
+      },
+    });
+    expect(got).toMatchObject({
+      ok: false, reason: 'no-three-prime-anchor', primerId: 'f',
+    });
+  });
+
+  it.each([
+    [9, false, 'short-three-prime-anchor'],
+    [10, true, null],
+  ])('uses the canonical %i-nt physical 3-prime boundary', (length, ok, reason) => {
+    const forwardBinding = 'ACGTACGTAA'.slice(0, length);
+    const reverseBinding = 'GCGTACGTAA';
+    const reverseTop = revComp(reverseBinding);
+    const template = `TT${forwardBinding}${'C'.repeat(8)}${reverseTop}GG`;
+    const reverseStart = 2 + forwardBinding.length + 8;
+    const got = resolvePcrProduct({
+      template,
+      topology: 'linear',
+      occurrences: [
+        occ({ primerId: 'f', start: 2, end: 2 + forwardBinding.length, strand: 1 }),
+        occ({
+          primerId: 'r', start: reverseStart, end: reverseStart + reverseTop.length, strand: -1,
+        }),
+      ],
+      primersById: {
+        f: primer({ id: 'f', sequence: forwardBinding, strand: 1 }),
+        r: primer({ id: 'r', sequence: reverseBinding, strand: -1 }),
+      },
+    });
+
+    expect(got.ok).toBe(ok);
+    if (reason) expect(got).toMatchObject({ reason, primerId: 'f' });
+  });
+
+  it('fails legacy PCR when the CURRENT template leaves no 3-prime anchor', () => {
+    const terminal = `${FWD_AT_4.slice(0, -1)}A`;
+    const records = [
+      legacySourcePrimer({
+        id: 'f', binding: terminal, snapshot: terminal,
+        start: 4, end: 16, strand: 1,
+      }),
+      sourcePrimer({
+        id: 'r', binding: REV_AT_24, anchor: REV_AT_24,
+        start: 24, end: 36, strand: -1,
+      }),
+    ];
+    const got = resolvePcrProduct({
+      template: TPL, topology: 'linear', occurrences: projectedPair(records),
+      primersById: Object.fromEntries(records.map((record) => [record.id, record])),
+    });
+    expect(got).toMatchObject({
+      ok: false, reason: 'no-three-prime-anchor', primerId: 'f',
+    });
+  });
+
+  it('withholds scalar Tm for an internal legacy mismatch on the CURRENT template', () => {
+    const internal = `${FWD_AT_4[0]}T${FWD_AT_4.slice(2)}`;
+    const records = [
+      legacySourcePrimer({
+        id: 'f', binding: internal, snapshot: internal,
+        start: 4, end: 16, strand: 1,
+      }),
+      sourcePrimer({
+        id: 'r', binding: REV_AT_24, anchor: REV_AT_24,
+        start: 24, end: 36, strand: -1,
+      }),
+    ];
+    const got = resolvePcrProduct({
+      template: TPL, topology: 'linear', occurrences: projectedPair(records),
+      primersById: Object.fromEntries(records.map((record) => [record.id, record])),
+    });
+    expect(got.ok).toBe(true);
+    expect(got.warnings).toContainEqual(expect.objectContaining({
+      code: 'gapped-tm-unknown', tm: null,
+    }));
+    expect(got.warnings.filter((w) => w.code === 'low-tm' || w.code === 'delta-tm'))
+      .toEqual([]);
+  });
+
+  it('P6a carries current structured thermodynamics and drops a saved mismatch scalar', () => {
+    const internal = `${FWD_AT_4[0]}T${FWD_AT_4.slice(2)}`;
+    const records = [
+      {
+        ...legacySourcePrimer({
+          id: 'f', binding: internal, snapshot: internal,
+          start: 4, end: 16, strand: 1,
+        }),
+        tm: 63.2,
+        tmBinding: 63.2,
+      },
+      sourcePrimer({
+        id: 'r', binding: REV_AT_24, anchor: REV_AT_24,
+        start: 24, end: 36, strand: -1,
+      }),
+    ];
+    const got = resolvePcrProduct({
+      template: TPL, topology: 'linear', occurrences: projectedPair(records),
+      primersById: Object.fromEntries(records.map((record) => [record.id, record])),
+    });
+
+    expect(got.ok).toBe(true);
+    expect(got.product.forward.thermodynamics).toMatchObject({
+      fullDuplex: {
+        status: 'not-calculated', tmC: null, reason: 'imperfect-duplex',
+      },
+      pcr: { status: 'warning' },
+    });
+    expect(JSON.stringify(got.product.forward.thermodynamics)).not.toContain('63.2');
+    expect(got.product.reverse.thermodynamics.fullDuplex.status).toBe('calculated');
+  });
+
+  it('rejects occurrence alignment evidence that contradicts the CURRENT template', () => {
+    const badAlignment = alignPrimerBinding(FWD_AT_4, 'TTTTTTTTTTTT');
+    const got = resolvePcrProduct({
+      template: TPL,
+      topology: 'linear',
+      occurrences: [
+        occ({
+          primerId: 'f', start: 4, end: 16, strand: 1,
+          alignment: badAlignment,
+        }),
+        occ({ primerId: 'r', start: 24, end: 36, strand: -1 }),
+      ],
+      primersById: {
+        f: primer({
+          id: 'f', bindingModel: 'aligned-v1', sequence: FWD_AT_4,
+          bindingSequence: FWD_AT_4, strand: 1,
+        }),
+        r: primer({ id: 'r', sequence: REV_AT_24, strand: -1 }),
+      },
+    });
+    expect(got).toMatchObject({ ok: false, reason: 'indel-unsupported' });
   });
 });
 

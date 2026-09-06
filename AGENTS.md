@@ -235,7 +235,11 @@ gui/designer/
   src/store/              Zustand slices
   src/components/         React workspaces и UI
   src/lib/                алгоритмы, адаптеры, форматы, поиск
-  src/workers/            тяжёлые вычисления
+  src/lib/search.worker.js          worker поиска DNA (клиент: lib/search-worker-client.js)
+  src/lib/workers/predictor.worker.js  worker Annotator (клиент: lib/annotator-worker-client.js)
+  src/db/                 Dexie schema и адаптеры персистентности
+  src/hooks/              общие хуки (selection, split, sidebar)
+  src/canvas/             Notebook/Markdown/Export UI без production-mount
   src/__tests__/          Vitest integration/contract tests
 gui/api/server.py         FastAPI/SnapGene bridge
 src/pvcs/                 Python CLI и библиотека
@@ -268,6 +272,7 @@ docs/                     архитектура, дизайн, гайды, ак
 - `tdd-enforce` — изменение поведения;
 - `size-budget` — правка `.js/.jsx` в soft/hard зоне;
 - `scope-stop` — границы текущей задачи;
+- `sprint-report` — формат candidate handoff coder → Planner;
 - `graphify` — только по явному запросу либо при доказанной необходимости сложного
   межмодульного графового анализа; соответствие текущему HEAD обязательно.
 
@@ -297,7 +302,7 @@ py -m pytest
 Не использовать Graphify автоматически для обычного ревью, точечной навигации или ответа по текущему коду. Запускать его только по явному запросу пользователя либо когда без графового анализа действительно нельзя надёжно установить сложные межмодульные связи. Если граф давно не обновлялся или не соответствует текущему HEAD/dirty worktree, не обновлять его самовольно и не опираться на него — читать живой код и актуальные документы.
 
 `.graphify/` — локальный воспроизводимый индекс, не источник истины. Перед использованием
-проверить, что `branch.json` и граф соответствуют текущим branch/HEAD; флаг
+проверить, что метаданные ветки и граф соответствуют текущим branch/HEAD; флаг
 `stale:false` сам по себе недостаточен. Для точечного вопроса предпочитать живой код;
 если Graphify уже разрешён, использовать `query`, а для изменённых файлов —
 `review-delta`. Перестраивать граф только после отдельного явного разрешения.

@@ -16,13 +16,13 @@ npm install
 npm run dev
 ```
 
-Приложение открывается на `http://localhost:3000`.
+Приложение открывается на `http://127.0.0.1:3000` (не `localhost`: на этой машине `localhost`/`::1` перехватывает VPN, см. комментарии в `vite.config.js`).
 
 ## Проверка
 
 ```bash
 npm test
-npx vite build
+npm run build
 ```
 
 Для одного теста используйте `npm test -- path/to/file.test.jsx`. Не запускайте глобальный `npx vitest`: он может выбрать несовместимую версию из npm cache.

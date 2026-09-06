@@ -34,6 +34,33 @@ function occurrencePairOf(op) {
   };
 }
 
+function occurrenceFromSnapshot(snapshot, primerId, strand) {
+  return {
+    key: snapshot.occurrenceKey,
+    primerId,
+    start: snapshot.start,
+    end: snapshot.end,
+    strand,
+    ...(Array.isArray(snapshot.segments) ? {
+      segments: snapshot.segments.map(({ start, end }) => ({ start, end })),
+    } : {}),
+    ...(snapshot.alignment ? {
+      alignment: {
+        ...snapshot.alignment,
+        runs: Array.isArray(snapshot.alignment.runs)
+          ? snapshot.alignment.runs.map((run) => ({ ...run }))
+          : snapshot.alignment.runs,
+        counts: snapshot.alignment.counts
+          ? { ...snapshot.alignment.counts }
+          : snapshot.alignment.counts,
+        targetSpan: snapshot.alignment.targetSpan
+          ? { ...snapshot.alignment.targetSpan }
+          : snapshot.alignment.targetSpan,
+      },
+    } : {}),
+  };
+}
+
 export function selectTemplateForOp(state, operationId) {
   if (!state || !operationId) return null;
   const op = (state.operations || []).find((o) => o.id === operationId);
@@ -111,20 +138,8 @@ export function selectPcrSpans(state, operationId) {
       template: template.sequence,
       topology: circularNow ? 'circular' : 'linear',
       occurrences: [
-        {
-          key: snaps.forward.occurrenceKey,
-          primerId: 'fwd',
-          start: snaps.forward.start,
-          end: snaps.forward.end,
-          strand: 1,
-        },
-        {
-          key: snaps.reverse.occurrenceKey,
-          primerId: 'rev',
-          start: snaps.reverse.start,
-          end: snaps.reverse.end,
-          strand: -1,
-        },
+        occurrenceFromSnapshot(snaps.forward, 'fwd', 1),
+        occurrenceFromSnapshot(snaps.reverse, 'rev', -1),
       ],
       primersById: { fwd: { ...snaps.forward, id: 'fwd' }, rev: { ...snaps.reverse, id: 'rev' } },
       documentIdentity: op.params?.documentIdentity ?? null,

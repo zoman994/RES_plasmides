@@ -224,6 +224,87 @@ export const ANCHORED_OLIGO_OK = 'ok';
 export const ANCHORED_OLIGO_CONFLICT = 'conflict';
 export const ANCHORED_OLIGO_UNSUPPORTED = 'unsupported';
 
+/**
+ * Resolve the physical 5′→3′ oligo without treating an editor field boundary
+ * as biological evidence. `anchor` is only a helper for presenting ambiguous
+ * legacy records; it never rejects another coherent split of the same full
+ * sequence. The template-facing landing is derived later from full-sequence
+ * alignment at the confirmed source site.
+ */
+export function resolvePhysicalOligo(record, { anchor = null } = {}) {
+  const unusable = {
+    tail: '', binding: '', sequence: '', status: ANCHORED_OLIGO_UNSUPPORTED,
+  };
+  if (!record) return unusable;
+
+  const sourceTail = typeof record.tail === 'string' && record.tail
+    ? record.tail
+    : (typeof record.tailSequence === 'string' && record.tailSequence
+      ? record.tailSequence
+      : record.tail);
+  const statedTail = normalizeOligoSequence(sourceTail);
+  const statedBinding = normalizeOligoSequence(record.bindingSequence);
+  const statedSequence = normalizeOligoSequence(record.sequence);
+  const anchored = normalizeOligoSequence(anchor);
+  const explicitTail = statedTail.length > 0;
+  const conflict = () => ({
+    tail: statedTail,
+    binding: statedBinding,
+    sequence: statedSequence || (statedBinding ? `${statedTail}${statedBinding}` : ''),
+    status: ANCHORED_OLIGO_CONFLICT,
+  });
+
+  if (record.bindingModel === 'aligned-v1') {
+    const joined = `${statedTail}${statedBinding}`;
+    if (!joined) return unusable;
+    if (statedSequence && statedSequence !== joined) return conflict();
+    return {
+      tail: statedTail,
+      binding: statedBinding,
+      sequence: statedSequence || joined,
+      status: ANCHORED_OLIGO_OK,
+      ...(record.bindingModel === 'aligned-v1' ? { bindingModel: 'aligned-v1' } : {}),
+    };
+  }
+
+  if (explicitTail) {
+    if (statedSequence && !statedSequence.startsWith(statedTail)) return conflict();
+    if (statedBinding && statedSequence
+      && statedSequence !== `${statedTail}${statedBinding}`) return conflict();
+    const binding = statedBinding
+      || (statedSequence ? statedSequence.slice(statedTail.length) : '');
+    const sequence = statedSequence || `${statedTail}${binding}`;
+    if (!sequence) return unusable;
+    return {
+      tail: statedTail,
+      binding,
+      sequence,
+      status: ANCHORED_OLIGO_OK,
+    };
+  }
+
+  if (record.tail === null && !statedSequence) return unusable;
+  const full = statedSequence || statedBinding;
+  if (!full) return unusable;
+  if (statedSequence && statedBinding && statedSequence !== statedBinding
+    && !statedSequence.endsWith(statedBinding)) return conflict();
+
+  let binding = statedBinding || full;
+  if (statedSequence && statedBinding
+    && statedSequence.length > statedBinding.length
+    && statedSequence.endsWith(statedBinding)) {
+    binding = statedBinding;
+  } else if (anchored && full.length > anchored.length && full.endsWith(anchored)) {
+    binding = anchored;
+  }
+  return {
+    tail: full.slice(0, full.length - binding.length),
+    binding,
+    sequence: full,
+    status: ANCHORED_OLIGO_OK,
+  };
+}
+
 export function resolveAnchoredOligo(record, { anchor = null } = {}) {
   const unusable = {
     tail: '', binding: '', sequence: '', status: ANCHORED_OLIGO_UNSUPPORTED,

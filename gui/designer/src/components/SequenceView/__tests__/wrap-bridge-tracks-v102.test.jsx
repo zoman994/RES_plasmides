@@ -109,7 +109,7 @@ describe("RestrictionTrack — V102 §5.3 wrap-bridge awareness", () => {
     expect(site.getAttribute("data-position")).toBe("5");
     // renderCi = wrapAt + position = 25; cut tick naturalX =
     // (labelChars + renderCi + 0.5) * charPx = (8 + 25 + 0.5) * 7.2 = 241.2
-    const tick = site.querySelector("line");
+    const tick = site.querySelector('[data-testid="sequence-view-re-cut-tick"]');
     expect(Number(tick.getAttribute("x1"))).toBeCloseTo((8 + 25 + 0.5) * 7.2, 3);
   });
 
@@ -127,7 +127,37 @@ describe("RestrictionTrack — V102 §5.3 wrap-bridge awareness", () => {
     const site = screen.getByTestId("sequence-view-re-site");
     expect(site.getAttribute("data-position")).toBe("5");
     // renderCi = position - lineStart = 5; naturalX = (8 + 5 + 0.5)*7.2 = 97.2
-    const tick = site.querySelector("line");
+    const tick = site.querySelector('[data-testid="sequence-view-re-cut-tick"]');
     expect(Number(tick.getAttribute("x1"))).toBeCloseTo((8 + 5 + 0.5) * 7.2, 3);
+  });
+
+  it("5) adjacent real-end and wrap-start sites keep their coordinates and use separate lanes", () => {
+    render(
+      <RestrictionTrack
+        sites={[
+          { enzyme: "EcoRI", position: 99 },
+          { enzyme: "BamHI", position: 0 },
+        ]}
+        lineStart={80}
+        lineLen={40}
+        charPx={7.2}
+        labelChars={8}
+        wrapsOrigin
+        wrapAt={20}
+        seqLength={100}
+      />,
+    );
+
+    const rendered = Object.fromEntries(screen.getAllByTestId("sequence-view-re-site")
+      .map((site) => [site.getAttribute("data-enzyme"), site]));
+    expect(rendered.EcoRI.getAttribute("data-position")).toBe("99");
+    expect(rendered.BamHI.getAttribute("data-position")).toBe("0");
+    expect(rendered.EcoRI.getAttribute("data-lane"))
+      .not.toBe(rendered.BamHI.getAttribute("data-lane"));
+
+    const ecoTick = rendered.EcoRI.querySelector('[data-testid="sequence-view-re-cut-tick"]');
+    const bamTick = rendered.BamHI.querySelector('[data-testid="sequence-view-re-cut-tick"]');
+    expect(Number(ecoTick.getAttribute("x1"))).toBeCloseTo((8 + 19 + 0.5) * 7.2, 3);
+    expect(Number(bamTick.getAttribute("x1"))).toBeCloseTo((8 + 20 + 0.5) * 7.2, 3);
   });
 });

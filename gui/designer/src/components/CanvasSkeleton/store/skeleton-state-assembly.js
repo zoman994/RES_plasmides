@@ -24,6 +24,7 @@ import { buildAssemblyPrimer, detectCrossBoundary } from '../lib/assembly-primer
 import { resolveManualJunctionTail } from '../lib/primer-derive';
 import { routeAssemblyWriteToZone } from '../lib/zone-assembly-write-adapter';
 import { draftFromZone } from '../lib/zone-pieces-to-dag';
+import { attachAssemblyPrimerSite } from '../lib/assembly-primer-site';
 import { t } from '../../../i18n';
 
 // A3 DEC-CANVAS-ASM-PRIMER-02 — pair fwd+rev when their selections
@@ -476,7 +477,13 @@ export function assemblyReducer(state, action) {
         updatedAt: Date.now(),
         crossesBoundaries: built.crossesBoundaries,
       };
-      map[action.draftId] = [...cur, primer];
+      const placed = attachAssemblyPrimerSite(primer, {
+        entryId: action.draftId,
+        topology: d.topology?.circular ? 'circular' : 'linear',
+        template: seq,
+        range: { start: lo, end: hi },
+      });
+      map[action.draftId] = [...cur, placed || primer];
       return { ...state, assemblyDraftPrimers: map };
     }
 

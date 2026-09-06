@@ -105,6 +105,7 @@ export default function LibraryInspectorTitleRow({
             hasChanges={saveFlow.hasChanges}
             editedSequence={saveFlow.editedSequence}
             editedAnnotations={saveFlow.editedAnnotations}
+            editedTopology={saveFlow.editedTopology}
             changesSummary={saveFlow.changesSummary}
             changeText={saveFlow.changeText}
             parentName={saveFlow.parentName}

@@ -15,7 +15,11 @@
  * every site once). This test pins that the mixed-polarity path is correct.
  */
 import { describe, it, expect } from 'vitest';
-import { reverseComplementSegment, segmentOverhangs } from '../segment-overhangs';
+import {
+  reverseComplementSegment,
+  reverseComplementSegmentWithAnnotations,
+  segmentOverhangs,
+} from '../segment-overhangs';
 import { reverseComplement } from '../../../../sequence-utils';
 
 // Custom enzyme map: EcoRI-like 5′ overhang (δ=+4) and PstI-like 3′ overhang (δ=−4).
@@ -67,5 +71,39 @@ describe('reverseComplementSegment — 5′-left / 3′-right (mixed polarity)',
       const out = reverseComplementSegment(s, re);
       expect(out.length).toBe(top.length + oh.right.delta - oh.left.delta);
     }
+  });
+
+  it('clips annotations with the same 5′-left/3′-right trim used for sequence', () => {
+    const source = {
+      ...mixedSeg('AAAACCCCGGGG'),
+      annotations: [
+        { id: 'kept', type: 'CDS', level: 'region', strand: 1, start: 4, end: 8 },
+        { id: 'trimmed', type: 'misc_feature', level: 'region', strand: 1, start: 0, end: 4 },
+      ],
+    };
+    const out = reverseComplementSegmentWithAnnotations(source, RE);
+    expect(out.sequence).toBe('GGGG');
+    expect(out.length).toBe(out.sequence.length);
+    expect(out.annotations).toHaveLength(1);
+    expect(out.annotations[0]).toMatchObject({ id: 'kept', start: 0, end: 4, strand: -1 });
+    expect(out.annotations[0].location.segments).toEqual([{ start: 0, end: 4 }]);
+  });
+
+  it('offsets annotations past reconstructed extras in the 3′-left/5′-right add case', () => {
+    const addMap = {
+      L: { cut: [5, 1], overhang: 'TGCA', end: '3prime' },
+      R: { cut: [1, 5], overhang: 'AATT', end: '5prime' },
+    };
+    const source = {
+      sequence: 'AAAACCCCGGGG',
+      acquisitionMethod: 'restriction',
+      acquisitionParams: { enzymes: ['L', 'R'], cutSites: [{ position: 0 }, { position: 12 }] },
+      annotations: [{ id: 'kept', type: 'CDS', level: 'region', strand: 1, start: 4, end: 8 }],
+    };
+    const out = reverseComplementSegmentWithAnnotations(source, addMap);
+    expect(out.sequence).toBe('AATTCCCCGGGGTTTTTGCA');
+    expect(out.length).toBe(out.sequence.length);
+    expect(out.annotations[0]).toMatchObject({ id: 'kept', start: 8, end: 12, strand: -1 });
+    expect(out.annotations[0].location.segments).toEqual([{ start: 8, end: 12 }]);
   });
 });

@@ -38,6 +38,26 @@ vi.mock('../inspector/LibrarySingleInspector', () => ({
           ],
         })}
       >create</button>
+      {/* A nucleotide edit: shortens the sequence AND shifts the annotation —
+          the buffer now describes the EDITED document, not the saved source. */}
+      <button
+        type="button"
+        data-testid="fake-seq-edit"
+        onClick={() => onUpdateEdits?.({
+          editedSequence: 'ACGT',
+          editedAnnotations: [{ id: 'r1', type: 'CDS', name: 'g', start: 0, end: 4, level: 'region', strand: 1 }],
+        })}
+      >seqedit</button>
+      {/* An annotation-only edit fired AFTER the sequence edit (e.g. a rename
+          from the Annotator / FeatureEditor) — its coords belong to the edited
+          document. It must NOT be written back to the saved source. */}
+      <button
+        type="button"
+        data-testid="fake-ann-after-seq"
+        onClick={() => onUpdateEdits?.({
+          editedAnnotations: [{ id: 'r1', type: 'CDS', name: 'g-renamed', start: 0, end: 4, level: 'region', strand: 1 }],
+        })}
+      >annedit</button>
     </div>
   ),
 }));
@@ -99,6 +119,35 @@ describe('LibraryWorkspace — annotation persistence', () => {
     await waitFor(() => {
       const anns = useStore.getState().libraryEntries.e1?.payload?.annotations || [];
       expect(anns.some((a) => a.id === 'orf-1')).toBe(true);
+    });
+  });
+
+  it('an annotation-only edit AFTER a sequence edit does NOT write transient coords to the saved source (merged-buffer source guard)', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({
+      id: 'e2',
+      name: 'guarded',
+      payload: {
+        sequence: 'ACGTACGTAC',
+        length: 10,
+        topology: 'circular',
+        annotations: [{ id: 'r1', type: 'CDS', name: 'g', start: 0, end: 6, level: 'region', strand: 1 }],
+      },
+    }));
+    render(<LibraryWorkspace />);
+    fireEvent.click(screen.getByTestId('tree-item-loose-e2'));
+
+    // 1) sequence edit → the buffer diverges from the saved source.
+    fireEvent.click(screen.getByTestId('fake-seq-edit'));
+    // 2) annotation-only edit fired after the sequence edit.
+    fireEvent.click(screen.getByTestId('fake-ann-after-seq'));
+
+    // The SAVED source annotations must be untouched — still end:6 / name 'g',
+    // NOT the transient end:4 / 'g-renamed' that belong to the edited document.
+    await waitFor(() => {
+      const saved = useStore.getState().libraryEntries.e2?.payload?.annotations || [];
+      expect(saved).toHaveLength(1);
+      expect(saved[0].end).toBe(6);
+      expect(saved[0].name).toBe('g');
     });
   });
 });

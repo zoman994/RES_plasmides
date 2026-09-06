@@ -2,12 +2,36 @@ import { describe, it, expect } from 'vitest';
 import {
   sanitizeSequence,
   isValidDNA,
+  normalizeDnaFieldInput,
   hasInvalidChars,
   complement,
   reverseComplement,
   IUPAC_DNA_REGEX,
   IUPAC_DNA_CHAR_REGEX,
 } from '../sequence-utils';
+
+describe('normalizeDnaFieldInput', () => {
+  it('accepts empty input and canonicalizes the full DNA-IUPAC alphabet', () => {
+    expect(normalizeDnaFieldInput('')).toEqual({ accepted: true, value: '' });
+    expect(normalizeDnaFieldInput('atgcnryswkmbdhv'))
+      .toEqual({ accepted: true, value: 'ATGCNRYSWKMBDHV' });
+  });
+
+  it.each([
+    ['Cyrillic', 'АТГЦ'],
+    ['RNA U', 'ATGU'],
+    ['X/J/Z', 'ATGXJZ'],
+    ['digit', 'ATG1C'],
+    ['punctuation', 'ATG.C'],
+    ['hyphen/gap', 'ATG-C'],
+    ['space', 'ATG C'],
+    ['tab', 'ATG\tC'],
+    ['newline', 'ATG\nC'],
+    ['mixed paste', 'acgtN\nJ-1'],
+  ])('rejects an entire prospective value containing %s', (_kind, value) => {
+    expect(normalizeDnaFieldInput(value)).toEqual({ accepted: false, value: null });
+  });
+});
 
 describe('sanitizeSequence', () => {
   it('strips BOM', () => {

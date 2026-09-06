@@ -15,7 +15,12 @@ describe('SiteDuplex', () => {
     render(<SiteDuplex site="GAATTC" cut={[1, 5]} />);
     expect(topText()).toContain('GAATTC'); // top strand
     expect(botText()).toContain('CTTAAG'); // bottom = complement
-    expect(screen.getByTestId('rs-duplex-label').textContent).toMatch(/5′-выступ AATT/);
+    expect(screen.getByTestId('rs-duplex-label').textContent).toBe(
+      '5′-выступ AATT · разрез: верх после 1 нт · низ после 5 нт',
+    );
+    expect(screen.getByTestId('rs-duplex-label').style.fontSize).toBe('11px');
+    const cutMark = screen.getByTestId('rs-duplex-top').querySelector('[aria-hidden="true"]');
+    expect(cutMark.style.background).toBe('var(--text-primary)');
   });
 
   it('3′ overhang (PstI): label shows 3′-выступ TGCA', () => {
@@ -30,6 +35,11 @@ describe('SiteDuplex', () => {
 
   it('renders nothing for a missing site / cut', () => {
     const { container } = render(<SiteDuplex site="" cut={[1, 5]} />);
+    expect(container.querySelector('[data-testid="rs-site-duplex"]')).toBeNull();
+  });
+
+  it('fails closed when a cut boundary is outside the recognition site', () => {
+    const { container } = render(<SiteDuplex site="GAATTC" cut={[1, 7]} />);
     expect(container.querySelector('[data-testid="rs-site-duplex"]')).toBeNull();
   });
 });

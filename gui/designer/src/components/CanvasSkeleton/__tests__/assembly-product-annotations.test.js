@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest';
 import { draftFromZone, realiseAssembly } from '../lib/zone-pieces-to-dag';
 import { concatSegmentAnnotations } from '../lib/assembly-model';
 
-// 24 nt; 'prom' is 1-based inclusive [5,12] (GenBank contract).
+// 24 nt; 'prom' is canonical 0-based [5,12).
 const C = {
   id: 'src1', kind: 'molecule', name: 'pUC',
   sequence: 'AAAACCCCGGGGTTTTAAAACCCC',
@@ -56,7 +56,7 @@ function zoneState(pieces, containers = [C]) {
 const ZONE = { id: 'zn-1', name: 'Сборка 1' };
 
 describe('draftFromZone — sourced segment inherits source annotations', () => {
-  it('full forward range → annotation preserved (segment-local 1-based)', () => {
+  it('full forward range → annotation preserved (segment-local canonical coords)', () => {
     const segs = draftFromZone(zoneState([sourced('p1', 'src1', 0, 24, 'forward', 1)]), ZONE)
       .segments;
     expect(segs[0].annotations).toHaveLength(1);
@@ -68,16 +68,15 @@ describe('draftFromZone — sourced segment inherits source annotations', () => 
   it('clipped range [4,16) → annotation clipped + shifted to local coords', () => {
     const segs = draftFromZone(zoneState([sourced('p1', 'src1', 4, 16, 'forward', 1)]), ZONE)
       .segments;
-    // parent 1-based [5,12] = 0-based [4,12); window [4,16) → local 0-based
-    // [0,8) → local 1-based [1,8].
+    // Parent [5,12) clipped by [4,16) maps to local [1,8).
     expect(segs[0].annotations[0]).toMatchObject({ name: 'prom', start: 1, end: 8 });
   });
 
   it('reverse range mirrors the annotation + flips strand', () => {
     const segs = draftFromZone(zoneState([sourced('p1', 'src1', 0, 24, 'reverse', 1)]), ZONE)
       .segments;
-    // segLen 24; ns = 24-12+1 = 13, ne = 24-5+1 = 20; strand 1 → -1.
-    expect(segs[0].annotations[0]).toMatchObject({ start: 13, end: 20, strand: -1 });
+    // Canonical RC: [5,12) in length 24 maps to [12,19); strand flips.
+    expect(segs[0].annotations[0]).toMatchObject({ start: 12, end: 19, strand: -1 });
   });
 
   it('source container with no annotations → [] (no throw)', () => {
@@ -139,7 +138,7 @@ describe('realiseAssembly — frag + product containers carry annotations', () =
 });
 
 describe('concatSegmentAnnotations — pure offset aggregation', () => {
-  it('shifts each segment\'s 1-based annotations by the running char offset', () => {
+  it('shifts each segment\'s canonical annotations by the running char offset', () => {
     const out = concatSegmentAnnotations([
       { sequence: 'AAAAAAAAAA', annotations: [{ name: 'x', start: 2, end: 4 }] }, // len 10
       { sequence: 'CCCCC', annotations: [{ name: 'y', start: 1, end: 3 }] }, // len 5, +10
@@ -155,6 +154,23 @@ describe('concatSegmentAnnotations — pure offset aggregation', () => {
       { sequence: 'GG', annotations: [{ name: 'z', start: 1, end: 2 }] },
     ]);
     expect(out[0]).toMatchObject({ name: 'z', start: 8, end: 9 });
+  });
+
+  it('offsets canonical compound location and derives matching scalars', () => {
+    const out = concatSegmentAnnotations([
+      { sequence: 'AAAAA', annotations: [] },
+      {
+        sequence: 'CCCCCCCC',
+        annotations: [{
+          id: 'compound', name: 'joined', start: 1, end: 7,
+          location: { kind: 'join', segments: [{ start: 1, end: 3 }, { start: 5, end: 7 }] },
+        }],
+      },
+    ]);
+    expect(out[0].location).toEqual({
+      kind: 'join', segments: [{ start: 6, end: 8 }, { start: 10, end: 12 }],
+    });
+    expect({ start: out[0].start, end: out[0].end }).toEqual({ start: 6, end: 12 });
   });
 
   it('empty / defensive', () => {

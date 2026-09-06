@@ -26,7 +26,10 @@ This is a navigation aid for the current repository, not a generated dependency 
 | Shared search UI | `components/Search/` | Store-free combobox, mode, filter and results primitives |
 | Shared UI | `components/common/`, `components/icons/`, `components/Toast/` | Reusable controls, icons and feedback |
 
-`components/Dag/` contains retained graph/container utilities and compatibility surfaces. Verify live routing before editing or deleting any subtree.
+`components/Dag/` holds one placeholder (`ContainerWindowPlaceholder.jsx`) for the
+`containerWindow` fullscreen route; no production code pushes that route. `src/canvas/`
+holds the Notebook/Markdown/Export components, which no production component mounts.
+Verify live routing before editing or deleting either subtree.
 
 ## State ownership
 
@@ -40,6 +43,8 @@ Zustand slices live in `gui/designer/src/store/`.
 - `annotatorSlice.js` and `commonFeaturesSlice.js` — annotation workflows/data.
 - `customEnzymesSlice.js` and `restrictionViewSlice.js` — restriction state.
 - `workspaceSlice.js`, `canvasSlice.js`, `uiSlice.js` — workspace/navigation/presentation state.
+- `searchSessionSlice.js` — search corpus/entry/buffer generations, return frame, navigation requests.
+- `annotatorSlice.js` is composed inside `createUiSlice`, not directly in `store/index.js`.
 
 Read selectors narrowly. Domain mutation belongs in store actions or explicit controllers, not arbitrary component effects.
 
@@ -49,26 +54,32 @@ Most browser-side logic is in `gui/designer/src/lib/` and selected top-level hel
 
 | Domain | Typical locations |
 |---|---|
-| Search | `lib/library-search.js`, `lib/search-*.js`, `lib/workers/`, Library search controllers |
-| Annotation | `lib/annotation-model.js`, `lib/import-annotations.js`, `lib/auto-annotate.js`, `lib/feature-*` |
-| Alignment | `lib/alignment/`, alignment workers and `components/Align/` |
+| Search | `lib/library-search.js`, `lib/search-*.js`, `lib/search.worker.js`, `lib/dna-*.js`, Library search controllers |
+| Annotation | `annotation-model.js`, `import-annotations.js`, `auto-annotate.js` (top-level `src/`), `lib/annotation-*.js`, `lib/feature-*` |
+| Alignment | `lib/alignment/` and `components/Align/` (no worker today: alignment runs synchronously in `store/alignmentSlice.js`) |
 | Splicing/proteins | `lib/splice/`, protein/search helpers |
 | Assembly | `components/CanvasSkeleton/lib/`, `local-primer-design.js`, `golden-gate.js`, `restriction-db.js` |
 | Restriction/GG | `restriction-db.js`, `golden-gate.js`, restriction helpers |
-| Persistence | `db/`, `lib/bodge-zip.js`, `lib/bodge-migrations/`, notebook migrations |
+| Persistence | `db/`, `lib/bodge-zip.js`, `lib/project-bodge-state.js`, `CanvasSkeleton/lib/skeleton-bodge-bridge.js`, `StartScreen/lib/open-bodge.js` (`lib/bodge-migrations/` and notebook migrations have no production consumer) |
 | File import | GenBank/FASTA/SnapGene parsers and import adapters under `lib/` / `gui/api/` |
 
 Before changing annotation, assembly or restriction contracts, use the matching project skill in `.agents/skills/`.
 
 ## Workers
 
-Workers and their clients are paired under `gui/designer/src/lib/workers/` or the owning domain. The client owns cancellation, lifecycle and protocol validation; pure engines do not manipulate React state. Stale replies must not replace a newer session.
+Two workers exist: `gui/designer/src/lib/search.worker.js` (client
+`lib/search-worker-client.js`, coordinator `lib/sequence-search-coordinator.js`) and
+`gui/designer/src/lib/workers/predictor.worker.js` (client `lib/annotator-worker-client.js`).
+The client owns cancellation, lifecycle and protocol validation; pure engines do not
+manipulate React state. Stale replies must not replace a newer session. Only the search
+worker has a cancel protocol; the predictor worker has none (see BACKLOG «Heavy compute
+off the UI thread»).
 
 ## Persistence and formats
 
 - `gui/designer/src/db/` — Dexie schema and persistence adapters.
 - `gui/designer/src/lib/bodge-zip.js` — `.bodge` read/write boundary.
-- `gui/designer/src/lib/bodge-migrations/` — format migrations.
+- `gui/designer/src/lib/bodge-migrations/` — v1→v2 migration helpers without a production consumer (see BACKLOG «Dead-but-tested modules»).
 - `docs/specs/SPEC_BODGE_FORMAT_V2_CORE.md` — normative portable-format contract.
 - `gui/api/` — optional local parser/API helper.
 - `src/pvcs/` — secondary Python CLI/backend package.

@@ -116,3 +116,29 @@ describe('buildSelectionMenuItems — FEAT-EXTRACT (извлечь в библи
     expect(keys(items)).not.toContain('extract-feature');
   });
 });
+
+describe('buildSelectionMenuItems — origin-crossing selection', () => {
+  it('offers only primer writes and sends their canonical monotonic range', () => {
+    const onWritePrimer = vi.fn();
+    const setContextMenu = vi.fn();
+    const items = buildSelectionMenuItems(base({
+      caretAnchor: -287,
+      caretPos: 13,
+      onWritePrimer,
+      onOpenAnnotator: vi.fn(),
+      onBlastSelection: vi.fn(),
+      onCreatePiece: vi.fn(),
+      setContextMenu,
+      selectionRange: {
+        start: 2399, end: 2699, length: 300, wrapsOrigin: true,
+      },
+    }));
+
+    expect(keys(items)).toEqual(['primer-fwd', 'primer-rev']);
+    items[0].onClick();
+    expect(setContextMenu).toHaveBeenCalledWith(null);
+    expect(onWritePrimer).toHaveBeenCalledWith({
+      direction: 'forward', start: 2399, end: 2699,
+    });
+  });
+});

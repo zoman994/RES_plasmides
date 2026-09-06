@@ -25,7 +25,7 @@ export function alignmentDisplay(occurrence) {
     for (let targetOffset = run.targetStart; targetOffset < run.targetEnd; targetOffset += 1) {
       const topOffset = reverse ? targetLength - 1 - targetOffset : targetOffset;
       const queryOffset = run.queryStart + (targetOffset - run.targetStart);
-      const queryBase = run.op === 'D' ? '–' : alignment.query[queryOffset];
+      const queryBase = run.op === 'D' ? '' : alignment.query[queryOffset];
       glyphs[topOffset] = {
         op: run.op,
         base: reverse && run.op !== 'D' ? reverseComplement(queryBase) : queryBase,

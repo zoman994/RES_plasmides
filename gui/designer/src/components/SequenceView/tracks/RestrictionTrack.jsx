@@ -27,16 +27,22 @@ import { lanePack, laneCount } from "../../../lib/linear-map";
 const ROW_HEIGHT_RE = 18;
 const CUT_BAR_HEIGHT = 6;
 const VERTICAL_LABEL_HEIGHT = 36;
-// Minimum horizontal pixels between consecutive label slots.
-// Vertical labels are rotated 90° — каждый занимает ~9 px горизонтально;
-// 14 px дает читаемый зазор ≥5 px. Horizontal labels — текст «EcoRI»
-// шириной ~25 px → нужен min-gap ≥28 чтобы не сливались.
-const VERTICAL_LABEL_MIN_GAP = 14;
-const HORIZONTAL_LABEL_MIN_GAP = 28;
 // Horizontal-label vertical staggering (Игорь 22.06 «разнести по высоте»):
-// approximate per-char width of the 9px label font + the lane row pitch.
+// packing and hit targets share one footprint so painted labels and pointer
+// areas cannot overlap while appearing to occupy the same lane.
 const LABEL_CHAR_W = 5.6;
-const LANE_STEP = 12;
+const LABEL_HIT_MIN_LONG = 20;
+const LABEL_HIT_INLINE_PAD = 4;
+const LABEL_HIT_CROSS = 16;
+const LABEL_COLLISION_GAP = 4;
+const LANE_STEP = LABEL_HIT_CROSS + 2;
+const VERTICAL_LANE_GAP = 2;
+const LABEL_EDGE_PAD = 2;
+const CUT_HIT_HALF_WIDTH = 5;
+const CUT_HIT_ABOVE = 8;
+const LEADER_HIT_WIDTH = 8;
+const LEADER_BRANCH_OFFSET = 8;
+const LEADER_BRANCH_STEP = 12;
 // Approximate cap-height for the 9px font used by the labels — used to
 // re-centre the rotated text horizontally so visual middle of the
 // label sits on the cut tick (instead of drifting left).
@@ -80,6 +86,12 @@ const DEGENERATE_RE = /[RYMKSWHBVDN]/i;
 
 function siteKey(site) {
   return `${site.enzyme}-${site.position}`;
+}
+
+function compareLineSites(a, b) {
+  return a.renderCi - b.renderCi
+    || String(a.site.enzyme || '').localeCompare(String(b.site.enzyme || ''))
+    || a.site.position - b.site.position;
 }
 
 function HoverTooltip({ site, count, anchorX, anchorY }) {
@@ -216,58 +228,74 @@ function HoverTooltip({ site, count, anchorX, anchorY }) {
 }
 
 /**
- * computeLabelSlots — place labels left-to-right honouring minGap.
- * Each slot returns {site, naturalX (cut tick), slotX (label x),
- * offset (slotX − naturalX, may be 0), key}.
- *
- * Cascade-shifting: if previous slot + minGap > current natural,
- * current shifts right. Subsequent labels chain from the shifted
- * slot, so a dense cluster of N sites can push the Nth label far
- * right of its actual cut position (leader-line shows the link).
+ * computeLabelLanes — collision-aware vertical stacking. Each label stays at
+ * its cut tick (no sideways cascade); overlapping labels are distributed into
+ * lanes (lane 0 = nearest the cut ticks, higher lanes stack upward). Rotated
+ * labels reserve their narrow painted width, horizontal labels reserve their
+ * full text width.
+ * Returns {site, naturalX, lane, key} per site (input order preserved).
  */
-function computeLabelSlots(lineSites, charPx, labelChars, minGap) {
-  const out = [];
-  let prevSlot = -Infinity;
-  for (const item of lineSites) {
-    // V102 §5.3 — render column is precomputed as slot metadata
-    // (`renderCi`): real sites → position − lineStart, wrap sites →
-    // wrapAt + position. The ORIGINAL site object is carried untouched
-    // in `item.site`, so siteKey + the render path + onSiteClick all see
-    // the caller's site shape — the internal render-column never leaks.
-    const s = item.site;
-    const ci = item.renderCi;
-    const naturalX = (labelChars + ci + 0.5) * charPx;
-    let slotX = naturalX;
-    if (naturalX < prevSlot + minGap) {
-      slotX = prevSlot + minGap;
-    }
-    prevSlot = slotX;
-    out.push({
-      site: s,
+function computeLabelLanes(lineSites, charPx, labelChars, isVertical, widthPx) {
+  const items = lineSites.map((item) => {
+    const naturalX = (labelChars + item.renderCi + 0.5) * charPx;
+    const textExtent = item.site.enzyme.length * LABEL_CHAR_W;
+    const longPad = isVertical ? 2 : LABEL_HIT_INLINE_PAD;
+    const longHit = Math.max(LABEL_HIT_MIN_LONG, textExtent + longPad * 2);
+    const slotX = isVertical
+      ? naturalX
+      : Math.min(
+        widthPx - LABEL_EDGE_PAD - longHit / 2,
+        Math.max(LABEL_EDGE_PAD + longHit / 2, naturalX),
+      );
+    const packWidth = (isVertical ? LABEL_HIT_CROSS : longHit) + LABEL_COLLISION_GAP;
+    return {
+      site: item.site,
       naturalX,
       slotX,
       offset: slotX - naturalX,
-      key: siteKey(s),
-    });
-  }
-  return out;
+      textExtent,
+      longHit,
+      packWidth,
+      key: siteKey(item.site),
+    };
+  });
+  const lanes = lanePack(items.map((it) => ({
+    start: it.slotX - it.packWidth / 2,
+    end: it.slotX + it.packWidth / 2,
+  })));
+  return items.map((it, i) => ({ ...it, lane: lanes[i] }));
 }
 
 /**
- * computeLabelLanes — horizontal-orientation stagger. Each label stays CENTERED
- * on its cut tick (no sideways push); overlapping labels are distributed into
- * vertical lanes (lane 0 = nearest the cut ticks, higher lanes stack upward) so
- * names never collide. A vertical leader links each label to its tick.
- * Returns {site, naturalX, lane, key} per site (input order preserved).
+ * One physical cut coordinate gets one click target. Neighbouring coordinates
+ * share their midpoint boundary, so even cuts closer than the usual 10px hit
+ * width remain unambiguous. Individual enzyme labels stay independently
+ * clickable when several enzymes cut at the same coordinate.
  */
-function computeLabelLanes(lineSites, charPx, labelChars) {
-  const items = lineSites.map((item) => {
-    const naturalX = (labelChars + item.renderCi + 0.5) * charPx;
-    const w = Math.max(charPx, item.site.enzyme.length * LABEL_CHAR_W);
-    return { site: item.site, naturalX, w, key: siteKey(item.site) };
+function computeCutHitTargets(slots, widthPx) {
+  const uniqueCuts = [];
+  slots.forEach((slot, slotIndex) => {
+    const previous = uniqueCuts.at(-1);
+    if (!previous || Math.abs(previous.x - slot.naturalX) > 0.001) {
+      uniqueCuts.push({ x: slot.naturalX, slotIndex });
+    }
   });
-  const lanes = lanePack(items.map((it) => ({ start: it.naturalX - it.w / 2, end: it.naturalX + it.w / 2 })));
-  return items.map((it, i) => ({ site: it.site, naturalX: it.naturalX, lane: lanes[i], key: it.key }));
+
+  return new Map(uniqueCuts.map((cut, index) => {
+    const previousX = uniqueCuts[index - 1]?.x;
+    const nextX = uniqueCuts[index + 1]?.x;
+    const left = Math.max(
+      0,
+      cut.x - CUT_HIT_HALF_WIDTH,
+      previousX == null ? -Infinity : (previousX + cut.x) / 2,
+    );
+    const right = Math.min(
+      widthPx,
+      cut.x + CUT_HIT_HALF_WIDTH,
+      nextX == null ? Infinity : (cut.x + nextX) / 2,
+    );
+    return [cut.slotIndex, { x: left, width: Math.max(1, right - left) }];
+  }));
 }
 
 /**
@@ -335,41 +363,103 @@ function RestrictionTrack({
     const wrap = sites
       .filter((s) => s.position >= 0 && s.position < wrapWidthChars)
       .map((s) => ({ site: s, renderCi: wrapAt + s.position }));
-    lineSites = real.concat(wrap).sort((a, b) => a.renderCi - b.renderCi);
+    lineSites = real.concat(wrap).sort(compareLineSites);
   } else {
     lineSites = sites
       .filter((s) => s.position >= lineStart && s.position < lineEnd)
       .map((s) => ({ site: s, renderCi: s.position - lineStart }))
-      .sort((a, b) => a.renderCi - b.renderCi);
+      .sort(compareLineSites);
   }
   if (lineSites.length === 0) return null;
 
-  const isVertical = reOrientation !== "horizontal";
-  const widthPx = (labelChars + lineLen) * charPx + 60; // +60 для leader bend
+  const isVertical = reOrientation === "vertical";
+  const baseWidthPx = (labelChars + lineLen) * charPx + 60;
+  const longestHorizontalHit = isVertical
+    ? 0
+    : Math.max(...lineSites.map(({ site }) => (
+      Math.max(LABEL_HIT_MIN_LONG, site.enzyme.length * LABEL_CHAR_W + LABEL_HIT_INLINE_PAD * 2)
+    )));
+  const widthPx = Math.max(baseWidthPx, longestHorizontalHit + LABEL_EDGE_PAD * 2);
   const clickable = typeof onSiteClick === 'function';
 
-  // Layout. Vertical (rotated) labels keep the horizontal cascade (push right +
-  // leader). Horizontal labels stay centered on their cut and STACK into vertical
-  // lanes instead — «разнести по высоте» (Игорь 22.06).
-  let slots;
-  let nLanes = 1;
-  if (isVertical) {
-    slots = computeLabelSlots(lineSites, charPx, labelChars, VERTICAL_LABEL_MIN_GAP)
-      .map((sl) => ({ ...sl, lane: 0 }));
-  } else {
-    const laneSlots = computeLabelLanes(lineSites, charPx, labelChars);
-    nLanes = laneCount(laneSlots.map((s) => s.lane));
-    slots = laneSlots.map((s) => ({
-      site: s.site, naturalX: s.naturalX, slotX: s.naturalX, offset: 0, lane: s.lane, key: s.key,
-    }));
-  }
+  // Both orientations stay anchored to the biological cut coordinate and use
+  // vertical lanes for collisions. This prevents a dense vertical-label series
+  // from cascading hundreds of pixels to the right of its line.
+  const laneSlots = computeLabelLanes(lineSites, charPx, labelChars, isVertical, widthPx);
+  const nLanes = laneCount(laneSlots.map((s) => s.lane));
+  const slots = laneSlots;
+  const verticalLaneHeights = isVertical
+    ? Array.from({ length: nLanes }, (_, lane) => Math.max(
+      VERTICAL_LABEL_HEIGHT,
+      ...slots
+        .filter((slot) => slot.lane === lane)
+        .map((slot) => slot.longHit + VERTICAL_LANE_GAP),
+    ))
+    : [];
+  const verticalLaneOffsets = [];
+  verticalLaneHeights.reduce((offset, height, lane) => {
+    verticalLaneOffsets[lane] = offset;
+    return offset + height;
+  }, 0);
   // Lane block sits ABOVE the cut ticks; the SVG grows with the lane count so a
   // dense cluster never clips (no fixed 2-row height).
-  const labelsBlockH = isVertical ? VERTICAL_LABEL_HEIGHT : nLanes * LANE_STEP;
-  const cutBaseY = isVertical ? VERTICAL_LABEL_HEIGHT : labelsBlockH + 2;
+  const labelsBlockH = isVertical
+    ? verticalLaneHeights.reduce((sum, height) => sum + height, 0)
+    : nLanes * LANE_STEP;
+  const cutBaseY = isVertical ? labelsBlockH : labelsBlockH + 2;
   const totalHeight = isVertical
-    ? VERTICAL_LABEL_HEIGHT + ROW_HEIGHT_RE
+    ? labelsBlockH + ROW_HEIGHT_RE
     : labelsBlockH + CUT_BAR_HEIGHT + 6;
+  const cutHitTargets = computeCutHitTargets(slots, widthPx);
+
+  const renderSlots = slots.map((slot, slotIndex) => {
+    const labelY = isVertical
+      ? labelsBlockH - verticalLaneOffsets[slot.lane] - 2
+      : (nLanes - 1 - slot.lane) * LANE_STEP + (LANE_STEP - 3);
+    const cutY = cutBaseY;
+    const isHi = highlightedKey === slot.key;
+    const isHover = hoveredKey === slot.key;
+    const emph = isHover || isHi;
+    const pivotX = isVertical ? slot.slotX + LABEL_CENTER_OFFSET : slot.slotX;
+    const leaderStartX = pivotX;
+    const leaderStartY = labelY + (isVertical ? 1 : 2);
+    const hasLeader = isVertical
+      ? slot.lane > 0
+      : slot.lane > 0 || Math.abs(slot.offset) > 0.001;
+    const branchDirection = slot.lane % 2 === 0 ? 1 : -1;
+    const branchDistance = LEADER_BRANCH_OFFSET
+      + Math.floor(Math.max(0, slot.lane - 1) / 2) * LEADER_BRANCH_STEP;
+    const branchX = slot.lane > 0
+      ? (isVertical ? slot.naturalX : slot.slotX) + branchDirection * branchDistance
+      : slot.slotX;
+    const leaderHitEndY = Math.max(leaderStartY, cutY - CUT_HIT_ABOVE);
+    const leaderHasInteractiveBranch = hasLeader && leaderHitEndY > leaderStartY;
+    const leaderPath = leaderHasInteractiveBranch
+      ? `M ${leaderStartX} ${leaderStartY} L ${branchX} ${leaderStartY} L ${branchX} ${leaderHitEndY} L ${slot.naturalX} ${cutY}`
+      : `M ${leaderStartX} ${leaderStartY} L ${slot.naturalX} ${cutY}`;
+
+    return {
+      ...slot,
+      labelY,
+      cutY,
+      isHi,
+      isHover,
+      emph,
+      pivotX,
+      hasLeader,
+      leaderPath,
+      leaderHitPath: leaderHasInteractiveBranch
+        ? `M ${leaderStartX} ${leaderStartY} L ${branchX} ${leaderStartY} L ${branchX} ${leaderHitEndY}`
+        : null,
+      cutHit: cutHitTargets.get(slotIndex),
+    };
+  });
+  const leaderSlots = [
+    ...renderSlots.filter((slot) => slot.hasLeader && !slot.emph),
+    ...renderSlots.filter((slot) => slot.hasLeader && slot.emph),
+  ];
+  const leaderHitSlots = leaderSlots.filter((slot) => slot.leaderHitPath);
+  const cutHitSlots = renderSlots.filter((slot) => slot.cutHit);
 
   // Tooltip anchored to the hovered site's cut tick.
   const tooltipSlot = hoverAnchor
@@ -379,6 +469,37 @@ function RestrictionTrack({
   const tooltipCount = tooltipSite
     ? sites.reduce((n, s) => n + (s.enzyme === tooltipSite.enzyme ? 1 : 0), 0)
     : 0;
+
+  const interactionPropsFor = ({ site, key }) => ({
+    onMouseDown: clickable ? (event) => {
+      if (event.button !== 0) return;
+      mouseHandledRef.current = true;
+      event.stopPropagation();
+      event.preventDefault();
+      onSiteClick(site, event);
+    } : undefined,
+    onPointerDown: clickable ? (event) => {
+      event.stopPropagation();
+    } : undefined,
+    onClick: clickable ? (event) => {
+      event.stopPropagation();
+      if (mouseHandledRef.current) {
+        mouseHandledRef.current = false;
+        return;
+      }
+      onSiteClick(site, event);
+    } : undefined,
+    onMouseEnter: (event) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      setHoverAnchor({ key, x: rect.left + rect.width / 2, y: rect.top });
+      if (typeof onHoverChange === 'function') onHoverChange(key);
+    },
+    onMouseLeave: () => {
+      setHoverAnchor((hover) => (hover && hover.key === key ? null : hover));
+      if (typeof onHoverChange === 'function') onHoverChange(null);
+    },
+    style: { cursor: clickable ? 'pointer' : 'default' },
+  });
 
   return (
     <>
@@ -391,18 +512,79 @@ function RestrictionTrack({
         height={totalHeight}
         style={{ display: "block", overflow: "visible", userSelect: "none", WebkitUserSelect: "none" }}
       >
-        {slots.map((sl) => {
-          const { site: s, naturalX, slotX, offset, lane, key } = sl;
-          const labelY = isVertical
-            ? VERTICAL_LABEL_HEIGHT - 2
-            : (nLanes - 1 - lane) * LANE_STEP + (LANE_STEP - 3);
-          const cutY = cutBaseY;
-          const isHi = highlightedKey === key;
-          const isHover = hoveredKey === key;
-          // Selected (click) OR hovered → the label gets a subtle accent. No box /
-          // wedges anymore (Игорь 22.06: «жёлтый овал и стрелки странные»).
-          const emph = isHover || isHi;
-          const pivotX = isVertical ? slotX + LABEL_CENTER_OFFSET : slotX;
+        {/* Paint every leader first. Later site groups can never draw a line
+            across an earlier label, and the emphasized leader is last inside
+            this background layer so hover remains visible. */}
+        <g data-testid="sequence-view-re-leaders" pointerEvents="none">
+          {leaderSlots.map((slot) => (
+            <path
+              key={`leader-${slot.key}-${slot.lane}-${slot.naturalX}`}
+              data-testid="sequence-view-re-leader"
+              data-enzyme={slot.site.enzyme}
+              d={slot.leaderPath}
+              fill="none"
+              stroke={slot.emph ? '#d97706' : (isVertical ? '#9ca3af' : '#cbd5e1')}
+              strokeWidth={slot.emph ? (isVertical ? 1.4 : 1.3) : (isVertical ? 0.9 : 0.8)}
+              strokeDasharray={slot.emph ? 'none' : '2 2'}
+            />
+          ))}
+        </g>
+
+        {/* Invisible wide corridors preserve click/hover on the thin leaders.
+            They sit behind all labels and cut targets, so a crossing leader
+            cannot steal another site's readable target. */}
+        <g data-testid="sequence-view-re-leader-hits">
+          {leaderHitSlots.map((slot) => (
+            <path
+              key={`leader-hit-${slot.key}-${slot.lane}-${slot.naturalX}`}
+              data-testid="sequence-view-re-leader-hit"
+              data-enzyme={slot.site.enzyme}
+              d={slot.leaderHitPath}
+              fill="none"
+              stroke="transparent"
+              strokeWidth={LEADER_HIT_WIDTH}
+              pointerEvents="stroke"
+              {...interactionPropsFor(slot)}
+            />
+          ))}
+        </g>
+
+        {/* The shared approach to one physical cut belongs to one target. Cuts
+            closer than 10px split their width at the midpoint. This layer is
+            still behind labels, so the readable name always wins a crossing. */}
+        <g data-testid="sequence-view-re-cut-hits">
+          {cutHitSlots.map((slot) => (
+            <rect
+              key={`cut-hit-${slot.key}-${slot.naturalX}`}
+              data-testid="sequence-view-re-cut-hit"
+              data-enzyme={slot.site.enzyme}
+              x={slot.cutHit.x}
+              y={slot.cutY - CUT_HIT_ABOVE}
+              width={slot.cutHit.width}
+              height={CUT_HIT_ABOVE + CUT_BAR_HEIGHT + 4}
+              fill="transparent"
+              pointerEvents="all"
+              {...interactionPropsFor(slot)}
+            />
+          ))}
+        </g>
+
+        {renderSlots.map((slot) => {
+          const {
+            site: s,
+            naturalX,
+            slotX,
+            offset,
+            lane,
+            key,
+            longHit,
+            labelY,
+            cutY,
+            isHi,
+            isHover,
+            emph,
+            pivotX,
+          } = slot;
 
           return (
             <g
@@ -413,80 +595,12 @@ function RestrictionTrack({
               data-lane={lane}
               data-highlighted={isHi ? 'true' : 'false'}
               data-hovered={isHover ? 'true' : 'false'}
-              data-cluster-offset={offset > 0 ? 'true' : 'false'}
-              // 13.05.2026 r2 — root's onRootPointerDown calls
-                // e.preventDefault() для caret placement which kills
-                // the synthesized click. stopPropagation alone не помогает
-                // в production browser (вероятно SVG g не получает
-                // click event reliably когда родительский handler уже
-                // обработал pointerdown). Решение: фиксируем выделение
-                // НА mousedown — собственный handler, который сразу
-                // вызывает onSiteClick + preventDefault, чтобы parent
-                // pointerdown не сработал.
-              onMouseDown={clickable ? (e) => {
-                if (e.button !== 0) return; // primary button only
-                // V97 — mark this gesture handled. The trailing `click`
-                // DOES fire in real browsers (preventDefault on mousedown
-                // suppresses focus/native selection, NOT the click event),
-                // so without this flag onSiteClick fired twice per click.
-                mouseHandledRef.current = true;
-                e.stopPropagation();
-                e.preventDefault();
-                onSiteClick(s, e);
-              } : undefined}
-              onPointerDown={clickable ? (e) => {
-                e.stopPropagation();
-              } : undefined}
-              // V97 dedup. Real browser: mousedown already handled this
-              // gesture (flag set) → swallow the trailing click. Test env
-              // (`fireEvent.click` without mousedown) leaves the flag false
-              // → handle here as before (keeps V88 single-click coverage).
-              onClick={clickable ? (e) => {
-                e.stopPropagation();
-                if (mouseHandledRef.current) {
-                  mouseHandledRef.current = false;
-                  return;
-                }
-                onSiteClick(s, e);
-              } : undefined}
-              onMouseEnter={(e) => {
-                const r = e.currentTarget.getBoundingClientRect();
-                setHoverAnchor({ key, x: r.left + r.width / 2, y: r.top });
-                if (typeof onHoverChange === 'function') onHoverChange(key);
-              }}
-              onMouseLeave={() => {
-                setHoverAnchor((h) => (h && h.key === key ? null : h));
-                if (typeof onHoverChange === 'function') onHoverChange(null);
-              }}
-              style={{ cursor: clickable ? 'pointer' : 'default' }}
+              data-cluster-offset={Math.abs(offset) > 0.001 ? 'true' : 'false'}
+              {...interactionPropsFor(slot)}
             >
-              {/* Leader — links a label to its cut tick. Horizontal: a straight
-                  vertical line (labels are centered on the cut, stacked by lane);
-                  drawn only when staggering exists. Vertical: an L-shape when the
-                  label was pushed sideways. */}
-              {!isVertical && nLanes > 1 && (
-                <line
-                  data-testid="sequence-view-re-leader"
-                  x1={naturalX} y1={labelY + 2} x2={naturalX} y2={cutY}
-                  stroke={emph ? '#d97706' : '#cbd5e1'}
-                  strokeWidth={emph ? 1.3 : 0.8}
-                  strokeDasharray={emph ? 'none' : '2 2'}
-                />
-              )}
-              {isVertical && offset > 0 && (
-                <path
-                  data-testid="sequence-view-re-leader"
-                  d={`M ${naturalX} ${cutY} L ${naturalX} ${labelY + 1} L ${pivotX} ${labelY + 1}`}
-                  fill="none"
-                  stroke={emph ? '#d97706' : '#9ca3af'}
-                  strokeWidth={emph ? 1.4 : 0.9}
-                  strokeDasharray={emph ? 'none' : '2 2'}
-                />
-              )}
-
-              {/* Label — pivoted at (pivotX, labelY) so rotated text sits
-                  visually centered on the cut tick (or on the slot offset
-                  for clustered sites). B9: color-coded by enzyme name. */}
+              {/* Label — rotated labels remain on their biological cut; a
+                  horizontal edge label may shift only enough to stay visible,
+                  with its leader retaining the exact coordinate. */}
               <text
                 x={pivotX}
                 y={labelY}
@@ -495,57 +609,33 @@ function RestrictionTrack({
                 fontWeight={emph ? 600 : 500}
                 textAnchor={isVertical ? "start" : "middle"}
                 transform={isVertical ? `rotate(-90 ${pivotX} ${labelY})` : undefined}
-                style={{ fontFamily: "inherit", userSelect: "none", pointerEvents: 'all' }}
+                style={{ fontFamily: "inherit", userSelect: "none", pointerEvents: 'none' }}
               >
                 {s.enzyme}
               </text>
 
-              {/* Cut tick — short vertical at the REAL cut position. B9: enzyme color. */}
+              {/* Cut tick — short vertical at the exact cut coordinate. */}
               <line
+                data-testid="sequence-view-re-cut-tick"
                 x1={naturalX}
                 x2={naturalX}
                 y1={cutY}
                 y2={cutY + CUT_BAR_HEIGHT}
                 stroke={isHover ? '#d97706' : colorForEnzyme(s.enzyme)}
                 strokeWidth={isHover ? 1.5 : 1}
+                pointerEvents="none"
               />
 
-              {/* Hit target #1 — LABEL zone. Vertical labels занимают
-                  ~10px горизонтально × ~32px вертикально от pivotX up;
-                  horizontal labels — full text width × ~14px tall. */}
               <rect
-                x={isVertical ? pivotX - 6 : pivotX - (s.enzyme.length * 3 + 6)}
-                y={isVertical ? labelY - 32 : labelY - 12}
-                width={isVertical ? 12 : (s.enzyme.length * 6 + 12)}
-                height={isVertical ? 36 : 16}
+                data-testid="sequence-view-re-label-hit"
+                x={isVertical ? slotX - LABEL_HIT_CROSS / 2 : slotX - longHit / 2}
+                y={isVertical ? labelY - longHit + 2 : labelY - LABEL_HIT_CROSS + 4}
+                width={isVertical ? LABEL_HIT_CROSS : longHit}
+                height={isVertical ? longHit : LABEL_HIT_CROSS}
                 fill="transparent"
                 pointerEvents="all"
               />
 
-              {/* Hit target #2 — CUT TICK zone (small column at the
-                  real cut position). */}
-              <rect
-                x={naturalX - 5}
-                y={cutY - 2}
-                width={10}
-                height={CUT_BAR_HEIGHT + 6}
-                fill="transparent"
-                pointerEvents="all"
-              />
-
-              {/* Hit target #3 — LEADER zone (когда label сдвинут
-                  относительно cut). Тонкий L-образный bbox чтобы клик
-                  по выноске тоже работал. */}
-              {offset > 0 && (
-                <rect
-                  x={Math.min(naturalX, pivotX) - 2}
-                  y={isVertical ? labelY - 2 : labelY}
-                  width={Math.abs(pivotX - naturalX) + 4}
-                  height={isVertical ? cutY - labelY + 4 : cutY - labelY + 2}
-                  fill="transparent"
-                  pointerEvents="all"
-                />
-              )}
             </g>
           );
         })}

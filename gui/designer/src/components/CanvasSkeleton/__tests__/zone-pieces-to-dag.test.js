@@ -108,6 +108,89 @@ describe('draftFromZone — multi-range piece (#2 invert/backbone)', () => {
     expect(anns.map((a) => a.start).sort((x, y) => x - y)).toEqual([2, 6]); // range1's ann shifted by len(range0)=4
   });
 
+  it('keeps one origin-crossing source feature as one coherent annotation across both ranges', () => {
+    const state = {
+      containers: [{
+        id: 'c', name: 'pl', sequence: 'AAAACCCCGGGGTTTT',
+        annotations: [{
+          id: 'wrap-feature', type: 'CDS', level: 'region', strand: 1,
+          location: { kind: 'join', segments: [{ start: 12, end: 16 }, { start: 0, end: 4 }] },
+          start: 12, end: 4, qualifiers: { note: ['origin'] },
+        }],
+      }],
+      pieces: [{
+        id: 'p1', zoneId: 'z1', kind: 'sourced', createdAt: 1, sourceIds: ['c'],
+        ranges: [
+          { sourceId: 'c', start: 12, end: 16, orientation: 'forward' },
+          { sourceId: 'c', start: 0, end: 4, orientation: 'forward' },
+        ],
+      }],
+      zones: [],
+    };
+    const annotations = draftFromZone(
+      state,
+      { id: 'z1', topology: { circular: false } },
+    ).segments[0].annotations;
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0].location).toEqual({
+      kind: 'join', segments: [{ start: 0, end: 4 }, { start: 4, end: 8 }],
+    });
+    expect(annotations[0]).toMatchObject({
+      start: 0, end: 8, qualifiers: { note: ['origin'] },
+    });
+  });
+
+  it('maps a reverse multi-range piece in the same RC(B)+RC(A) order as its sequence', () => {
+    const state = {
+      containers: [{
+        id: 'c', name: 'pl', sequence: 'AACCGTTA',
+        annotations: [
+          { id: 'ann-a', name: 'A', type: 'misc_feature', level: 'region', strand: 1, start: 0, end: 4 },
+          { id: 'ann-b', name: 'B', type: 'misc_feature', level: 'region', strand: 1, start: 4, end: 8 },
+        ],
+      }],
+      pieces: [{
+        id: 'p1', zoneId: 'z1', kind: 'sourced', createdAt: 1, sourceIds: ['c'],
+        ranges: [
+          { sourceId: 'c', start: 0, end: 4, orientation: 'reverse' },
+          { sourceId: 'c', start: 4, end: 8, orientation: 'reverse' },
+        ],
+      }],
+      zones: [],
+    };
+    const segment = draftFromZone(state, { id: 'z1', topology: { circular: false } }).segments[0];
+    expect(segment.sequence).toBe('TAACGGTT');
+    const bySource = Object.fromEntries(
+      segment.annotations.map((a) => [a.origin.sourceAnnotationId, a]),
+    );
+    expect(bySource['ann-a']).toMatchObject({ start: 4, end: 8, strand: -1 });
+    expect(bySource['ann-b']).toMatchObject({ start: 0, end: 4, strand: -1 });
+  });
+
+  it('keeps deterministic projected IDs and parent links across immutable state refs', () => {
+    const state = {
+      containers: [{
+        id: 'c', name: 'pl', sequence: 'AACCGTTA',
+        annotations: [
+          { id: 'region-r', type: 'gene', level: 'region', strand: 1, start: 0, end: 8 },
+          { id: 'detail-d', type: 'domain', level: 'detail', regionId: 'region-r', strand: 1, start: 2, end: 6 },
+        ],
+      }],
+      pieces: [{
+        id: 'p1', zoneId: 'z1', kind: 'sourced', createdAt: 1, sourceIds: ['c'],
+        ranges: [{ sourceId: 'c', start: 0, end: 8, orientation: 'forward' }],
+      }],
+      zones: [],
+    };
+    const zone = { id: 'z1', topology: { circular: false } };
+    const first = draftFromZone(state, zone).segments[0].annotations;
+    const secondState = JSON.parse(JSON.stringify(state));
+    const second = draftFromZone(secondState, zone).segments[0].annotations;
+    expect(second.map((a) => a.id)).toEqual(first.map((a) => a.id));
+    const parent = second.find((a) => a.level === 'region');
+    expect(second.find((a) => a.level === 'detail').regionId).toBe(parent.id);
+  });
+
   // Игорь 07.07 — «при инверсии теряются липкие концы, если были выбраны две рестриктазы».
   // The inverted two-enzyme backbone wraps the origin; segmentOverhangs must read its ends
   // by PHYSICAL side (top strand starts at the high cut) not sorted position.

@@ -1,6 +1,6 @@
 ---
 name: annotation-contract
-description: Data contract for annotations in BodgeGene. Applies when Code touches annotation parsers (genbank-parser, snapgene_parser, auto-annotate, import-annotations), AnnotationEditor, getRegions, PlasmidMap region rendering, FragmentEditor annotation state, or anywhere fragment.annotations[] is read/written. Loads on work with annotation-model.js, import-annotations.js, auto-annotate.js, migrate-annotations.js.
+description: Data contract for annotations in BodgeGene. Applies when Code touches annotation parsers (genbank-parser, snapgene_parser, auto-annotate, import-annotations), AnnotationEditor, getRegions, PlasmidMap region rendering, FragmentEditor annotation state, or anywhere fragment.annotations[] is read/written. Loads on work with annotation-model.js, import-annotations.js, auto-annotate.js, or annotation-identity.js.
 ---
 
 # Контракт на аннотации BodgeGene
@@ -21,7 +21,7 @@ point   — точечная метка (mutation, RE site, start codon)
 
 Каждый элемент `annotations[]` обязан иметь `id: string`. Используется:
 
-- `PlasmidMap.jsx` — для `selectedRegionId` highlight matching
+- `PlasmidMapV2.jsx` — для `selectedRegionId` highlight matching
 - `AnnotationEditor` — для updateById / deleteById
 - `getRegions` — для стабильного React key
 
@@ -29,7 +29,7 @@ point   — точечная метка (mutation, RE site, start codon)
 
 ### Write-path (predecessor): импортёры генерируют id
 
-`genbank-parser.js`, `snapgene_parser.py`, `auto-annotate.js`, `import-annotations.js`, каталог через `PlasmidUseWizard → use whole` — каждая функция, создающая annotation object, должна поставить id через **проектный стандарт**: `lib/ids.js::makeId` (`crypto.randomUUID` с feature-detect; тот же стандарт, что `lib/plasmid-git.js`).
+`genbank-parser.js`, `snapgene_parser.py`, `auto-annotate.js`, `import-annotations.js`, каталог через `PlasmidUseWizard → use whole` — каждая функция, создающая annotation object, должна поставить id через **проектный стандарт**: `lib/ids.js::makeId` (`crypto.randomUUID` с feature-detect).
 
 **Не** импортировать `nanoid` / `uuid` / прочие библиотеки — стандарт уже есть в `lib/ids.js` (`makeId`). Импортёры зовут его через `generateRegionId()` (`domain-detection.js`, делегирует в `makeId`).
 
@@ -57,7 +57,7 @@ annotation.id = makeId();
 
 ```js
 function fallbackId(a) {
-  return `fb_${a.type}_${a.start}_${a.end}_${a.name ?? ''}`;
+  return `region:${a.start}:${a.end}:${a.type || 'unknown'}:${a.name || ''}`; // annotation-model.js:134, только read-path для legacy regions
 }
 ```
 
@@ -65,7 +65,20 @@ function fallbackId(a) {
 
 ## Технодолг (TD-IMPORTER-NO-ID) — write-path закрыт 29.05.2026
 
-`import-annotations.js`, `auto-annotate.js` (вкл. `enrichWithCommonFeatures`) и `migrate-annotations.js` теперь стампят `id` на КАЖДУЮ аннотацию (region / detail / point) перед возвратом — через `generateRegionId()` → `lib/ids.js::makeId`. `snapgene_parser.py` сам id не ставит, но это неважно: его фичи проходят через `importFeatures`, который добивает id. `getRegions` read-path fallback остаётся для legacy `.bodgegene`, сохранённых до фикса.
+`import-annotations.js` и `auto-annotate.js` (вкл. `enrichWithCommonFeatures`) стампят
+`id` на КАЖДУЮ аннотацию (region / detail / point) перед возвратом — через
+`generateRegionId()` → `lib/ids.js::makeId`. `snapgene_parser.py` сам id не ставит, но
+его фичи проходят через `importFeatures`, который добивает id. `getRegions` read-path
+fallback остаётся для legacy `.bodgegene`, сохранённых до фикса.
+
+С ANN-INTEGRITY (рабочее дерево, 05.09.2026) единая точка входа — `ingestAnnotations`
+из `lib/annotation-identity.js`: opaque id через `makeAnnotationId` → `lib/ids.js::makeId`,
+first-wins repair дубликатов, adoption legacy `parentId` в `regionId`, detach висячих
+ссылок. Через неё идут `import-annotations.js`, `lib/annotation-edit.js`
+(create/create-batch), `library-sequence-edit.js` и `segment-annotation-transfer.js`;
+`.bodge` open и cross-project import пока обходят gate (BACKLOG «Annotation UX
+convergence»). Id стабилен при rename/move/type edit; удаление региона каскадно удаляет
+его `regionId`-детей.
 
 **Остаточный пункт (открыт):** read-path net (`getRegions`) бэкфиллит только region; для legacy detail/point без id он id не достраивает (`getDetails`/`getPoints` — чистый filter). Распространить при необходимости — новые данные уже приходят с id из write-path.
 

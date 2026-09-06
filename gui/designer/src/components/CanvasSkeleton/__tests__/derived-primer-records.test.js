@@ -95,7 +95,10 @@ describe('deriveAssemblyPrimerRecords', () => {
     const cases = [
       { op: 'X', bindingSequence: 'TAAAAAA', bindingTargetLength: 7 },
       { op: 'I', bindingSequence: 'TAAAAAAA', bindingTargetLength: 7 },
-      { op: 'D', bindingSequence: 'AAAAAA', bindingTargetLength: 7 },
+      {
+        op: 'D', bindingSequence: 'ACGTAC', bindingTargetLength: 7,
+        template: `${'A'.repeat(10)}ACGGTAC${'A'.repeat(23)}`,
+      },
     ];
     const observed = cases.map((item, caseIndex) => {
       let serial = 0;
@@ -112,7 +115,7 @@ describe('deriveAssemblyPrimerRecords', () => {
       ], {
         draftId: `draft-${caseIndex}`,
         anchorPos: 10,
-        templateSequence: template,
+        templateSequence: item.template || template,
         target: { entryId: `draft-${caseIndex}`, resourceHash: `sha256:${caseIndex}`, topology: 'circular' },
         idGen: () => `${caseIndex}-${serial += 1}`,
       });

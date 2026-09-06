@@ -5,6 +5,21 @@
  */
 import { reverseComplement } from '../../../sequence-utils';
 
+function copySegments(segments) {
+  return segments.map(({ start, end }) => ({ start, end }));
+}
+
+function copyAlignment(alignment) {
+  return {
+    ...alignment,
+    runs: Array.isArray(alignment.runs)
+      ? alignment.runs.map((run) => ({ ...run }))
+      : alignment.runs,
+    counts: alignment.counts ? { ...alignment.counts } : alignment.counts,
+    targetSpan: alignment.targetSpan ? { ...alignment.targetSpan } : alignment.targetSpan,
+  };
+}
+
 /** Способ А — selection range. */
 export function buildPieceFromSelection(container, rangeStart, rangeEnd, orientation = 'forward') {
   return {
@@ -98,6 +113,9 @@ export function buildPieceFromPcrProduct(container, resolved) {
     occurrenceKey: side.key,
     start: side.start,
     end: side.end,
+    ...(Array.isArray(side.segments) ? { segments: copySegments(side.segments) } : {}),
+    ...(side.bindingModel != null ? { bindingModel: side.bindingModel } : {}),
+    ...(side.alignment ? { alignment: copyAlignment(side.alignment) } : {}),
   });
   // An origin-crossing product is still an ordinary PCR — the coordinates wrap,
   // the chemistry does not change, and calling it inverse PCR here would put a

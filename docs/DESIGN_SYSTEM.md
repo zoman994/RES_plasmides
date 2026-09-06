@@ -40,7 +40,7 @@ Use the existing spacing rhythm and nearby components. When a new shared spacing
 Every user-facing component must work under both `[data-theme="light"]` and `[data-theme="dark"]`.
 
 - Prefer semantic tokens so theme changes are automatic.
-- Do not add inline hex fallbacks such as `var(--token, #fff)` in React code. Missing design tokens should fail visibly in development and be fixed centrally.
+- Do not add new inline hex fallbacks such as `var(--token, #fff)` in React code; 704 legacy fallbacks remain and are removed opportunistically. New code takes colours from tokens only; the only automated guard today covers `components/Search`.
 - Data colors that carry stable biological meaning may remain theme-independent only when contrast is tested in both themes.
 - Portals must receive the active theme context.
 

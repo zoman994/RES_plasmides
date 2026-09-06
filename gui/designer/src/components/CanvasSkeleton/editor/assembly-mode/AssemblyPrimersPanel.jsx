@@ -8,13 +8,22 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../../../icons/Icon';
 import PrimerBindingSites from '../../../PrimerBindingSites';
-import { useStore } from '../../../../store';
+import PrimerFromSelectionModal from '../../../SequenceView/popups/PrimerFromSelectionModal';
+import { flattenSites } from '../../../SequenceView/lib/feature-map';
+import { useStore, selectActiveSetEnzymes } from '../../../../store';
 import { primerPoolReuse } from '../../../../primer-reuse';
 import { isLabStock } from '../../../../lib/primer-identity';
+import { scanAllSites } from '../../../../restriction-db';
 import {
   useSkeletonState, useSkeletonActions, useAssemblyDraftById,
 } from '../../store/skeleton-context';
 import { selectBoundaryCoverage } from '../../store/selectors-assembly';
+import { gcPercent } from '../../lib/assembly-primer-utils';
+import {
+  canonicalAssemblyPrimerForDocument,
+  currentAssemblyPrimerSites,
+  mergeEditedAssemblyPrimerSites,
+} from '../../lib/assembly-primer-site';
 
 // WT-UX-18 / AM-7 — the binding Tm (SantaLucia NN) working floor. deriveAutoPrimers
 // targets ≥60° (extending up to ~36 nt), but an AT-rich end can fall short; below
@@ -22,6 +31,11 @@ import { selectBoundaryCoverage } from '../../store/selectors-assembly';
 // (~55–65°) so the flag threshold and the copy agree (was 52° — silently let
 // 52–55° through while telling the biolog the floor was 55°).
 const TM_WORKING_MIN = 55;
+const DEFAULT_VIEW_SETTINGS = Object.freeze({
+  showBottomStrand: true,
+  primerStyle: 'filled',
+  reOrientation: 'horizontal',
+});
 
 function srcLabel(p, segName) {
   if (!p.source) return '';
@@ -182,58 +196,40 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
   );
 }
 
-function EditModal({ primer, draftId, actions, onClose }) {
-  const [seq, setSeq] = useState(primer.sequence || '');
-  return (
-    <div
-      role="dialog"
-      data-testid="assembly-primer-edit-modal"
-      onClick={onClose}
-      style={{
-        position: 'absolute', inset: 0, zIndex: 110, background: 'rgba(28,25,23,0.32)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 420, background: 'var(--surface-1)', border: '1px solid var(--border-subtle)',
-          borderRadius: 8, padding: 14, boxShadow: '0 8px 28px rgba(28,25,23,0.24)',
-        }}
-      >
-        <strong style={{ fontSize: 12.5 }}>Редактировать праймер {primer.label || primer.name}</strong>
-        <textarea
-          data-testid="assembly-primer-edit-seq"
-          value={seq}
-          onChange={(e) => setSeq(e.target.value)}
-          rows={4}
-          style={{
-            width: '100%', marginTop: 8, fontFamily: 'var(--font-mono,monospace)', fontSize: 12,
-            padding: 8, border: '1px solid var(--border-subtle)', borderRadius: 4,
-            background: 'var(--surface-2)', color: 'var(--text-primary)', resize: 'vertical',
-          }}
-        />
-        <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} style={ghostBtn}>Отмена</button>
-          <button
-            type="button"
-            data-testid="assembly-primer-edit-save"
-            onClick={() => {
-              const clean = seq.replace(/[^a-zA-Z]/g, '').toUpperCase();
-              // K12 — a manual sequence edit auto-locks the primer so
-              // the K15 finalizer won't overwrite the biolog's change.
-              actions.updateAssemblyPrimer(draftId, primer.id, { sequence: clean, autoMode: 'manual' });
-              onClose();
-            }}
-            style={primaryBtn}
-          >Сохранить</button>
-        </div>
-      </div>
-    </div>
-  );
+export function buildAssemblyPrimerEditPatch(primer, payload) {
+  const name = payload.name?.trim() || primer.label || primer.name || '';
+  const bindingSequence = payload.binding || '';
+  const anchorLength = primer.sites?.[0]?.annealedSequence?.length;
+  const bindingTargetLength = Number.isSafeInteger(primer.bindingTargetLength)
+    && primer.bindingTargetLength > 0
+    ? primer.bindingTargetLength
+    : (anchorLength || bindingSequence.length);
+
+  return {
+    name,
+    label: name,
+    sequence: payload.sequence,
+    direction: payload.direction,
+    tail: payload.tail || '',
+    bindingSequence,
+    bindingModel: payload.bindingModel || 'aligned-v1',
+    bindingTargetLength,
+    sites: payload.sites || primer.sites || [],
+    tm: payload.tm,
+    gc: gcPercent(bindingSequence),
+    autoMode: 'manual',
+  };
 }
 
-export default function AssemblyPrimersPanel({ draftId, onClose }) {
+export default function AssemblyPrimersPanel({
+  draftId,
+  template = '',
+  topology = 'linear',
+  documentHash = null,
+  annotations = [], displayFeatures = null,
+  boundaries = [],
+  onClose,
+}) {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
   const draft = useAssemblyDraftById(draftId);
@@ -241,6 +237,45 @@ export default function AssemblyPrimersPanel({ draftId, onClose }) {
   const coverage = useMemo(() => selectBoundaryCoverage(state, draftId), [state, draftId]);
   const [tab, setTab] = useState('primers');
   const [editing, setEditing] = useState(null);
+  const showReSites = useStore((s) => s.showReSites);
+  const reFilter = useStore((s) => s.reFilter) || 'all';
+  const reMinSiteLen = useStore((s) => s.reMinSiteLen) || 6;
+  const activeSetEnzymes = useStore(selectActiveSetEnzymes);
+  const viewSettings = useStore((s) => s.sequenceView) || DEFAULT_VIEW_SETTINGS;
+
+  const editingPrimer = editing
+    ? (primers.find((primer) => primer.id === editing.id) || editing)
+    : null;
+  const canonicalEditingPrimer = useMemo(() => (
+    editingPrimer
+      ? canonicalAssemblyPrimerForDocument(editingPrimer, {
+        entryId: draftId,
+        template,
+        topology,
+        boundaries,
+      })
+      : null
+  ), [editingPrimer, draftId, template, topology, boundaries]);
+  const templateReSites = useMemo(() => {
+    if (!canonicalEditingPrimer || !template || !showReSites) return [];
+    return flattenSites(
+      scanAllSites(template, {
+        circular: topology === 'circular',
+        minSiteLen: reMinSiteLen,
+      }),
+      { mode: reFilter, enzymes: activeSetEnzymes },
+    );
+  }, [
+    activeSetEnzymes, canonicalEditingPrimer, reFilter,
+    reMinSiteLen, showReSites, template, topology,
+  ]);
+  const editingAnchorSites = useMemo(() => (
+    canonicalEditingPrimer
+      ? currentAssemblyPrimerSites(canonicalEditingPrimer, {
+        entryId: draftId, template, topology, boundaries,
+      })
+      : []
+  ), [boundaries, canonicalEditingPrimer, draftId, template, topology]);
 
   const segName = useMemo(() => {
     const byId = {};
@@ -349,11 +384,40 @@ export default function AssemblyPrimersPanel({ draftId, onClose }) {
         </div>
       )}
 
-      {editing && (
-        <EditModal
-          primer={primers.find((x) => x.id === editing.id) || editing}
-          draftId={draftId}
-          actions={actions}
+      {canonicalEditingPrimer && (
+        <PrimerFromSelectionModal
+          draft={{
+            primerId: canonicalEditingPrimer.id,
+            name: canonicalEditingPrimer.label || canonicalEditingPrimer.name || '',
+            direction: canonicalEditingPrimer.direction,
+            sequence: canonicalEditingPrimer.sequence,
+            binding: canonicalEditingPrimer.bindingSequence,
+            tail: canonicalEditingPrimer.tail || '',
+            bindingModel: canonicalEditingPrimer.bindingModel,
+          }}
+          anchorSites={editingAnchorSites}
+          template={template}
+          topology={topology}
+          entryId={draftId}
+          documentHash={documentHash}
+          features={Array.isArray(displayFeatures) ? displayFeatures : annotations}
+          templateReSites={templateReSites}
+          viewSettings={viewSettings}
+          onCreate={(payload) => {
+            const sites = payload.sites
+              ? mergeEditedAssemblyPrimerSites(
+                canonicalEditingPrimer,
+                editingAnchorSites,
+                payload.sites,
+              )
+              : canonicalEditingPrimer.sites;
+            actions.updateAssemblyPrimer(
+              draftId,
+              canonicalEditingPrimer.id,
+              buildAssemblyPrimerEditPatch(canonicalEditingPrimer, { ...payload, sites }),
+            );
+            setEditing(null);
+          }}
           onClose={() => setEditing(null)}
         />
       )}
@@ -363,8 +427,6 @@ export default function AssemblyPrimersPanel({ draftId, onClose }) {
 
 const iconBtn = { border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 11 };
 const iconBtnFlex = { ...iconBtn, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
-const ghostBtn = { fontSize: 11, padding: '4px 10px', background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-secondary)' };
-const primaryBtn = { fontSize: 11.5, padding: '5px 14px', background: 'var(--accent-500,#b85c3e)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 };
 function tabBtn(active) {
   return {
     flex: 1, fontSize: 11, padding: '5px 8px', border: 'none', cursor: 'pointer',

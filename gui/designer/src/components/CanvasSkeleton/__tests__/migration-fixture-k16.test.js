@@ -37,7 +37,7 @@ function v10Fixture() {
 
 describe('K16 — reference fixture migration v10 → v11', () => {
   it('SCHEMA_VERSION_CURRENT === 11', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(12);
+    expect(SCHEMA_VERSION_CURRENT).toBe(13);
   });
 
   it('migrates the full fixture; every slice gains the v11 fields', () => {

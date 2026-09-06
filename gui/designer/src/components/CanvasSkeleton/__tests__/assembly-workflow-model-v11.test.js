@@ -82,7 +82,7 @@ describe('K1 — factory defaults (piece / zone / op)', () => {
 
 describe('K1 — migration v10 → v11', () => {
   it('SCHEMA_VERSION_CURRENT bumped to 11 (M-CANVAS-WORKFLOW-UX workflow fields)', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(12);
+    expect(SCHEMA_VERSION_CURRENT).toBe(13);
   });
 
   it('v10 snapshot → new fields stamped on zones / pieces / ops / primers', () => {

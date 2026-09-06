@@ -27,6 +27,7 @@ import {
   physicalIdentityKey,
   isLabStock,
   classifyLabCandidate,
+  resolvePhysicalOligo,
   resolveAnchoredOligo,
 } from '../primer-identity';
 
@@ -39,6 +40,47 @@ const rec = (over = {}) => ({
   scope: PRIMER_SCOPE_PROJECT,
   status: 'designed',
   ...over,
+});
+
+describe('resolvePhysicalOligo — helper fields do not define biology', () => {
+  const core = 'ACGTCAGTACGATCGA';
+  const prefix = 'CCCGATTACA';
+  const sequence = `${prefix}${core}`;
+
+  it.each([
+    { tail: prefix, bindingSequence: core, sequence },
+    { tail: 'CCC', bindingSequence: `GATTACA${core}`, sequence },
+    { tail: '', bindingSequence: core, sequence },
+    { tail: '', bindingSequence: sequence, sequence },
+  ])('resolves one physical sequence from every legacy helper split', (record) => {
+    const out = resolvePhysicalOligo(record, { anchor: core });
+    expect(out.status).toBe('ok');
+    expect(out.sequence).toBe(sequence);
+    expect(`${out.tail}${out.binding}`).toBe(sequence);
+  });
+
+  it('still rejects contradictory physical fields', () => {
+    expect(resolvePhysicalOligo({
+      tail: 'CCC', bindingSequence: core, sequence: `TTT${core}`,
+    }, { anchor: core }).status).toBe('conflict');
+  });
+
+  it('keeps a known physical oligo even when the helper binding field is empty', () => {
+    expect(resolvePhysicalOligo({
+      tail: prefix, bindingSequence: '', sequence,
+    })).toEqual({
+      tail: prefix,
+      binding: core,
+      sequence,
+      status: 'ok',
+    });
+  });
+
+  it('accepts the legacy tailSequence alias as part of the physical oligo', () => {
+    expect(resolvePhysicalOligo({
+      tailSequence: prefix, bindingSequence: core,
+    }).sequence).toBe(sequence);
+  });
 });
 
 describe('scope-qualified identity', () => {

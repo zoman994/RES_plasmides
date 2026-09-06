@@ -95,9 +95,9 @@ describe('S2 — executeGoldenGate trims Type IIS recog sites', () => {
 describe('S2 — executePCR with explicit primers', () => {
   it('Slice template by forward + reverse primer positions', () => {
     // Template with known fwd + rev RC.
-    const fwd = 'ATGCATGC';
-    const rev = 'AAAAGGGG'; // RC = CCCCTTTT
-    const tpl = { id: 't', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'CCCCTTTT' + 'TTTT' };
+    const fwd = 'ATGCATGCATGC';
+    const rev = 'AAAAGGGGCCCC'; // RC = GGGGCCCCTTTT
+    const tpl = { id: 't', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'GGGGCCCCTTTT' + 'TTTT' };
     const oligo = {
       id: 'oligo-1', kind: 'oligonucleotide',
       payload: {
@@ -114,24 +114,24 @@ describe('S2 — executePCR with explicit primers', () => {
     };
     const result = executePCR(op, { containers: { t: tpl, 'oligo-1': oligo } });
     expect(result.error).toBeUndefined();
-    expect(result.outputs[0].sequence).toBe(fwd + 'GCGCGCGC' + 'CCCCTTTT');
+    expect(result.outputs[0].sequence).toBe(fwd + 'GCGCGCGC' + 'GGGGCCCCTTTT');
     expect(result.outputs[0].origin.fwdStart).toBe(4);
   });
 
   it('Auto-design (no primers) → full template returned as amplicon', () => {
-    const tpl = { id: 't', kind: 'molecule', sequence: 'ATGCATGC' };
+    const tpl = { id: 't', kind: 'molecule', sequence: 'ATGCATGCATGCATGCATGC' };
     const op = { id: 'op-p', kind: 'pcr', params: { templateId: 't', autoDesign: true }, inputs: ['t'] };
     const result = executePCR(op, { containers: { t: tpl } });
-    expect(result.outputs[0].sequence).toBe('ATGCATGC');
+    expect(result.outputs[0].sequence).toBe('ATGCATGCATGCATGCATGC');
     expect(result.outputs[0].origin.autoDesign).toBe(true);
   });
 
   // V73 — primers written/selected in the viewer (op.params.userPrimers)
   // must be CONSUMED by execute, not ignored in favour of auto-design.
   it('V73 — op.params.userPrimers drives the amplicon (not auto-design)', () => {
-    const fwd = 'ATGCATGC';
-    const rev = 'AAAAGGGG'; // RC = CCCCTTTT
-    const tpl = { id: 't', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'CCCCTTTT' + 'TTTT' };
+    const fwd = 'ATGCATGCATGC';
+    const rev = 'AAAAGGGGCCCC'; // RC = GGGGCCCCTTTT
+    const tpl = { id: 't', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'GGGGCCCCTTTT' + 'TTTT' };
     const op = {
       id: 'op-p', kind: 'pcr',
       params: {
@@ -146,15 +146,15 @@ describe('S2 — executePCR with explicit primers', () => {
     };
     const result = executePCR(op, { containers: { t: tpl } });
     expect(result.error).toBeUndefined();
-    expect(result.outputs[0].sequence).toBe(fwd + 'GCGCGCGC' + 'CCCCTTTT');
+    expect(result.outputs[0].sequence).toBe(fwd + 'GCGCGCGC' + 'GGGGCCCCTTTT');
     expect(result.outputs[0].origin.userPrimers).toBe(true);
     expect(result.outputs[0].origin.autoDesign).toBeUndefined();
   });
 
   it('V73 — userPrimers matched by BINDING seq (5′ tails ignored)', () => {
-    const fwd = 'ATGCATGC';
-    const rev = 'AAAAGGGG';
-    const tpl = { id: 't', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'CCCCTTTT' + 'TTTT' };
+    const fwd = 'ATGCATGCATGC';
+    const rev = 'AAAAGGGGCCCC';
+    const tpl = { id: 't', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'GGGGCCCCTTTT' + 'TTTT' };
     const op = {
       id: 'op-p', kind: 'pcr',
       params: {
@@ -169,7 +169,7 @@ describe('S2 — executePCR with explicit primers', () => {
     };
     const result = executePCR(op, { containers: { t: tpl } });
     expect(result.error).toBeUndefined();
-    expect(result.outputs[0].sequence).toBe(fwd + 'GCGCGCGC' + 'CCCCTTTT');
+    expect(result.outputs[0].sequence).toBe(fwd + 'GCGCGCGC' + 'GGGGCCCCTTTT');
   });
 
   // AM-PCR-OLIGO — the userPrimers branch must ALSO emit an oligonucleotide
@@ -177,9 +177,9 @@ describe('S2 — executePCR with explicit primers', () => {
   // designed primers are invisible to PrimerOrderPanel (oligo TSV/FASTA
   // export) and protocol-export (PCR primer lines / reagents block).
   it('AM-PCR-OLIGO — userPrimers branch emits amplicon + oligonucleotide outputs', () => {
-    const fwd = 'ATGCATGC';
-    const rev = 'AAAAGGGG'; // RC = CCCCTTTT
-    const tpl = { id: 't', name: 'tpl', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'CCCCTTTT' + 'TTTT' };
+    const fwd = 'ATGCATGCATGC';
+    const rev = 'AAAAGGGGCCCC'; // RC = GGGGCCCCTTTT
+    const tpl = { id: 't', name: 'tpl', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'GGGGCCCCTTTT' + 'TTTT' };
     const op = {
       id: 'op-p', kind: 'pcr',
       params: {
@@ -206,9 +206,9 @@ describe('S2 — executePCR with explicit primers', () => {
   });
 
   it('AM-PCR-OLIGO — emitted oligo carries the full ORDERED seq (with 5′ tail), Tm + name', () => {
-    const fwd = 'ATGCATGC';
-    const rev = 'AAAAGGGG';
-    const tpl = { id: 't', name: 'tpl', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'CCCCTTTT' + 'TTTT' };
+    const fwd = 'ATGCATGCATGC';
+    const rev = 'AAAAGGGGCCCC';
+    const tpl = { id: 't', name: 'tpl', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'GGGGCCCCTTTT' + 'TTTT' };
     const op = {
       id: 'op-p', kind: 'pcr',
       params: {
@@ -238,7 +238,7 @@ describe('S2 — executePCR with explicit primers', () => {
     const tpl = { id: 't', kind: 'molecule', sequence: 'AAAA' };
     const oligo = {
       id: 'oligo-1', kind: 'oligonucleotide',
-      payload: { sequences: [{ sequence: 'GGGG' }, { sequence: 'CCCC' }] },
+      payload: { sequences: [{ sequence: 'GGGGCCCCGGGG' }, { sequence: 'CCCCGGGGCCCC' }] },
     };
     const op = {
       id: 'op-p', kind: 'pcr',

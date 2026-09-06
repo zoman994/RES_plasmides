@@ -40,6 +40,24 @@ describe('SequenceView — paste a sequence', () => {
     expect(onSequenceEdit).toHaveBeenCalledWith({ kind: 'replace', start: 4, end: 12, replacement: 'GGGG' });
   });
 
+  it('circular collapsed ghost caret is canonical before DOM paste reaches the writer', () => {
+    const onSequenceEdit = vi.fn();
+    render(
+      <SequenceView
+        fragments={[FRAGMENT]}
+        circular
+        editable
+        onSequenceEdit={onSequenceEdit}
+        caretAnchor={-20}
+        caretPos={-20}
+      />,
+    );
+    pasteText(screen.getByTestId('sequence-view-root'), 'GGGG');
+    expect(onSequenceEdit).toHaveBeenCalledWith({
+      kind: 'replace', start: 280, end: 280, replacement: 'GGGG',
+    });
+  });
+
   it('NOT editable → paste is a no-op', () => {
     const onSequenceEdit = vi.fn();
     render(<SequenceView fragments={[FRAGMENT]} onSequenceEdit={onSequenceEdit} caretPos={5} caretAnchor={5} />);

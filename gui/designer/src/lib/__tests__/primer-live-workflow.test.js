@@ -189,9 +189,13 @@ describe('warnings are visible, never a veto', () => {
   });
 
   it('reports a large delta-Tm without blocking', () => {
+    // The terminal 12-nt seed is intentionally unique. A periodic ACGT repeat
+    // has several valid 3′ endpoints with different paired lengths, for which
+    // strict thermodynamics must withhold one arbitrary scalar Tm.
+    const primerSequence = 'GCGCGCATGCCGTTACGCGC';
     const warnings = evaluatePrimerWarnings(
-      { id: 'a', sequence: 'ACGTACGTACGTACGTACGT', bindingSequence: 'ACGTACGTACGTACGTACGT' },
-      { template: `ACGTACGTACGTACGTACGT${TPL}`, topology: 'linear', partnerSequence: 'ATATATATAT' },
+      { id: 'a', sequence: primerSequence, bindingSequence: primerSequence },
+      { template: `${primerSequence}${TPL}`, topology: 'linear', partnerSequence: 'ATATATATAT' },
     );
     const d = warnings.find((w) => w.code === 'delta-tm');
     expect(d).toBeTruthy();
@@ -384,16 +388,17 @@ describe('a mismatch is measured against the oligo as it is NOW', () => {
   });
 
   it('reports it in template coordinates for a minus-strand landing', () => {
-    // A reverse primer stores its binding 5'->3' on its OWN strand, so index 0
-    // of the oligo is the LAST base of the footprint.
-    const mutated = 'AGCAACGTTGCAACGT'; // rc(ANCHOR) with index 0 T→A
+    // A reverse primer stores its binding 5'->3' on its OWN strand. Keep the
+    // changed base internal: index 0 is its biological 5′ edge and may instead
+    // become an unpaired prefix under sequence-first placement.
+    const mutated = 'TACAACGTTGCAACGT'; // rc(ANCHOR) with index 1 G→A
     const rec = anchored(
       { direction: 'reverse', sequence: mutated, bindingSequence: mutated },
       { strand: -1, annealedSequence: 'TGCAACGTTGCAACGT' },
     );
     const mm = mismatchOf(rec);
     expect(mm).toBeTruthy();
-    expect(mm.positions).toEqual([79]); // 64 + 15
+    expect(mm.positions).toEqual([78]); // reverse index 1 → 64 + 14
   });
 
   it('stays quiet while the oligo still matches its landing', () => {
@@ -403,10 +408,8 @@ describe('a mismatch is measured against the oligo as it is NOW', () => {
     expect(mismatchOf(anchored())).toBeUndefined();
   });
 
-  it('does not invent positions when an edit changed the LENGTH', () => {
-    // An indel is not a per-base substitution, and lining up two different
-    // lengths would report every base after the shift as «wrong».
-    const shorter = 'ACGTTGCAACGTTGC'; // 15 nt
+  it('does not invent a mismatch for an exact biological 5-prime trim', () => {
+    const shorter = ANCHOR.slice(1);
     expect(mismatchOf(anchored({ sequence: shorter, bindingSequence: shorter })))
       .toBeUndefined();
   });
@@ -510,8 +513,8 @@ describe('SEQ-VIS-1 — the anchored binding is what gets checked', () => {
     expect(w.tm).not.toBe(Math.round(calcTm(`${POLY_A}${SHORT}`) * 10) / 10);
   });
 
-  it('still refuses to guess when the current oligo is shorter than its anchor', () => {
-    const short = ANCHOR.slice(0, 20);
+  it('projects a shorter oligo by its physical 3-prime end', () => {
+    const short = ANCHOR.slice(2);
     expect(mismatchOf(legacy({ bindingSequence: short, sequence: short }))).toBeUndefined();
   });
 
@@ -615,5 +618,83 @@ describe('PRIMER-INDEL-1 — aligned edits and thermodynamic honesty', () => {
   it('marks a physical 3-prime gap high severity but never blocks Save', () => {
     const warning = warningsFor(`${ANCHOR}G`).find((w) => w.code === 'three-prime-gap');
     expect(warning).toMatchObject({ severity: 'high', blocking: false });
+  });
+
+  it('marks a terminal 3-prime substitution as zero complementary terminal bases', () => {
+    const terminal = `${ANCHOR.slice(0, -1)}${ANCHOR.at(-1) === 'A' ? 'C' : 'A'}`;
+    expect(warningsFor(terminal)).toContainEqual(expect.objectContaining({
+      code: 'three-prime-short', length: 0, severity: 'high', blocking: false,
+    }));
+  });
+
+  it('marks an exact 1–9 nt landing as a high non-blocking 3-prime warning', () => {
+    expect(warningsFor(ANCHOR.slice(-9))).toContainEqual(expect.objectContaining({
+      code: 'three-prime-short', length: 9, severity: 'high', blocking: false,
+    }));
+  });
+
+  it('does not emit the short-anchor warning after 10 exact physical 3-prime matches', () => {
+    expect(warningsFor(ANCHOR.slice(-10)).filter((w) => w.code === 'three-prime-short'))
+      .toEqual([]);
+  });
+
+  it('marks a computed exact 7-nt landing with the same 3-prime warning', () => {
+    const binding = 'ATGCGTA';
+    const warnings = evaluatePrimerWarnings({
+      id: 'computed-short', direction: 'forward',
+      tail: '', bindingSequence: binding, sequence: binding, sites: [],
+    }, {
+      template: `GG${binding}CC`, topology: 'linear',
+      entryId: 'E1', documentHash: DOC,
+    });
+    expect(warnings).toContainEqual(expect.objectContaining({
+      code: 'three-prime-short', length: 7, severity: 'high', blocking: false,
+    }));
+  });
+
+  it('treats a noncanonical leading base as an unpaired 5-prime prefix', () => {
+    const body = 'NAAAAAAAAAAAAAAA';
+    const warnings = evaluatePrimerWarnings({
+      id: 'noncanonical', direction: 'forward', bindingModel: 'aligned-v1',
+      tail: '', bindingSequence: body, sequence: body,
+      sites: [{
+        id: 'noncanonical-site',
+        target: { entryId: 'E1', resourceHash: DOC, topology: 'linear' },
+        location: { kind: 'single', segments: [{ start: 2, end: 2 + body.length }] },
+        strand: 1, annealedSequence: body, tail: '',
+      }],
+    }, {
+      template: `GG${body}CC`, topology: 'linear', entryId: 'E1', documentHash: DOC,
+      partnerSequence: 'GCGCGCGCGCGCGCGC',
+    });
+
+    expect(warnings.some((warning) => warning.code === 'duplex-tm-unknown')).toBe(false);
+    expect(warnings).toContainEqual(expect.objectContaining({
+      code: 'low-tm', blocking: false,
+    }));
+  });
+
+  it('uses the noncanonical thermodynamic reason even when N is an alignment X', () => {
+    const body = `${ANCHOR.slice(0, 4)}N${ANCHOR.slice(5)}`;
+    const warnings = warningsFor(body);
+    expect(warnings).toContainEqual(expect.objectContaining({
+      code: 'duplex-tm-unknown', tm: null, reason: 'noncanonical-base', blocking: false,
+    }));
+    expect(warnings.filter((warning) => warning.code === 'gapped-tm-unknown')).toEqual([]);
+  });
+});
+
+describe('full physical oligo drives structural warnings', () => {
+  it('includes a legacy tailSequence when sequence is omitted', () => {
+    const tail = 'GCGC';
+    const binding = 'AAAAGCGC';
+    const full = `${tail}${binding}`;
+    expect(checkHairpin(full)).toBe(true);
+    expect(checkHairpin(binding)).toBe(false);
+
+    expect(evaluatePrimerWarnings({
+      id: 'legacy-structure', direction: 'forward',
+      tailSequence: tail, bindingSequence: binding, sites: [],
+    })).toContainEqual(expect.objectContaining({ code: 'hairpin', blocking: false }));
   });
 });

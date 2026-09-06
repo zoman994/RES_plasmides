@@ -163,7 +163,7 @@ describe('K9 — OP_EXECUTE atomic transition', () => {
 
   it('frozen=true is set on input containers after execute', () => {
     const s0 = buildInitialState();
-    const tpl = { id: 'c-test', name: 'X', kind: 'molecule', sequence: 'ATGCATGC' };
+    const tpl = { id: 'c-test', name: 'X', kind: 'molecule', sequence: 'ATGCATGCATGCATGCAT' };
     const seeded = { ...s0, containers: [...s0.containers, tpl] };
     const [s1, opId] = seedCommittedOp(seeded, 'pcr', { templateId: 'c-test' }, ['c-test']);
     const sExec = skeletonReducer(s1, { type: 'OP_EXECUTE', operationId: opId });
@@ -208,7 +208,7 @@ describe('K9 — OP_EXECUTE atomic transition', () => {
 
   it('OP_EXECUTE on already-executed op → state unchanged (lifecycle guard)', () => {
     const s0 = buildInitialState();
-    const tpl = { id: 'c', kind: 'molecule', sequence: 'ATGC' };
+    const tpl = { id: 'c', kind: 'molecule', sequence: 'ATGCATGCATGCATGCAT' };
     const seeded = { ...s0, containers: [...s0.containers, tpl] };
     const [s1, opId] = seedCommittedOp(seeded, 'pcr', { templateId: 'c' }, ['c']);
     const s2 = skeletonReducer(s1, { type: 'OP_EXECUTE', operationId: opId });
@@ -222,7 +222,7 @@ describe('K9 — OP_EXECUTE atomic transition', () => {
 describe('K9 — OP_REMOVE unfreeze', () => {
   it('OP_REMOVE unfreezes inputs if no other op references them', () => {
     const s0 = buildInitialState();
-    const tpl = { id: 'c', kind: 'molecule', sequence: 'ATGC' };
+    const tpl = { id: 'c', kind: 'molecule', sequence: 'ATGCATGCATGCATGCAT' };
     const seeded = { ...s0, containers: [...s0.containers, tpl] };
     const [s1, opId] = seedCommittedOp(seeded, 'pcr', { templateId: 'c' }, ['c']);
     const sExec = skeletonReducer(s1, { type: 'OP_EXECUTE', operationId: opId });
@@ -234,7 +234,7 @@ describe('K9 — OP_REMOVE unfreeze', () => {
 
   it('OP_REMOVE keeps frozen if another op references the same input', () => {
     const s0 = buildInitialState();
-    const tpl = { id: 'c', kind: 'molecule', sequence: 'ATGC' };
+    const tpl = { id: 'c', kind: 'molecule', sequence: 'ATGCATGCATGCATGCAT' };
     const seeded = { ...s0, containers: [...s0.containers, tpl] };
     // Op A uses c.
     const [s1, opIdA] = seedCommittedOp(seeded, 'pcr', { templateId: 'c' }, ['c']);

@@ -10,6 +10,12 @@
  */
 
 import { getJSON, setJSON } from '../lib/storage';
+import {
+  documentSignature,
+  makeRunKey,
+  isStaleReply,
+  nextJob,
+} from '../lib/annotator-run-identity';
 
 // SequenceView persistence is owned by uiSlice; we mirror the
 // threshold via raw setJSON to avoid a circular import. Same key
@@ -61,6 +67,17 @@ export const ANNOTATOR_DEFAULTS = Object.freeze({
   // Drill-in panel state — id of the ghost feature whose detail
   // panel is open in the Preview tab (null = no panel).
   selectedGhostId: null,
+  // ANN-INTEGRITY seam 7 — job identity. `jobSeq` is a monotonic counter; a job
+  // captures its run key at launch and a reply tagged with a superseded key is
+  // dropped (document/scope/topology changed, or a newer job started).
+  jobSeq: 0,
+  activeRunKey: null,
+  activeRunKeys: Object.freeze({}),
+  runContexts: Object.freeze({}),
+  resultRunKeys: Object.freeze({}),
+  currentDocumentSignature: null,
+  executedRunKey: null,
+  executedScope: null,
 });
 
 const ANNOTATOR_TABS = ['linear', 'circular'];
@@ -87,6 +104,9 @@ export function loadInitialAnnotator() {
       rejectedRegionIds: {},
       pendingEdits: {},
       running: {},
+      activeRunKeys: {},
+      runContexts: {},
+      resultRunKeys: {},
     };
   }
   return {
@@ -108,7 +128,55 @@ export function loadInitialAnnotator() {
     rejectedRegionIds: {},
     pendingEdits: {},
     running: {},
+    activeRunKeys: {},
+    runContexts: {},
+    resultRunKeys: {},
   };
+}
+
+function copyScope(scope) {
+  if (!scope || typeof scope !== 'object') return null;
+  return {
+    ...scope,
+    ...(scope.region && typeof scope.region === 'object'
+      ? { region: { ...scope.region } }
+      : {}),
+  };
+}
+
+function clearTransientForDocument(annotator, documentKey) {
+  annotator.results = {};
+  annotator.resultRunKeys = {};
+  annotator.acceptedRegionIds = {};
+  annotator.rejectedRegionIds = {};
+  annotator.pendingEdits = {};
+  annotator.running = {};
+  annotator.activeRunKeys = {};
+  annotator.activeRunKey = null;
+  annotator.runContexts = {};
+  annotator.executedRunKey = null;
+  annotator.executedScope = null;
+  annotator.currentDocumentSignature = documentKey;
+}
+
+function regionIdentity(region) {
+  if (!region || typeof region !== 'object') return null;
+  return region.id
+    || `${region.start}:${region.end}:${region.type || ''}:${region.name || ''}`;
+}
+
+function clearPluginTransient(annotator, pluginId) {
+  const previous = annotator.results?.[pluginId];
+  for (const region of previous?.regions || []) {
+    const id = regionIdentity(region);
+    if (!id) continue;
+    if (annotator.acceptedRegionIds) delete annotator.acceptedRegionIds[id];
+    if (annotator.rejectedRegionIds) delete annotator.rejectedRegionIds[id];
+    if (annotator.pendingEdits) delete annotator.pendingEdits[id];
+  }
+  if (annotator.results) delete annotator.results[pluginId];
+  if (annotator.resultRunKeys) delete annotator.resultRunKeys[pluginId];
+  if (annotator.running) delete annotator.running[pluginId];
 }
 
 function persistAnnotator(value) {
@@ -142,20 +210,10 @@ export function createAnnotatorSlice(set) {
     openAnnotator: (scope) => {
       set((state) => {
         if (!state.annotator) state.annotator = loadInitialAnnotator();
-        const prevScope = state.annotator.scope;
-        const sequenceChanged = !!prevScope
-          && !!scope
-          && prevScope.sequenceId !== scope.sequenceId;
-        // When the plasmid changes between Annotator sessions, reset
-        // the transient verdict containers so a fresh «accept N» pass
-        // doesn't carry over from the previous plasmid.
-        if (sequenceChanged) {
-          state.annotator.results = {};
-          state.annotator.acceptedRegionIds = {};
-          state.annotator.rejectedRegionIds = {};
-          state.annotator.pendingEdits = {};
-          state.annotator.running = {};
-        }
+        // `scope.sequenceId` is a UI routing alias (callers historically mix a
+        // file name and an entry id), not document identity. Canonical
+        // entryId/docEpoch/topology/scope invalidation is owned exclusively by
+        // syncAnnotatorContext/beginAnnotatorJob below.
         state.annotator.open = true;
         state.annotator.scope = scope || null;
       });
@@ -228,26 +286,85 @@ export function createAnnotatorSlice(set) {
       });
     },
 
-    setAnnotatorRunning: (pluginId, running) => {
+    setAnnotatorRunning: (pluginId, running, runKey) => {
       if (typeof pluginId !== 'string' || !pluginId) return;
       set((state) => {
         if (!state.annotator) state.annotator = loadInitialAnnotator();
         if (!state.annotator.running) state.annotator.running = {};
-        if (running) state.annotator.running[pluginId] = true;
-        else delete state.annotator.running[pluginId];
+        if (!state.annotator.activeRunKeys) state.annotator.activeRunKeys = {};
+        if (isStaleReply(state.annotator.activeRunKeys[pluginId], runKey)) return;
+        if (running) state.annotator.running[pluginId] = runKey;
+        else if (state.annotator.running[pluginId] === runKey) delete state.annotator.running[pluginId];
       });
     },
 
-    setAnnotatorResult: (pluginId, result) => {
+    syncAnnotatorContext: (docContext) => {
+      const documentKey = documentSignature(docContext || {});
+      set((state) => {
+        if (!state.annotator) state.annotator = loadInitialAnnotator();
+        if (state.annotator.currentDocumentSignature === documentKey) return;
+        clearTransientForDocument(state.annotator, documentKey);
+      });
+    },
+
+    /**
+     * ANN-INTEGRITY seam 7 — begin a predictor job against a document context
+     * `{ entryId, docEpoch, topology, scope }`. Bumps the monotonic job counter,
+     * computes the run key that binds entry + epoch + topology + frozen scope +
+     * job, records it as the active key, and returns it so the caller can tag
+     * the async callback for the stale-drop check in `setAnnotatorResult`.
+     */
+    beginAnnotatorJob: (docContext, pluginIds = []) => {
+      let key = null;
+      set((state) => {
+        if (!state.annotator) state.annotator = loadInitialAnnotator();
+        const context = docContext || {};
+        const documentKey = documentSignature(context);
+        if (state.annotator.currentDocumentSignature !== documentKey) {
+          clearTransientForDocument(state.annotator, documentKey);
+        }
+        state.annotator.jobSeq = nextJob(state.annotator.jobSeq);
+        const frozenContext = {
+          entryId: context.entryId ?? null,
+          docEpoch: context.docEpoch ?? null,
+          topology: context.topology || 'linear',
+          scope: copyScope(context.scope),
+          jobSeq: state.annotator.jobSeq,
+        };
+        key = makeRunKey(frozenContext);
+        state.annotator.activeRunKey = key;
+        if (!state.annotator.activeRunKeys) state.annotator.activeRunKeys = {};
+        if (!state.annotator.runContexts) state.annotator.runContexts = {};
+        if (!state.annotator.running) state.annotator.running = {};
+        state.annotator.runContexts[key] = frozenContext;
+        for (const pluginId of pluginIds) {
+          if (typeof pluginId !== 'string' || !pluginId) continue;
+          clearPluginTransient(state.annotator, pluginId);
+          state.annotator.activeRunKeys[pluginId] = key;
+          state.annotator.running[pluginId] = key;
+        }
+      });
+      return key;
+    },
+
+    setAnnotatorResult: (pluginId, result, runKey) => {
       if (typeof pluginId !== 'string' || !pluginId) return;
       set((state) => {
         if (!state.annotator) state.annotator = loadInitialAnnotator();
+        if (!state.annotator.activeRunKeys) state.annotator.activeRunKeys = {};
+        if (isStaleReply(state.annotator.activeRunKeys[pluginId], runKey)) return;
         if (!state.annotator.results) state.annotator.results = {};
-        if (state.annotator.running) delete state.annotator.running[pluginId];
+        if (!state.annotator.resultRunKeys) state.annotator.resultRunKeys = {};
+        if (state.annotator.running?.[pluginId] === runKey) delete state.annotator.running[pluginId];
         if (result === null) {
           delete state.annotator.results[pluginId];
+          delete state.annotator.resultRunKeys[pluginId];
         } else {
           state.annotator.results[pluginId] = result;
+          state.annotator.resultRunKeys[pluginId] = runKey;
+          const context = state.annotator.runContexts?.[runKey];
+          state.annotator.executedRunKey = runKey;
+          state.annotator.executedScope = copyScope(context?.scope);
         }
       });
     },
@@ -346,6 +463,12 @@ export function createAnnotatorSlice(set) {
         state.annotator.rejectedRegionIds = {};
         state.annotator.pendingEdits = {};
         state.annotator.running = {};
+        state.annotator.activeRunKeys = {};
+        state.annotator.activeRunKey = null;
+        state.annotator.runContexts = {};
+        state.annotator.resultRunKeys = {};
+        state.annotator.executedRunKey = null;
+        state.annotator.executedScope = null;
       });
     },
   };

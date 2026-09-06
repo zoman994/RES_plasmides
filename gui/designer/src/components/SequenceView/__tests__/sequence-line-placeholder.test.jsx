@@ -80,4 +80,11 @@ describe('SequenceLine — virtualization placeholder', () => {
     const line = screen.getByTestId('sequence-view-line');
     expect(line.getAttribute('data-line-idx')).toBe('12');
   });
+
+  it('reserves a paint-safe inline margin for centered primer insertions', () => {
+    render(<SequenceLine {...baseProps} primerEdgeGuardPx={93.6} />);
+    const line = screen.getByTestId('sequence-view-line');
+    expect(line.style.marginInline).toBe('93.6px');
+    expect(line.style.overflowClipMargin).toBe('93.6px');
+  });
 });

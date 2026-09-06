@@ -127,12 +127,12 @@ describe('K12 — manual edit auto-locks', () => {
     renderPanel('d1');
     const id = seedPrimer('d1', 'auto');
     act(() => { fireEvent.click(screen.getByTestId('assembly-primer-edit')); });
-    const m = screen.getByTestId('assembly-primer-edit-modal');
+    const m = screen.getByTestId('primer-from-selection-modal');
     act(() => {
-      fireEvent.change(within(m).getByTestId('assembly-primer-edit-seq'), {
+      fireEvent.change(within(m).getByTestId('primer-modal-seq'), {
         target: { value: 'AAACCCGGGTTT' },
       });
-      fireEvent.click(within(m).getByTestId('assembly-primer-edit-save'));
+      fireEvent.click(within(m).getByTestId('primer-modal-create'));
     });
     const p = S.assemblyDraftPrimers.d1.find((x) => x.id === id);
     expect(p.sequence).toBe('AAACCCGGGTTT');

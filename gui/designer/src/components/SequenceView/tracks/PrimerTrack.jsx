@@ -21,19 +21,27 @@
  */
 
 import { memo, Fragment } from "react";
+import { tf } from "../../../i18n";
 import { projectPrimerPool } from "../../../lib/primer-site-projection";
+import { evaluateStandardPcrAnnealing } from "../../../lib/primer-annealing-policy";
 import { reverseComplement } from "../../../sequence-utils";
 import {
   alignmentDisplay,
   alignmentDisplayForSegment,
 } from "../lib/primer-alignment-glyphs";
-
-const ARROW_H = 14; // arrow body height (fits inscribed mono bases)
-const HEAD = 6; // arrowhead tip, extends BEYOND the footprint so the
-// inscribed sequence stays exactly grid-aligned over its base columns.
-const ROW_STRIDE = ARROW_H + 6; // vertical gap between stacked hits
-const FORWARD_COLOR = "#3b82f6";
-const REVERSE_COLOR = "#dc2626";
+import PrimerStepGlyph, {
+  PRIMER_ARROW_HEAD as HEAD,
+  PRIMER_GLYPH_HEIGHT as ARROW_H,
+  PRIMER_LABEL_CHAR_WIDTH,
+  PRIMER_STEP_OFFSET,
+} from "./PrimerStepGlyph";
+import {
+  packPrimerTrackBands,
+  primerBandSpans,
+  primerTailOf,
+  projectPrimerTail,
+  resolvePrimerInsertionTiers,
+} from "./primer-track-layout";
 
 /**
  * Stable per-hit key (matches SequenceView's primer-selection model).
@@ -61,17 +69,6 @@ function selectionKeys(h) {
   return h && h._occKey ? [h._occKey, legacy] : [legacy];
 }
 
-// PRIMER-AUDIT (V174) — two ecosystems name the 5'-overhang differently:
-// assembly/SequenceView use `tail`, PCR-mode/local-primer-design use `tailSequence`.
-// Read both so a PCR-mode primer's overhang renders here too (cross-ecosystem
-// friendship). Accepts a hit/primer object, returns the overhang string ('' if none).
-function tailOf(p) {
-  if (!p) return "";
-  if (typeof p.tail === "string") return p.tail;
-  if (typeof p.tailSequence === "string") return p.tailSequence;
-  return "";
-}
-
 /**
  * Where each primer binds, via the ONE shared projection (ANN-0L).
  *
@@ -83,9 +80,11 @@ function tailOf(p) {
  * A record with no site at all yields no hit here — and still exists in the
  * primer list, which is where the user manages it.
  */
-function findHits(primers, fullSeq, ctx = {}) {
+function findHits(primers, fullSeq, ctx = {}, projectedOccurrences = null) {
   if (!Array.isArray(primers) || primers.length === 0 || !fullSeq) return [];
-  const occurrences = projectPrimerPool(primers, { template: fullSeq, ...ctx });
+  const occurrences = Array.isArray(projectedOccurrences)
+    ? projectedOccurrences
+    : projectPrimerPool(primers, { template: fullSeq, ...ctx });
   // Keyed by position, not by `p.id`: a legacy pool row may carry no id at all,
   // and two id-less primers must not collapse onto one another.
   const byId = new Map();
@@ -112,6 +111,12 @@ function findHits(primers, fullSeq, ctx = {}) {
       ? (occ.strand === -1 ? reverseComplement(occ.annealedSequence) : occ.annealedSequence)
       : '';
     const aligned = alignmentDisplay(occ);
+    const annealing = evaluateStandardPcrAnnealing(occ.alignment || {
+      query: occ.oligoStatus === 'ok' ? String(occ.annealedSequence || '') : '',
+      threePrimeMatchLength: occ.oligoStatus === 'ok'
+        ? String(occ.annealedSequence || '').replace(/\s+/g, '').length
+        : 0,
+    });
     let bindingOffset = 0;
 
     return occ.segments.map((seg, i) => {
@@ -138,6 +143,8 @@ function findHits(primers, fullSeq, ctx = {}) {
         _bindingOffset: offset,
         _alignmentGlyphs: segmentDisplay.glyphs,
         _alignmentInsertions: segmentDisplay.insertions,
+        _annealingStatus: annealing.status,
+        _threePrimeMatchLength: annealing.threePrimeMatchLength,
         tail: i === tailAt ? occ.tail : null,
         bindingSequence: occ.oligoStatus === 'ok' ? occ.annealedSequence : null,
         direction: fromSource ? (strandDir ?? p.direction ?? null) : (p.direction ?? strandDir),
@@ -179,6 +186,7 @@ function clipHit(h, lo, hi, colBase, seg) {
  * @param {(key:string, hit:object)=>void} [props.onPrimerClick] consumer-gated
  * @param {(hit:object)=>void} [props.onPrimerDoubleClick] consumer-gated
  * @param {string[]} [props.selectedPrimerKeys]
+ * @param {string|null} [props.expandedPrimerKey]
  */
 function PrimerTrack({
   primers,
@@ -187,11 +195,13 @@ function PrimerTrack({
   lineLen,
   charPx,
   labelChars,
+  projectedOccurrences = null,
   primerStyle,
   directionFilter,
   onPrimerClick,
   onPrimerDoubleClick,
   selectedPrimerKeys,
+  expandedPrimerKey = null,
   // V102 §5.2 — wrap-bridge awareness. Defaults keep non-bridge rows
   // exactly as before; on a bridge row a primer binding at the start of
   // the plasmid (or crossing the origin) renders in the wrap-half.
@@ -215,7 +225,7 @@ function PrimerTrack({
     entryId,
     documentHash,
     topology: topology || (circular ? 'circular' : 'linear'),
-  });
+  }, projectedOccurrences);
   const lineEnd = lineStart + lineLen;
   const seqLen = (fullSeq || "").length;
   const hasWrap = wrapsOrigin === true
@@ -245,7 +255,7 @@ function PrimerTrack({
     // it (the binding clip below stays empty for a tail-only row → no arrow).
     lineHits = allHits
       .filter((h) => {
-        const tl = tailOf(h).length;
+        const tl = primerTailOf(h).length;
         const fwd = h.direction !== "reverse";
         const lo = fwd ? Math.max(0, h.start - tl) : h.start;
         const hi = fwd ? h.end : Math.min(seqLen, h.end + tl);
@@ -280,8 +290,165 @@ function PrimerTrack({
   const selSet = new Set(selectedPrimerKeys || []);
   // Per-base letters only when there's room (avoid clutter at tiny zoom).
   const showLetters = charPx >= 5;
-  const upper = (fullSeq || "").toUpperCase();
   const baseFont = Math.min(11, Math.max(7, charPx * 0.82));
+  const rawRenderHits = lineHits.map((hit, idx) => {
+    const isFwd = hit.direction !== "reverse";
+    const visStart = hit._visStart;
+    const visEnd = hit._visEnd;
+    const bindingVisible = visEnd > visStart;
+    const xLeft = (labelChars + hit._colStart) * charPx;
+    const W = Math.max(1, (visEnd - visStart) * charPx);
+    const key = primerHitKey(hit);
+    const selected = selectionKeys(hit).some((selectionKey) => selSet.has(selectionKey));
+    const expanded = !hasClick
+      || selectionKeys(hit).some((selectionKey) => selectionKey === expandedPrimerKey);
+    const physicalHeadSegment = isFwd
+      ? hit._segIndex === hit._segCount - 1
+      : hit._segIndex === 0;
+    const headHere = physicalHeadSegment
+      && (isFwd ? hit._visEnd === hit.end : hit._visStart === hit.start);
+    // Compact and expanded variants share one short label at the physical
+    // 3′ head. The bases themselves belong inside the expanded glyph; putting
+    // the full oligo into every line label made wrapped primers unreadable.
+    const tmLabel = hit.tmBinding !== null && hit.tmBinding !== ''
+      && Number.isFinite(Number(hit.tmBinding))
+      ? `${hit.tmBinding}°`
+      : '';
+    const rawLabelText = `${hit.name || ''} ${tmLabel}`.trim();
+    const baseOffset = (hit._bindingOffset || 0) + (visStart - hit.start);
+    const clipOffset = visStart - hit.start;
+    const alignmentGlyphs = hit._oligoStatus === 'ok' && Array.isArray(hit._alignmentGlyphs)
+      ? hit._alignmentGlyphs.slice(clipOffset, clipOffset + (visEnd - visStart))
+      : null;
+    const fallbackBases = hit._oligoStatus === 'ok'
+      ? (hit._bindingTop || '').slice(baseOffset, baseOffset + (visEnd - visStart))
+      : '';
+    const visibleInsertions = Array.isArray(hit._alignmentInsertions)
+      ? hit._alignmentInsertions.filter((insertion) => (
+        insertion.boundary >= clipOffset
+        && (insertion.boundary < clipOffset + (visEnd - visStart)
+          || (insertion.boundary === hit.end - hit.start && visEnd === hit.end))
+      ))
+      : [];
+    const tail = hit._oligoStatus === 'ok' ? primerTailOf(hit) : "";
+    const projectedTail = projectPrimerTail({
+      hit, isFwd, tail, charPx, labelChars, lineStart, lineEnd, seqLen,
+      bindingVisible, showLetters, hasWrap, wrapAt, wrapWidthChars, seqLength, circular,
+    });
+    const projectedSeparateTail = projectedTail.separateTail;
+    const adjacentSeparateTail = bindingVisible && projectedSeparateTail && (
+      isFwd
+        ? Math.abs(projectedSeparateTail.x + projectedSeparateTail.w - xLeft) < 0.5
+        : Math.abs(projectedSeparateTail.x - (xLeft + W)) < 0.5
+    ) ? projectedSeparateTail : null;
+    const inlineTail = projectedTail.inlineTail || Boolean(adjacentSeparateTail);
+    const tailX = projectedTail.inlineTail
+      ? (isFwd ? -projectedTail.tailWidth : W)
+      : (adjacentSeparateTail ? adjacentSeparateTail.x - xLeft : null);
+    const localTailWidth = projectedTail.inlineTail
+      ? projectedTail.tailWidth
+      : (adjacentSeparateTail?.w || 0);
+    const tailProjection = {
+      ...projectedTail,
+      inlineTail,
+      tailX,
+      tailWidth: localTailWidth,
+      tailBases: projectedTail.inlineTail ? tail : (adjacentSeparateTail?.bases || ''),
+      promotedTail: adjacentSeparateTail,
+      separateTail: adjacentSeparateTail ? null : projectedSeparateTail,
+    };
+    // The visible name/Tm is part of the painted footprint. Reserve it before
+    // row packing so another primer cannot be drawn through the label.
+    const maxLabelChars = headHere && rawLabelText
+      ? Math.max(0, Math.floor((widthPx - 4) / PRIMER_LABEL_CHAR_WIDTH))
+      : 0;
+    const labelText = maxLabelChars > 0
+      ? (rawLabelText.length > maxLabelChars
+        ? `${rawLabelText.slice(0, Math.max(0, maxLabelChars - 1))}…`
+        : rawLabelText)
+      : '';
+    const labelWidth = labelText.length * PRIMER_LABEL_CHAR_WIDTH;
+    // The label identifies the annealing body. A long 5′ tail or a local
+    // insertion must not pull the name away from that body.
+    const desiredLabelX = xLeft + (W - labelWidth) / 2;
+    const labelGlobalX = labelWidth > 0
+      ? Math.max(2, Math.min(widthPx - 2 - labelWidth, desiredLabelX))
+      : xLeft;
+    const labelX = labelGlobalX - xLeft;
+    const layoutKey = `hit-${idx}`;
+    const layoutItem = primerBandSpans({
+      key: layoutKey,
+      rowKey: key,
+      x: xLeft,
+      width: bindingVisible ? W : 0,
+      headHere,
+      headWidth: HEAD,
+      isFwd,
+      detached: hit._annealingStatus === 'non-annealing',
+      glyphs: alignmentGlyphs,
+      insertions: visibleInsertions,
+      clipOffset,
+      charPx,
+      inlineTail: tailProjection.inlineTail,
+      tailWidth: tailProjection.tailWidth,
+      tailX: tailProjection.tailX,
+      separateTail: tailProjection.separateTail,
+      labelX,
+      labelWidth,
+    });
+    // The packed layout includes a wrapped/separate tail so it reserves the
+    // correct outer band. The binding group's hit ownership must not include
+    // that remote shape, however: the separate tail has its own interactive
+    // group. Keeping this projection local also prevents a transparent target
+    // from bridging the empty space between template and outer bands.
+    const hitItem = primerBandSpans({
+      key: layoutKey,
+      rowKey: key,
+      x: xLeft,
+      width: bindingVisible ? W : 0,
+      headHere,
+      headWidth: HEAD,
+      isFwd,
+      detached: hit._annealingStatus === 'non-annealing',
+      glyphs: alignmentGlyphs,
+      insertions: visibleInsertions,
+      clipOffset,
+      charPx,
+      inlineTail: tailProjection.inlineTail,
+      tailWidth: tailProjection.tailWidth,
+      tailX: tailProjection.tailX,
+      separateTail: null,
+    });
+    return {
+      hit, idx, isFwd, visStart, visEnd, bindingVisible, xLeft, W, key, selected, expanded,
+      headHere, labelText, clipOffset, alignmentGlyphs, fallbackBases,
+      visibleInsertions, tail, tailProjection, labelX, labelWidth,
+      layoutKey, layoutItem, hitItem,
+    };
+  });
+  const resolvedLayoutItems = resolvePrimerInsertionTiers(
+    rawRenderHits.map(({ layoutItem }) => layoutItem),
+  );
+  const insertionTiersByKey = new Map(resolvedLayoutItems.flatMap((item) => (
+    (item.insertionPlacements || []).map(({ key, tier }) => [key, tier])
+  )));
+  const resolvedHitItems = resolvePrimerInsertionTiers(
+    rawRenderHits.map(({ hitItem }) => hitItem),
+    insertionTiersByKey,
+  );
+  const renderHits = rawRenderHits.map((renderHit, index) => ({
+    ...renderHit,
+    layoutItem: resolvedLayoutItems[index],
+    hitItem: resolvedHitItems[index],
+  }));
+  const layoutDirection = directionFilter === 'reverse'
+    || (renderHits.length > 0 && renderHits.every(({ isFwd }) => !isFwd))
+    ? 'reverse'
+    : 'forward';
+  const trackLayout = packPrimerTrackBands(
+    renderHits.map(({ layoutItem }) => layoutItem),
+    { direction: layoutDirection, glyphHeight: ARROW_H, stepOffset: PRIMER_STEP_OFFSET },
+  );
 
   return (
     <svg
@@ -291,7 +458,7 @@ function PrimerTrack({
       data-primer-direction-filter={directionFilter || "all"}
       data-hit-count={lineHits.length}
       width={widthPx}
-      height={lineHits.length * ROW_STRIDE}
+      height={Math.max(ARROW_H, trackLayout.height)}
       style={{
         display: "block",
         overflow: "visible",
@@ -301,21 +468,36 @@ function PrimerTrack({
         pointerEvents: "none",
       }}
     >
-      {lineHits.map((hit, idx) => {
-        const isFwd = hit.direction !== "reverse";
+      {renderHits.map((renderHit) => {
+        const {
+          hit, idx, isFwd, visStart, bindingVisible, xLeft, W, key, selected, expanded,
+          headHere, labelText, clipOffset, alignmentGlyphs, fallbackBases,
+          visibleInsertions, tailProjection, labelX, labelWidth, layoutKey, hitItem,
+        } = renderHit;
+        const placement = trackLayout.byKey[layoutKey];
+        const templateY = placement.templateY;
+        const tailY = placement.tailY;
+        const outerY = placement.outerY;
+        const labelY = placement.labelY;
         // V102 §5.2 — coords precomputed by clipHit: absolute clip for
         // base letters + render column for the segment (real or wrap).
-        const visStart = hit._visStart;
-        const visEnd = hit._visEnd;
         // A hit can be on this line for its TAIL alone (V-tailwrap filter) —
         // then the binding clip is empty and we draw NO arrow, only the tail.
-        const bindingVisible = visEnd > visStart;
-        const xLeft = (labelChars + hit._colStart) * charPx;
-        const W = Math.max(1, (visEnd - visStart) * charPx);
-        const yTop = idx * ROW_STRIDE;
-        const color = isFwd ? FORWARD_COLOR : REVERSE_COLOR;
-        const key = primerHitKey(hit);
-        const selected = selectionKeys(hit).some((k) => selSet.has(k));
+        const color = isFwd ? 'var(--viz-primer-fwd)' : 'var(--viz-primer-rev)';
+        const accessibleName = tf('primer.track.action', {
+          name: hit.name || tf('primer.track.unnamed'),
+          direction: tf(`primer.track.direction.${isFwd ? 'forward' : 'reverse'}`),
+        });
+        const activateByKeyboard = clickable ? (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (hasClick) onPrimerClick(key, hit, {
+            additive: event.ctrlKey || event.metaKey,
+            source: 'keyboard',
+          });
+          else if (hasDbl) onPrimerDoubleClick(hit);
+        } : undefined;
         // Pentagon arrow: flat 5′ tail, pointed 3′ head. The head marks the
         // 3′-END — forward: hit.end; reverse: hit.start. When a binding is
         // split across a line-wrap (clipHit → two lineHits fragments), only
@@ -325,159 +507,25 @@ function PrimerTrack({
         // Unbroken binding → _visEnd===end && _visStart===start → head as
         // before. Absolute _visEnd/_visStart vs end/start is correct on
         // wrap-bridge (circular) rows too — no special case needed.
-        const headHere = isFwd ? hit._visEnd === hit.end : hit._visStart === hit.start;
-        // The HEAD overhang (hit-target / selection-halo) belongs only to the
-        // side that actually has the point — on a blunt wrap-edge fragment it
-        // would otherwise stick ~6 px past the край. 5′/tail side and
-        // groupTailW are untouched (they're not about the head).
-        const headExt = headHere ? HEAD : 0;
-        const arrowPath = headHere
-          ? (isFwd
-            ? `M0,0 L${W},0 L${W + HEAD},${ARROW_H / 2} L${W},${ARROW_H} L0,${ARROW_H} Z`
-            : `M${W},0 L0,0 L${-HEAD},${ARROW_H / 2} L0,${ARROW_H} L${W},${ARROW_H} Z`)
-          : `M0,0 L${W},0 L${W},${ARROW_H} L0,${ARROW_H} Z`;
-        const fill = filled ? color : "none";
-        const labelText = filled
-          ? `${hit.name || ""} ${hit.tmBinding ? hit.tmBinding + "°" : ""}`.trim()
-          : (hit._oligoStatus === 'ok' && hit.bindingSequence
-            ? `${hit.name || ""} (${hit.bindingSequence.toUpperCase()})`
-            : (hit.name || ""));
-        const baseOffset = (hit._bindingOffset || 0) + (visStart - hit.start);
-        const clipOffset = visStart - hit.start;
-        const baseGlyphs = showLetters && hit._oligoStatus === 'ok'
-          ? (Array.isArray(hit._alignmentGlyphs)
-            ? hit._alignmentGlyphs.slice(clipOffset, clipOffset + (visEnd - visStart))
-            : [...(hit._bindingTop || '').slice(baseOffset, baseOffset + (visEnd - visStart))]
-              .map((base) => ({ base, op: null })))
-          : [];
-        const bases = baseGlyphs.map((glyph) => glyph?.base || '').join('');
-        const visibleInsertions = showLetters && Array.isArray(hit._alignmentInsertions)
-          ? hit._alignmentInsertions.filter((insertion) => (
-            insertion.boundary >= clipOffset
-            && (insertion.boundary < clipOffset + (visEnd - visStart)
-              || (insertion.boundary === hit.end - hit.start && visEnd === hit.end))
-          ))
-          : [];
-        // Overlap 5'-overhang. When present, drawn as a semi-transparent
-        // segment that occupies the `tail.length` char columns immediately
-        // 5′ of the binding (forward: left; reverse: right) so two internal
-        // overlap-PCR primers visibly cross the boundary. Empty/absent →
-        // nothing extra, identical to the prior render.
-        const tail = hit._oligoStatus === 'ok' ? tailOf(hit) : "";
-        const tailLen = tail.length;
-        const hasTail = tailLen > 0;
-        const tailW = tailLen * charPx;
-        // V-tailwrap (24.05.2026, Игорь «хвосты праймеров не переносятся на
-        // другую строку») — those tail columns can land on a NEIGHBOURING
-        // wrapped line. Draw the tail INLINE (glued to the binding arrow, as
-        // before) only when it fits wholly on the binding's own line, or
-        // sticks past an absolute plasmid end into the margin. Otherwise emit
-        // a SEPARATE, per-line-clipped tail segment (`sepTail`) on whichever
-        // line actually holds its columns. On a circular wrap-bridge row we
-        // keep the original draw-at-the-5′-fragment behaviour untouched.
-        let inlineTail;
-        let sepTail = null;
-        // On a CIRCULAR molecule a 5′-tail can run off a sequence END and wrap to
-        // the OTHER end (Игорь 25.06 «праймеры кольцевания должны показывать как
-        // хвосты ложатся на цепь»). `fullSeq` is the whole molecule, so `seqLen`
-        // is the wrap modulus. Detect it so the tail is drawn at its wrapped
-        // positions across the origin — not dangled into the static side margin.
-        const tailWrapsOrigin = circular && hasTail && seqLen > 0
-          && (isFwd ? (hit.start - tailLen < 0) : (hit.end + tailLen > seqLen));
-        if (hasWrap) {
-          // Wrap-bridge row: a closure / self-closure primer binds near the start
-          // (its tail lies just BEFORE the ▶1 divider — the END of the molecule) or
-          // near the end (tail just AFTER the divider). Map each tail base to its real
-          // render column through the wrap-bridge coord system so the tail LANDS on
-          // the strand across the origin, instead of the static off-edge stub (Игорь
-          // 25.06 «хвосты уходят в сторону»). Never the inline stub here.
-          inlineTail = false;
-          const holds5p = isFwd ? hit._visStart === hit.start : hit._visEnd === hit.end;
-          if (hasTail && holds5p && seqLength > 0) {
-            const colForPos = (pp) => {
-              if (pp >= lineStart && pp < seqLength) return pp - lineStart; // real half (colBase 0)
-              if (pp >= 0 && pp < wrapWidthChars) return wrapAt + pp; // wrap half (past ▶1)
-              return null; // off this line
-            };
-            const vis = [];
-            for (let j = 0; j < tailLen; j += 1) {
-              const raw = isFwd ? (hit.start - tailLen + j) : (hit.end + j);
-              const pp = (((raw % seqLength) + seqLength) % seqLength);
-              const c = colForPos(pp);
-              if (c != null) vis.push({ c, ch: tail[j] });
-            }
-            if (vis.length > 0) {
-              let lo = vis[0].c;
-              let hi = vis[0].c;
-              for (const v of vis) { if (v.c < lo) lo = v.c; if (v.c > hi) hi = v.c; }
-              sepTail = {
-                x: (labelChars + lo) * charPx,
-                w: (hi - lo + 1) * charPx,
-                bases: showLetters ? vis.map((v) => v.ch).join("") : "",
-              };
-            }
-          }
-        } else if (tailWrapsOrigin) {
-          // Wrapped closure tail on a normal / wrap-context row: map each tail base
-          // to its real position (mod molecule length) and draw the run that lands
-          // on THIS line, so the tail reads continuous across the ▶1 origin — the
-          // forward closure tail surfaces at the molecule END (shown on the leading
-          // wrap-context row), the reverse one at the START (line 0).
-          inlineTail = false;
-          const vis = [];
-          for (let j = 0; j < tailLen; j += 1) {
-            const raw = isFwd ? (hit.start - tailLen + j) : (hit.end + j);
-            const pp = (((raw % seqLen) + seqLen) % seqLen);
-            if (pp >= lineStart && pp < lineEnd) vis.push({ c: pp - lineStart, ch: tail[j] });
-          }
-          if (vis.length > 0) {
-            vis.sort((a, b) => a.c - b.c);
-            const lo = vis[0].c;
-            const hi = vis[vis.length - 1].c;
-            sepTail = {
-              x: (labelChars + lo) * charPx,
-              w: (hi - lo + 1) * charPx,
-              bases: showLetters ? vis.map((v) => v.ch).join("") : "",
-            };
-          }
-        } else {
-          const fivePrimeOnLine = isFwd
-            ? (hit.start >= lineStart && hit.start < lineEnd)
-            : (hit.end > lineStart && hit.end <= lineEnd);
-          // A tail running off a sequence END belongs in the margin for a LINEAR
-          // molecule (a real 5′ overhang sticking out). Circular off-end tails are
-          // handled by the `tailWrapsOrigin` branch above, so this stays as before.
-          const tailFits = isFwd
-            ? ((hit.start - tailLen) >= lineStart || lineStart === 0)
-            : ((hit.end + tailLen) <= lineEnd || lineEnd === seqLen);
-          inlineTail = hasTail && bindingVisible && fivePrimeOnLine && tailFits;
-          if (hasTail && !inlineTail) {
-            const tLo = isFwd ? Math.max(0, hit.start - tailLen) : hit.end;
-            const tHi = isFwd ? hit.start : Math.min(seqLen, hit.end + tailLen);
-            const vLo = Math.max(tLo, lineStart);
-            const vHi = Math.min(tHi, lineEnd);
-            if (vHi > vLo) {
-              // tail char i sits at column (start − tailLen + i) forward /
-              // (end + i) reverse → slice the bases visible on THIS line.
-              const from = isFwd ? vLo - (hit.start - tailLen) : vLo - hit.end;
-              const to = isFwd ? vHi - (hit.start - tailLen) : vHi - hit.end;
-              sepTail = {
-                x: (labelChars + (vLo - lineStart)) * charPx,
-                w: (vHi - vLo) * charPx,
-                bases: showLetters ? tail.slice(from, to) : "",
-              };
-            }
-          }
-        }
-        // Only widen the binding's hit-target / halo by the tail when the
-        // tail is actually drawn INSIDE this binding group.
-        const groupTailW = inlineTail ? tailW : 0;
-        // Name label sits at the far end on the RIGHT. Forward: right of the
-        // arrowhead (its tail is on the LEFT, no clash). Reverse: an inline
-        // 5'-tail sits on the RIGHT [W, W+tailW] — so the label must clear it.
-        const labelX = isFwd
-          ? W + HEAD + 4
-          : (inlineTail ? W + tailW + 4 : W + 4);
+        // The HEAD footprint belongs only to the side that actually has the
+        // point — on a blunt wrap-edge fragment it would otherwise stick ~6 px
+        // past the край.
+        const {
+          inlineTail, separateTail: sepTail, tailWidth: tailW, tailX, tailBases,
+        } = tailProjection;
+        const insertionBands = (hitItem.insertionPlacements || []).map((entry, index) => ({
+          lane: entry.tier === 1
+            ? 'outer'
+            : (entry.tier === 2 ? 'far-outer' : `outer-${entry.tier}`),
+          y: placement.insertionYs[index],
+          spans: [entry.span],
+        }));
+        const interactiveBands = [
+          ...insertionBands,
+          { lane: 'outer', y: outerY, spans: hitItem.outerBaseSpans || [] },
+          { lane: 'tail', y: tailY, spans: hitItem.tailSpans },
+          { lane: 'template', y: templateY, spans: hitItem.templateSpans },
+        ].filter(({ y, spans }) => Number.isFinite(y) && spans.length > 0);
 
         return (
           <Fragment key={`${hit._occKey || hit.name || idx}-${hit._segIndex ?? 0}-${hit.start}-${hit._seg}`}>
@@ -488,200 +536,103 @@ function PrimerTrack({
                 data-primer-evidence={hit._evidence || undefined}
                 data-primer-visibility={hit._visibility || undefined}
                 data-primer-name={hit.name || ""}
-                data-primer-occurrence-key={hit._occKey || undefined}
+                data-primer-occurrence-key={hit._occKey || key}
                 data-primer-strand={hit._strandName || undefined}
                 data-primer-span={`${hit.start}-${hit.end}`}
                 data-primer-wraps={hit._wraps ? "true" : undefined}
                 data-primer-direction={hit.direction || ""}
                 data-primer-oligo-status={hit._oligoStatus || undefined}
+                data-primer-annealing-status={hit._annealingStatus || undefined}
+                data-primer-three-prime-match={hit._threePrimeMatchLength}
+                data-primer-detached={hit._annealingStatus === 'non-annealing' ? 'true' : undefined}
                 data-primer-line-start={lineStart}
                 data-primer-key={key}
+                data-primer-interactive="true"
                 data-selected={selected ? "true" : "false"}
-                transform={`translate(${xLeft}, ${yTop})`}
-                onClick={hasClick ? (e) => { e.stopPropagation(); onPrimerClick(key, hit); } : undefined}
-                onDoubleClick={hasDbl ? (e) => { e.stopPropagation(); onPrimerDoubleClick(hit); } : undefined}
+                data-expanded={expanded ? "true" : "false"}
+                transform={`translate(${xLeft}, 0)`}
+                onClick={hasClick ? (e) => {
+                  e.stopPropagation();
+                  e.currentTarget.focus();
+                  if (e.detail > 1) return;
+                  onPrimerClick(key, hit, {
+                    additive: e.ctrlKey || e.metaKey,
+                    source: 'pointer',
+                  });
+                } : undefined}
+                onDoubleClick={hasDbl ? (e) => {
+                  e.stopPropagation();
+                  e.currentTarget.focus();
+                  onPrimerDoubleClick(hit);
+                } : undefined}
+                onKeyDown={activateByKeyboard}
+                role={clickable ? 'button' : undefined}
+                tabIndex={clickable ? 0 : undefined}
+                aria-label={clickable ? accessibleName : undefined}
+                aria-expanded={hasClick ? expanded : undefined}
                 style={clickable ? { cursor: "pointer", pointerEvents: "auto" } : undefined}
               >
-                {/* Invisible full-area hit target (Игорь 18.05.2026 «клики
-                    на праймерах не работают»): an arrow <path fill="none">
-                    in OUTLINE style only hit-tests on its hairline stroke,
-                    and the inscribed bases text shouldn't swallow clicks —
-                    a transparent rect (fill:transparent IS hit-tested,
-                    unlike fill:none) makes the whole primer box clickable
-                    for both single- and double-click, any primerStyle. */}
-                {clickable && (
-                  <rect
-                    data-primer-hit="true"
-                    x={isFwd ? -HEAD - 2 - groupTailW : -headExt - 2}
-                    y={-2}
-                    width={W + HEAD + headExt + 4 + groupTailW}
-                    height={ARROW_H + 4}
-                    fill="transparent"
+                {/* Outline shapes need a filled hit surface, but ownership is
+                    lane-local: never bridge empty vertical space between an
+                    outer tail/mismatch and a different primer's binding. */}
+                {clickable && interactiveBands.flatMap(({ lane, y, spans }) => (
+                  spans.map(([spanStart, spanEnd], spanIndex) => (
+                    <rect
+                      key={`${lane}-${spanIndex}-${spanStart}`}
+                      data-primer-hit="true"
+                      data-primer-hit-lane={lane}
+                      data-primer-key={key}
+                      data-primer-occurrence-key={hit._occKey || key}
+                      x={spanStart - xLeft - 2}
+                      y={y - 1}
+                      width={spanEnd - spanStart + 4}
+                      height={ARROW_H + 2}
+                      fill="transparent"
+                    />
+                  ))
+                ))}
+                {tailProjection.promotedTail && (
+                  <g
+                    data-testid="sequence-view-primer-tail-wrap"
+                    data-primer-projection-marker="promoted"
+                    data-primer-key={key}
+                    data-primer-occurrence-key={hit._occKey || key}
+                    transform={`translate(${tailProjection.promotedTail.x}, ${tailY ?? 0})`}
+                    aria-hidden="true"
+                    style={{ pointerEvents: 'none' }}
                   />
                 )}
-                {/* Selected: a soft colour halo + a bold ring so a clicked
-                    primer reads UNMISTAKABLY (Игорь 18.05.2026 — «при
-                    клике должен явно выделяться»). */}
-                {selected && (
-                  <>
-                    <rect
-                      data-primer-selection-halo="true"
-                      x={isFwd ? -HEAD - 4 - groupTailW : -headExt - 4}
-                      y={-4}
-                      width={W + HEAD + headExt + 8 + groupTailW}
-                      height={ARROW_H + 8}
-                      rx={5}
-                      fill={color}
-                      opacity={0.18}
-                    />
-                    <rect
-                      x={isFwd ? -HEAD - 2 - groupTailW : -headExt - 2}
-                      y={-2}
-                      width={W + HEAD + headExt + 4 + groupTailW}
-                      height={ARROW_H + 4}
-                      rx={4}
-                      fill="none"
-                      stroke={color}
-                      strokeWidth={2.5}
-                      opacity={1}
-                    />
-                  </>
-                )}
-                <path
-                  data-primer-arrow={isFwd ? "forward" : "reverse"}
-                  d={arrowPath}
-                  fill={fill}
-                  stroke={color}
-                  strokeWidth={filled ? (selected ? 1.5 : 0.5) : (selected ? 2 : 1)}
-                  opacity={filled ? (selected ? 1 : 0.95) : 1}
+                <PrimerStepGlyph
+                  isFwd={isFwd}
+                  filled={filled}
+                  selected={selected}
+                  expanded={expanded}
+                  color={color}
+                  width={W}
+                  headHere={headHere}
+                  baseFont={baseFont}
+                  glyphs={alignmentGlyphs}
+                  fallbackBases={fallbackBases}
+                  visibleInsertions={visibleInsertions}
+                  clipOffset={clipOffset}
+                  charPx={charPx}
+                  inlineTail={inlineTail}
+                  tailWidth={tailW}
+                  tailX={tailX}
+                  tail={tailBases}
+                  showLetters={showLetters}
+                  labelX={labelX}
+                  labelWidth={labelWidth}
+                  labelText={labelText}
+                  annealingStatus={hit._annealingStatus}
+                  visStart={visStart}
+                  templateY={templateY}
+                  tailY={tailY}
+                  outerY={outerY}
+                  labelY={labelY}
+                  insertionYs={placement.insertionYs}
+                  insertionTiers={placement.insertionTiers}
                 />
-                {visibleInsertions.map((insertion, insertionIndex) => {
-                  const insertionWidth = Math.max(charPx, insertion.bases.length * charPx);
-                  const boundaryX = (insertion.boundary - clipOffset) * charPx;
-                  return (
-                    <g
-                      key={`${insertion.boundary}-${insertionIndex}`}
-                      data-testid="sequence-view-primer-insertion"
-                      data-primer-alignment-op="I"
-                      data-primer-insertion-count={insertion.bases.length}
-                      transform={`translate(${boundaryX}, 0)`}
-                      style={{ pointerEvents: "none" }}
-                    >
-                      <rect
-                        x={-insertionWidth / 2}
-                        y={-baseFont - 5}
-                        width={insertionWidth}
-                        height={baseFont + 3}
-                        rx={2}
-                        fill="var(--surface-1)"
-                        stroke="var(--warning-fg)"
-                        strokeWidth={1}
-                      />
-                      <text
-                        x={0}
-                        y={-4}
-                        fontSize={baseFont}
-                        fontWeight={700}
-                        fill="var(--warning-fg)"
-                        textAnchor="middle"
-                        style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)" }}
-                      >
-                        {insertion.bases}
-                      </text>
-                    </g>
-                  );
-                })}
-                {/* Inline overlap-tail — not on the template, so styled apart
-                    from the solid binding arrow: same colour, low fill-opacity
-                    + a thin outline, no arrowhead. Forward: left of binding
-                    (5′); reverse: right of binding (5′). */}
-                {inlineTail && (
-                  <rect
-                    data-testid="sequence-view-primer-tail"
-                    data-primer-tail="true"
-                    data-primer-tail-direction={isFwd ? "forward" : "reverse"}
-                    x={isFwd ? -tailW : W}
-                    y={0}
-                    width={tailW}
-                    height={ARROW_H}
-                    fill={color}
-                    fillOpacity={0.35}
-                    stroke={color}
-                    strokeWidth={0.5}
-                  />
-                )}
-                {inlineTail && showLetters && (
-                  <text
-                    data-testid="sequence-view-primer-tail-bases"
-                    x={isFwd ? -tailW : W}
-                    y={ARROW_H / 2}
-                    fontSize={baseFont}
-                    fontWeight={600}
-                    fill={color}
-                    textAnchor="start"
-                    dominantBaseline="central"
-                    style={{
-                      fontFamily: "var(--font-mono, ui-monospace, monospace)",
-                      letterSpacing: 0,
-                    }}
-                    textLength={tailW}
-                    lengthAdjust="spacingAndGlyphs"
-                  >
-                    {tail}
-                  </text>
-                )}
-                {/* binding bases inscribed INSIDE the arrow, grid-aligned
-                    to the char columns (Игорь 18.05 — «последовательность
-                    должна быть вписана»). */}
-                {bases && (
-                  <text
-                    data-testid="sequence-view-primer-bases"
-                    x={0}
-                    y={ARROW_H / 2}
-                    fontSize={baseFont}
-                    fontWeight={600}
-                    fill={filled ? "#fff" : color}
-                    textAnchor="start"
-                    dominantBaseline="central"
-                    style={{
-                      fontFamily: "var(--font-mono, ui-monospace, monospace)",
-                      letterSpacing: 0,
-                    }}
-                    textLength={W}
-                    lengthAdjust="spacingAndGlyphs"
-                  >
-                    {baseGlyphs.map((glyph, baseIndex) => {
-                      const base = glyph?.base || '';
-                      const coord = visStart + baseIndex;
-                      const deletion = glyph?.op === 'D';
-                      const mismatch = glyph?.op === 'X'
-                        || (!deletion && base !== upper[coord]);
-                      return (
-                        <tspan
-                          key={`${coord}-${baseIndex}`}
-                          data-testid={deletion
-                            ? "sequence-view-primer-base-deletion"
-                            : (mismatch ? "sequence-view-primer-base-mismatch" : undefined)}
-                          data-primer-base-mismatch={mismatch ? "true" : undefined}
-                          data-primer-alignment-op={glyph?.op || undefined}
-                          data-primer-template-coordinate={coord}
-                          fill={mismatch || deletion ? "var(--warning-fg)" : undefined}
-                        >{base}</tspan>
-                      );
-                    })}
-                  </text>
-                )}
-                <text
-                  data-testid="sequence-view-primer-label"
-                  x={labelX}
-                  y={ARROW_H / 2}
-                  fontSize={8}
-                  fill={color}
-                  dominantBaseline="central"
-                  style={{ fontFamily: "inherit" }}
-                >
-                  {labelText}
-                </text>
               </g>
             )}
             {/* Wrapped 5′-tail — the portion of the overhang whose columns
@@ -693,45 +644,75 @@ function PrimerTrack({
                 data-testid="sequence-view-primer-tail-wrap"
                 data-primer-name={hit.name || ""}
                 data-primer-direction={hit.direction || ""}
+                data-primer-occurrence-key={hit._occKey || key}
                 data-primer-line-start={lineStart}
                 data-primer-key={key}
-                transform={`translate(${sepTail.x}, ${yTop})`}
-                onClick={hasClick ? (e) => { e.stopPropagation(); onPrimerClick(key, hit); } : undefined}
-                onDoubleClick={hasDbl ? (e) => { e.stopPropagation(); onPrimerDoubleClick(hit); } : undefined}
+                data-primer-interactive="true"
+                data-selected={selected ? "true" : "false"}
+                data-expanded={expanded ? "true" : "false"}
+                transform={`translate(${sepTail.x}, ${tailY ?? 0})`}
+                onClick={hasClick ? (e) => {
+                  e.stopPropagation();
+                  e.currentTarget.focus();
+                  if (e.detail > 1) return;
+                  onPrimerClick(key, hit, {
+                    additive: e.ctrlKey || e.metaKey,
+                    source: 'pointer',
+                  });
+                } : undefined}
+                onDoubleClick={hasDbl ? (e) => {
+                  e.stopPropagation();
+                  e.currentTarget.focus();
+                  onPrimerDoubleClick(hit);
+                } : undefined}
+                onKeyDown={activateByKeyboard}
+                role={clickable ? 'button' : undefined}
+                tabIndex={clickable ? 0 : undefined}
+                aria-label={clickable ? accessibleName : undefined}
+                aria-expanded={hasClick ? expanded : undefined}
                 style={clickable ? { cursor: "pointer", pointerEvents: "auto" } : undefined}
               >
-                {selected && (
+                {expanded ? (
                   <rect
-                    x={-2}
-                    y={-2}
-                    width={sepTail.w + 4}
-                    height={ARROW_H + 4}
-                    rx={4}
-                    fill="none"
+                    data-testid="sequence-view-primer-tail"
+                    data-primer-tail-direction={isFwd ? "forward" : "reverse"}
+                    data-primer-lane="tail"
+                    data-primer-lane-y={tailY ?? 0}
+                    data-primer-focus-perimeter="true"
+                    x={0}
+                    y={0}
+                    width={sepTail.w}
+                    height={ARROW_H}
+                    fill={color}
+                    fillOpacity={0.24}
                     stroke={color}
-                    strokeWidth={2.5}
+                    strokeWidth={1}
+                  />
+                ) : (
+                  <line
+                    data-testid="sequence-view-primer-tail"
+                    data-primer-tail-direction={isFwd ? "forward" : "reverse"}
+                    data-primer-lane="tail"
+                    data-primer-lane-y={tailY ?? 0}
+                    data-primer-focus-perimeter="true"
+                    x1={0}
+                    x2={sepTail.w}
+                    y1={ARROW_H / 2}
+                    y2={ARROW_H / 2}
+                    stroke={color}
+                    strokeWidth={2}
+                    strokeOpacity={0.72}
+                    strokeLinecap="round"
                   />
                 )}
-                <rect
-                  data-testid="sequence-view-primer-tail"
-                  data-primer-tail-direction={isFwd ? "forward" : "reverse"}
-                  x={0}
-                  y={0}
-                  width={sepTail.w}
-                  height={ARROW_H}
-                  fill={color}
-                  fillOpacity={0.35}
-                  stroke={color}
-                  strokeWidth={0.5}
-                />
-                {sepTail.bases && (
+                {expanded && sepTail.bases && (
                   <text
                     data-testid="sequence-view-primer-tail-bases"
                     x={0}
                     y={ARROW_H / 2}
                     fontSize={baseFont}
                     fontWeight={600}
-                    fill={color}
+                    fill="var(--text-primary)"
                     textAnchor="start"
                     dominantBaseline="central"
                     style={{

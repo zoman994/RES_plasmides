@@ -29,14 +29,39 @@ vi.mock('../../../lib/search.worker.js?worker', () => ({
 // The real inspector mounts SequenceView + the Annotator under lazy tabs. What this file needs from
 // it is the one prop that writes the transient buffer.
 vi.mock('../inspector/LibrarySingleInspector', () => ({
-  default: ({ item, onUpdateEdits }) => (
-    <div data-testid="inspector-seam" data-item-id={item?.id || ''}>
+  default: ({ item, edits, onUpdateEdits }) => (
+    <div
+      data-testid="inspector-seam"
+      data-item-id={item?.id || ''}
+      data-edited-topology={edits?.editedTopology || ''}
+    >
       <button
         type="button"
         data-testid="make-transient-edit"
         onClick={() => onUpdateEdits({ editedSequence: 'AAAACCCCGGGG', editLog: [{ op: 'insert' }] })}
       >
         edit
+      </button>
+      <button
+        type="button"
+        data-testid="restore-saved-buffer"
+        onClick={() => onUpdateEdits({
+          editedSequence: item.sequence,
+          editedTopology: item.topology,
+          editLog: [],
+        })}
+      >
+        restore
+      </button>
+      <button
+        type="button"
+        data-testid="make-topology-edit"
+        onClick={() => onUpdateEdits({
+          editedTopology: item.topology === 'circular' ? 'linear' : 'circular',
+          editLog: [{ kind: 'topology', from: item.topology, to: item.topology === 'circular' ? 'linear' : 'circular' }],
+        })}
+      >
+        topology
       </button>
     </div>
   ),
@@ -176,5 +201,41 @@ describe('U5-B — a refused dirty guard leaves nothing behind', () => {
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(openedEntryId()).toBe('b');
     expect(useStore.getState().searchReturnFrame).toBeTruthy();
+  });
+
+  it('does not ask after undo restored saved sequence/topology even if buffer keys remain', async () => {
+    vi.useFakeTimers();
+    render(<LibraryWorkspace />);
+    act(() => { fireEvent.click(screen.getByTestId('tree-item-loose-a')); });
+    await flush();
+    act(() => { fireEvent.click(screen.getByTestId('restore-saved-buffer')); });
+    await flush();
+    expect(useStore.getState().bufferGenerations?.a).toBeGreaterThan(0);
+
+    await typeQuery(`seq:${QUERY}`);
+    const other = screen.getAllByRole('option').find((r) => /beta-dirty/.test(r.textContent));
+    act(() => { fireEvent.click(other); });
+    await flush();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(openedEntryId()).toBe('b');
+  });
+
+  it('treats a topology-only divergence as unsaved and guards navigation', async () => {
+    vi.useFakeTimers();
+    render(<LibraryWorkspace />);
+    act(() => { fireEvent.click(screen.getByTestId('tree-item-loose-a')); });
+    await flush();
+    act(() => { fireEvent.click(screen.getByTestId('make-topology-edit')); });
+    await flush();
+
+    await typeQuery(`seq:${QUERY}`);
+    const other = screen.getAllByRole('option').find((r) => /beta-dirty/.test(r.textContent));
+    act(() => { fireEvent.click(other); });
+    await flush();
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(openedEntryId()).toBe('a');
+    expect(screen.getByTestId('inspector-seam').getAttribute('data-edited-topology')).toBe('circular');
   });
 });

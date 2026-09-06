@@ -251,6 +251,19 @@ export const IMPORTER_STRINGS = {
   featureEditorCoordsLabel: 'Coordinates',
   featureEditorCoordsStart: 'Start',
   featureEditorCoordsEnd: 'End',
+  // B1-ui — canonical compound / origin-crossing location editor. Ordered
+  // 1-based inclusive segment rows; a wrap is valid only on a circular molecule.
+  featureEditorLocationAddSegment: '+ segment',
+  featureEditorLocationRemoveSegmentAria: 'Remove segment',
+  featureEditorLocationSegmentLabel: (n) => `Segment ${n}`,
+  featureEditorLocationErrorLinearWrap:
+    'An origin crossing needs a circular molecule — reorder the segments or switch topology.',
+  featureEditorLocationErrorInvalid:
+    'Check the segments — each start must be below its end and within the sequence.',
+  featureEditorCompoundOpsDisabled:
+    'This feature has several segments. Edit its segments directly; scalar merge, split and intron shortcuts are disabled.',
+  featureEditorCompoundChildCoordsReadOnly:
+    'Several segments — open this sub-feature directly to edit its coordinates.',
   featureEditorStrandLabel: 'Strand',
   featureEditorStrandFwd: '+ (forward)',
   featureEditorStrandRev: '− (reverse)',
@@ -258,7 +271,6 @@ export const IMPORTER_STRINGS = {
   featureEditorSplitHint: 'Add a sub-feature inside this region (e.g. exon, intron, signal peptide). Both halves stay one parent feature.',
   featureEditorSubfeaturesLabel: 'Sub-features',
   featureEditorSubfeatureNamePlaceholder: 'Sub-feature name',
-  featureEditorSubfeatureDelete: '✕',
   featureEditorNoSubfeatures: 'No sub-features yet — click Split to add one',
   featureEditorMergeLabel: 'Merge with neighbour',
   featureEditorMergeNone: 'No adjacent feature available',

@@ -30,13 +30,62 @@ describe('useAnnotationUndoRedo — sequence-aware', () => {
   it('annotation-only snapshot (no sequence) restores annotations only', () => {
     const onUpdateEdits = vi.fn();
     const { result } = renderHook(() => useAnnotationUndoRedo({
-      itemKey: 'k1', currentAnnotations: [{ id: 'a' }], currentSequence: 'ATGC', onUpdateEdits,
+      itemKey: 'k1',
+      currentAnnotations: [{ id: 'a' }],
+      currentSequence: 'ATGC',
+      currentTopology: 'linear',
+      currentEditLog: [{ kind: 'topology', from: 'circular', to: 'linear' }],
+      onUpdateEdits,
     }));
     act(() => result.current.pushSnapshot([])); // no beforeSequence
     act(() => result.current.undo());
     expect(onUpdateEdits).toHaveBeenCalledWith({ editedAnnotations: [] });
     // editedSequence must NOT be in the patch
     expect(onUpdateEdits.mock.calls[0][0]).not.toHaveProperty('editedSequence');
+    expect(onUpdateEdits.mock.calls[0][0]).not.toHaveProperty('editedTopology');
+    expect(onUpdateEdits.mock.calls[0][0]).not.toHaveProperty('editLog');
+  });
+
+  it('undo/redo restores one coherent sequence + annotations + topology + editLog snapshot', () => {
+    const onUpdateEdits = vi.fn();
+    const post = {
+      anns: [{ id: 'shifted' }],
+      seq: 'ATGCTA',
+      topology: 'linear',
+      log: [
+        { kind: 'topology', from: 'circular', to: 'linear' },
+        { kind: 'insert', pos: 5, text: 'A' },
+      ],
+    };
+    const { result, rerender } = renderHook(
+      ({ state }) => useAnnotationUndoRedo({
+        itemKey: 'k1',
+        currentAnnotations: state.anns,
+        currentSequence: state.seq,
+        currentTopology: state.topology,
+        currentEditLog: state.log,
+        onUpdateEdits,
+      }),
+      { initialProps: { state: post } },
+    );
+
+    act(() => result.current.pushSnapshot([{ id: 'saved' }], 'ATGCT', 'circular', []));
+    act(() => result.current.undo());
+    expect(onUpdateEdits).toHaveBeenLastCalledWith({
+      editedAnnotations: [{ id: 'saved' }],
+      editedSequence: 'ATGCT',
+      editedTopology: 'circular',
+      editLog: [],
+    });
+
+    rerender({ state: { anns: [{ id: 'saved' }], seq: 'ATGCT', topology: 'circular', log: [] } });
+    act(() => result.current.redo());
+    expect(onUpdateEdits).toHaveBeenLastCalledWith({
+      editedAnnotations: post.anns,
+      editedSequence: post.seq,
+      editedTopology: post.topology,
+      editLog: post.log,
+    });
   });
 
   it('redo re-applies the post-edit sequence', () => {

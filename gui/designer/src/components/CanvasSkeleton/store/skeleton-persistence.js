@@ -37,6 +37,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { normalizeJunction } from './selectors-junction';
 import { generatePieceColor, autoPieceName } from '../lib/piece-model';
 import { segmentToPieceData } from '../lib/segment-to-piece-adapter';
+import { canonicalizeAssemblyPrimerRecords } from '../lib/junction-config-finalizer';
 
 const DB_NAME = 'bodge-skeleton';
 const STORE_NAME = 'state';
@@ -46,7 +47,9 @@ const STATE_KEY = 'canvas-state-v1';
 // op.isOpGroup, primer.autoMode/binding/tail. Additive + idempotent.
 // v12 (Node A / DEC-PRIMER-RECORD-WIPE-01): assembly-primer record unified
 // to one canonical shape; pre-canon persisted `assemblyDraftPrimers` wiped.
-export const SCHEMA_VERSION_CURRENT = 12;
+// v13 (P10): proven assembly primers gain persistent molecule-scoped sites;
+// the one known v12 tail-fold corruption is repaired fail-closed.
+export const SCHEMA_VERSION_CURRENT = 13;
 
 /**
  * stateKeyFor — V65 per-project keying. A null/undefined projectId maps
@@ -373,6 +376,10 @@ const MIGRATIONS = {
     // auto-primers regenerate when op-groups recompute.
     if (!state || typeof state !== 'object') return null;
     return { ...state, assemblyDraftPrimers: {} };
+  },
+  12: function migrate_v12_to_v13(state) {
+    if (!state || typeof state !== 'object') return null;
+    return canonicalizeAssemblyPrimerRecords(state);
   },
 };
 

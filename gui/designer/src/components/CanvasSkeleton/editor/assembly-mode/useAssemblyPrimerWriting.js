@@ -13,6 +13,10 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useHotkey } from '../../../../lib/hotkeys';
 import { useStore } from '../../../../store';
 import { physicalIdentityKey } from '../../../../lib/primer-identity';
+import {
+  assemblyPrimerSiteRepairPatch,
+  canonicalAssemblyPrimerForDocument,
+} from '../../lib/assembly-primer-site';
 
 const EMPTY = [];
 
@@ -21,17 +25,50 @@ function cleanOligo(s) {
   return typeof s === 'string' ? s.replace(/[^A-Za-z]/g, '').toUpperCase() : '';
 }
 
+function siteIdentityKey(site) {
+  const target = site?.target;
+  const segments = site?.location?.segments;
+  if (!target?.entryId || !target?.resourceHash || !Array.isArray(segments)
+    || segments.length === 0 || !Number.isFinite(site?.strand)) return null;
+  const span = segments.map((segment) => `${segment?.start}-${segment?.end}`).join(',');
+  return [
+    target.entryId, target.resourceHash, target.topology || 'linear',
+    site.location.kind || '', span, site.strand,
+  ].join('|');
+}
+
+function mergeSites(existingSites, incomingSites) {
+  const merged = Array.isArray(existingSites) ? existingSites.slice() : [];
+  const byIdentity = new Map();
+  merged.forEach((site, index) => {
+    const key = siteIdentityKey(site);
+    if (key && !byIdentity.has(key)) byIdentity.set(key, index);
+  });
+  for (const site of Array.isArray(incomingSites) ? incomingSites : []) {
+    const key = siteIdentityKey(site);
+    const index = key ? byIdentity.get(key) : -1;
+    if (index != null && index >= 0) {
+      merged[index] = { ...merged[index], ...site };
+    } else {
+      if (key) byIdentity.set(key, merged.length);
+      merged.push(site);
+    }
+  }
+  return merged;
+}
+
 // The canonical pool write for a draft primer. The id is deterministic, so a
 // re-write is an upsert of the SAME row — an edit updates the row in place.
-function buildPoolWrite(p, draftId, projectId) {
+function buildPoolWrite(p, draftId, projectId, existingRow = null) {
   return {
     primer: {
-      id: `asm-${draftId}-${p.id}`,
+      id: existingRow?.id || `asm-${draftId}-${p.id}`,
       name: p.label || p.name || 'primer',
       sequence: p.sequence || p.bindingSequence,
       bindingSequence: p.bindingSequence || null,
       bindingModel: p.bindingModel === 'aligned-v1' ? 'aligned-v1' : null,
       tail: typeof p.tail === 'string' ? p.tail : (p.tailSequence || ''),
+      sites: mergeSites(existingRow?.sites, p.sites),
       direction: p.direction || null,
       // The 5′ tail is an overhang, not an annealing/Tm input — carry the
       // record's binding-derived Tm, never a tail-inflated one.
@@ -40,26 +77,29 @@ function buildPoolWrite(p, draftId, projectId) {
     },
     projectId: projectId ?? null,
     status: 'designed',
-    origin: { kind: 'assembly-derived', draftId, draftPrimerId: p.id },
+    origin: existingRow?.origin
+      || { kind: 'assembly-derived', draftId, draftPrimerId: p.id },
   };
 }
 
 // Does the pool row already reflect the draft primer's current physical split?
 // Compared on the full oligo + tail + binding + bindingModel, so a tail added
 // after the fact is re-synced while a Tm/name-only change is not churn.
-function poolRowMatchesDraft(row, p) {
-  if (cleanOligo(row.sequence) !== cleanOligo(p.sequence || p.bindingSequence)) return false;
-  const draftTail = cleanOligo(typeof p.tail === 'string' ? p.tail : p.tailSequence);
-  if (cleanOligo(row.tail) !== draftTail) return false;
-  if (cleanOligo(row.bindingSequence) !== cleanOligo(p.bindingSequence)) return false;
+function poolRowMatchesWrite(row, desired) {
+  if (cleanOligo(row.sequence) !== cleanOligo(desired.sequence || desired.bindingSequence)) return false;
+  if (cleanOligo(row.tail) !== cleanOligo(desired.tail)) return false;
+  if (cleanOligo(row.bindingSequence) !== cleanOligo(desired.bindingSequence)) return false;
   const rowModel = row.bindingModel === 'aligned-v1' ? 'aligned-v1' : null;
-  const draftModel = p.bindingModel === 'aligned-v1' ? 'aligned-v1' : null;
-  return rowModel === draftModel;
+  const draftModel = desired.bindingModel === 'aligned-v1' ? 'aligned-v1' : null;
+  const rowSites = JSON.stringify(Array.isArray(row.sites) ? row.sites : []);
+  const draftSites = JSON.stringify(Array.isArray(desired.sites) ? desired.sites : []);
+  return rowModel === draftModel && rowSites === draftSites;
 }
 
 
 export function useAssemblyPrimerWriting({
-  draftId, caretAnchor, caretPos, actions, state,
+  draftId, sequence = '', topology = 'linear', boundaries = [],
+  caretAnchor, caretPos, actions, state,
 }) {
   const primers = (state.assemblyDraftPrimers && state.assemblyDraftPrimers[draftId]) || EMPTY;
 
@@ -114,6 +154,13 @@ export function useAssemblyPrimerWriting({
   const writeReverse = useCallback(() => writeStrand('reverse'), [writeStrand]);
   useHotkey('pcr-primer-forward', writeForward);
   useHotkey('pcr-primer-reverse', writeReverse);
+
+  const canonicalPrimers = useMemo(
+    () => primers.map((primer) => canonicalAssemblyPrimerForDocument(primer, {
+      entryId: draftId, template: sequence, topology, boundaries,
+    })),
+    [boundaries, draftId, primers, sequence, topology],
+  );
 
   // ── PRIMER-LIVE-1: an assembly primer is a REAL project record ───────────
   //
@@ -180,12 +227,14 @@ export function useAssemblyPrimerWriting({
     // they came from (our own record for that primer), and by physical identity
     // (cross-draft dedup — the same oligo written in two drafts).
     const rowByDraftPrimer = new Map();
-    const knownIdentities = new Set();
+    const rowByPhysicalIdentity = new Map();
     for (const row of Object.values(primersById || {})) {
       if (row?.origin?.kind !== 'assembly-derived') continue;
       if (row.origin.draftPrimerId) rowByDraftPrimer.set(row.origin.draftPrimerId, row);
       const identity = physicalIdentityKey(row);
-      if (identity) knownIdentities.add(identity);
+      if (identity && !rowByPhysicalIdentity.has(identity)) {
+        rowByPhysicalIdentity.set(identity, row);
+      }
     }
 
     // Schedule a pool write for a draft primer. If a write is already in
@@ -202,8 +251,8 @@ export function useAssemblyPrimerWriting({
       p.finally(() => drain(primerId));
     }
 
-    for (const p of primers) {
-      if (!p || !p.id) continue;
+    for (const p of canonicalPrimers) {
+      if (!p || !p.id || p.draftId !== draftId) continue;
       const seq = p.sequence || p.bindingSequence;
       if (!seq) continue;
       const identity = physicalIdentityKey({ sequence: seq, modifications: p.modifications });
@@ -215,39 +264,42 @@ export function useAssemblyPrimerWriting({
         // draft id, so the pool row must be UPDATED IN PLACE — the deterministic
         // id makes the write an upsert of the SAME row, not a stale duplicate. An
         // unrelated change (Tm, name) leaves it untouched.
-        if (!poolRowMatchesDraft(existingRow, p)) {
-          schedulePoolWrite(p.id, buildPoolWrite(p, draftId, currentProjectId));
+        const payload = buildPoolWrite(p, draftId, currentProjectId, existingRow);
+        if (!poolRowMatchesWrite(existingRow, payload.primer)) {
+          schedulePoolWrite(p.id, payload);
         }
         continue;
       }
 
-      // No record from this draft primer yet. If a different draft primer that is
-      // the SAME physical oligo already covers it, this is an idempotent recompute
-      // (or a dedup) — don't add a second copy.
-      if (identity && knownIdentities.has(identity)) continue;
-      schedulePoolWrite(p.id, buildPoolWrite(p, draftId, currentProjectId));
+      // A second draft can describe the same physical oligo at another landing.
+      // Upsert that physical row and union its sites instead of either duplicating
+      // the molecule or discarding the additional landing.
+      const physicalRow = identity ? rowByPhysicalIdentity.get(identity) : null;
+      const payload = buildPoolWrite(p, draftId, currentProjectId, physicalRow);
+      if (physicalRow && poolRowMatchesWrite(physicalRow, payload.primer)) continue;
+      schedulePoolWrite(p.id, payload);
     }
-  }, [draftId, primers, primersById, addPrimerToPool, currentProjectId]);
+  }, [addPrimerToPool, canonicalPrimers, currentProjectId, draftId, primersById]);
 
-  const viewerPrimers = useMemo(() => primers.map((p) => ({
-    // id forwarded so a viewer hit identifies the primer (Del-to-delete,
-    // selection). Without it `hit.id` is undefined and removeAssemblyPrimer
-    // can't target the right record.
-    id: p.id,
-    name: p.name,
-    sequence: p.sequence,
-    bindingSequence: p.bindingSequence,
-    // Overlap 5'-overhang — forwarded so PrimerTrack draws the tail segment
-    // (without it the two internal overlap-PCR primers render butted at the
-    // boundary). Empty/absent for terminal primers → no tail drawn.
-    tail: p.tail,
-    direction: p.direction,
-    tmBinding: p.tm,
-    // PRIMER-TAIL-SAVE-1 — forward the binding model so the SequenceView editor
-    // round-trips an aligned-v1 primer (its explicit split) across a re-open.
-    bindingModel: p.bindingModel,
-    crossesBoundaries: p.crossesBoundaries,
-  })), [primers]);
+  // Old browser snapshots can carry a missing/stale target identity while the
+  // assembly record still proves its own range. Canonicalise at the assembly
+  // owner, never by weakening the shared projector's trust boundary.
+  useEffect(() => {
+    if (!draftId || typeof actions.updateAssemblyPrimer !== 'function') return;
+    for (const primer of primers) {
+      const patch = assemblyPrimerSiteRepairPatch(primer, {
+        entryId: draftId, template: sequence, topology, boundaries,
+      });
+      if (patch) actions.updateAssemblyPrimer(draftId, primer.id, patch);
+    }
+  }, [actions, boundaries, draftId, primers, sequence, topology]);
+
+  // Viewer and persisted repair consume the same canonical record during the
+  // repair render; there is no second placement or mismatch policy here.
+  const viewerPrimers = useMemo(
+    () => canonicalPrimers.map((primer) => ({ ...primer, tmBinding: primer.tm })),
+    [canonicalPrimers],
+  );
 
   return { onWritePrimer, primers: viewerPrimers, rawPrimers: primers };
 }

@@ -16,10 +16,13 @@
 import { v7 as uuidv7 } from 'uuid';
 import { reverseComplement } from '../../../sequence-utils';
 import { computeAssemblySequence, concatSegmentAnnotations } from './assembly-model';
-import { transferAnnotations } from './segment-annotation-transfer';
+import { transferAnnotationsForRanges } from './segment-annotation-transfer';
 import { applyPieceMutations } from './piece-mutations';
 import { defaultJunctionParams, inferEndRequirements } from '../canvas/junction-styles';
-import { orientFragments, reflectAnnotations, reverseComplementSegment } from './segment-overhangs';
+import {
+  orientFragments,
+  reverseComplementSegmentWithAnnotations,
+} from './segment-overhangs';
 import { RE_ENZYMES } from '../../../restriction-db';
 
 // Engine method dict → junction.kind (palette / glyph / inferEndRequirements).
@@ -288,21 +291,65 @@ export function draftFromZone(state, zone) {
     // (the old path) dropped the overhang stagger, so a reversed RE fragment's
     // recognition site at the seam vanished (Игорь «после лигирования не
     // обнаруживается сайт ApaI … он на обратной цепи теперь»). The helper preserves
-    // length and falls back to a plain RC for blunt / non-palindromic (unknown) ends.
-    const orientedSeq = isReverse
-      ? reverseComplementSegment(
-        {
-          acquisitionMethod: p.acquisitionMethod,
-          acquisitionParams: p.acquisitionParams,
-          sequence: fwdSeq,
-          reverseComplement: false,
-        },
-        RE_ENZYMES,
-      )
-      : fwdSeq;
+    // physical stagger (and therefore the actual top-strand length), falling
+    // back to a plain RC for blunt / non-palindromic (unknown) ends.
+    const originWrap = ranges.length > 1;
+    // Project against the FORWARD concatenation first. A reverse piece flips
+    // the whole stitched molecule afterwards, so both sequence and annotations
+    // become RC(B)+RC(A), never the incorrect per-range RC(A)+RC(B).
+    const forwardAnnotations = (() => {
+      if (!c) return [];
+      const grouped = new Map();
+      let offset = 0;
+      for (const rr of ranges) {
+        const cc = containers.find((x) => x.id === rr.sourceId) || c;
+        const key = cc.id || rr.sourceId || c.id;
+        if (!grouped.has(key)) grouped.set(key, { container: cc, ranges: [] });
+        grouped.get(key).ranges.push({
+          start: rr.start,
+          end: rr.end,
+          offset,
+          rc: false,
+        });
+        offset += Math.max(0, (Number(rr.end) || 0) - (Number(rr.start) || 0));
+      }
+      const out = [];
+      for (const { container, ranges: sourceRanges } of grouped.values()) {
+        out.push(...transferAnnotationsForRanges(
+          container.annotations || [],
+          sourceRanges,
+          container.id,
+          {
+            // This is a derived read-time projection, not a newly persisted
+            // biological entity. Namespace its identity by stable owners so an
+            // unrelated immutable state update cannot replace every React/link id.
+            idFactory: (source, index, attempt) => [
+              'zone-projection',
+              p.id,
+              container.id,
+              source?.id ?? 'idless',
+              index,
+              attempt,
+            ].join(':'),
+          },
+        ));
+      }
+      return out;
+    })();
+    const orientationSource = {
+      acquisitionMethod: p.acquisitionMethod,
+      acquisitionParams: p.acquisitionParams,
+      sequence: fwdSeq,
+      annotations: forwardAnnotations,
+      reverseComplement: false,
+      originWrap,
+    };
+    const oriented = isReverse
+      ? reverseComplementSegmentWithAnnotations(orientationSource, RE_ENZYMES)
+      : { sequence: fwdSeq, length: fwdSeq.length, annotations: forwardAnnotations };
     // S2 §5.4 — apply mutations to the (post-rc) top-strand so the
     // assembled view shows the edited base, not the wild-type one.
-    const seq = applyPieceMutations(orientedSeq, p.mutations);
+    const seq = applyPieceMutations(oriented.sequence, p.mutations);
     return {
       id: p.id,
       source: {
@@ -313,14 +360,14 @@ export function draftFromZone(state, zone) {
       },
       start: r.start,
       end: r.end,
-      reverseComplement: r.orientation === 'reverse',
+      reverseComplement: isReverse,
       // ORIGIN-WRAP (Игорь 07.07) — a piece built from MORE THAN ONE range crosses the
       // circular origin ([hi..len]+[0..lo]); its top strand starts at the HIGH cut, so
       // segmentOverhangs must flip which enzyme is the physical left/right end (see the
       // XOR in segment-overhangs.js). Single-range pieces stay originWrap:false → byte-
       // identical end assignment to before. Without this the inverted two-enzyme backbone
       // reported its sticky ends on the wrong side ("липкие концы теряются").
-      originWrap: ranges.length > 1,
+      originWrap,
       sequence: seq,
       length: seq.length,
       color: p.color,
@@ -341,25 +388,7 @@ export function draftFromZone(state, zone) {
       // only crafted coloredZones ever showed it.
       acquisitionMethod: p.acquisitionMethod || 'undefined',
       acquisitionParams: p.acquisitionParams || {},
-      // Inherit the source container's features clipped to this slice. Transfer
-      // PER RANGE and shift by the cumulative offset, so a WRAP fragment (two
-      // ranges through the origin) keeps its features instead of dropping them
-      // (Игорь 22.06 — coord-stitch pass). Single-range = one pass, offset 0 →
-      // byte-identical to the prior behaviour.
-      annotations: (() => {
-        if (!c) return [];
-        const out = [];
-        let offset = 0;
-        for (const rr of ranges) {
-          const cc = containers.find((x) => x.id === rr.sourceId) || c;
-          const transferred = transferAnnotations(
-            cc.annotations || [], rr.start, rr.end, rr.orientation === 'reverse', rr.sourceId,
-          );
-          for (const an of transferred) out.push({ ...an, start: an.start + offset, end: an.end + offset });
-          offset += Math.max(0, (Number(rr.end) || 0) - (Number(rr.start) || 0));
-        }
-        return out;
-      })(),
+      annotations: oriented.annotations,
     };
   });
   // «В модель» (Игорь 27.06 «окно сиквенса должно соответствовать DAG», выбор «полностью в
@@ -380,14 +409,15 @@ export function draftFromZone(state, zone) {
     normSegments = segments.map((seg, i) => {
       const want = !!(orient.orientations[i] && orient.orientations[i].reversed);
       if (want === !!seg.reverseComplement) return seg;
-      const sq = seg.sequence || '';
+      const flipped = reverseComplementSegmentWithAnnotations(seg, RE_ENZYMES);
       return {
         ...seg,
         // V184 — overhang-aware flip: a plain reverseComplement(topSlice) would not
         // restore the sticky-end stagger, so the reversed fragment's RE site at the
         // seam would vanish (Игорь «после лигирования не обнаруживается сайт ApaI»).
-        sequence: reverseComplementSegment(seg, RE_ENZYMES),
-        annotations: reflectAnnotations(seg.annotations || [], sq.length),
+        sequence: flipped.sequence,
+        length: flipped.length,
+        annotations: flipped.annotations,
         reverseComplement: want,
       };
     });

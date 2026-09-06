@@ -53,6 +53,9 @@ import { ACCEPT_STRING } from '../../file-import';
 import { importFilesToLibrary } from './lib/canonical-file-ingress';
 import { buildStarterSet } from './lib/starter-set';
 import { downloadEntryAsGenbank, downloadProjectAsZip } from '../../lib/export-genbank';
+import { annotationOnlyAutosaveAllowed, isSequenceDivergent } from '../../lib/library-current-document';
+import { mergeCorrection } from '../../lib/alignment/describe-edit';
+import { displayedDocEpoch } from '../../lib/search-document-adapters';
 
 function openFilePicker() {
   if (typeof document === 'undefined') return Promise.resolve([]);
@@ -106,6 +109,11 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // global state from `treeQuery` — never a live two-way sync.
   const [treeQuery, setTreeQuery] = useState('');
   const [perEntryState, setPerEntryState] = useState({});
+  // Mirror of the transient per-entry buffers, kept current every render so the
+  // write-through source guard can read the MERGED buffer (prior buffer + the
+  // incoming patch) without a stale closure (ANN-INTEGRITY seam BG-028).
+  const perEntryStateRef = useRef(perEntryState);
+  perEntryStateRef.current = perEntryState;
   // SPEC_COMMON_FEATURES DEC-CF-06 — right-panel view: 'entry' inspector vs
   // the 'common' features section. Orthogonal to selectedId/perEntryState
   // (Risk #5) so toggling back lands on the same entry + tab.
@@ -396,7 +404,6 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const writeLibraryEntryAnnotations = useStore((s) => s.writeLibraryEntryAnnotations);
   // Workspace-only Overview meta editors persist directly to the entry.
   const updateLibraryEntryTags = useStore((s) => s.updateLibraryEntryTags);
-  const updateLibraryEntryTopology = useStore((s) => s.updateLibraryEntryTopology);
 
   const rawEntry = selectedId ? entriesById[selectedId] : null;
   // The Inspector body + tabs + PlasmidMiniMap read FLAT fields off `item` (sequence, length,
@@ -424,14 +431,32 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const zone = item ? (item.projectId ? 'active_bodge' : 'loose') : null;
   const entryState = perEntryState[selectedId] || emptyEntryState();
 
+  // Canonical displayed-document epoch (search-document-adapters.displayedDocEpoch):
+  // the saved entry generation, forked by the per-entry BUFFER generation whenever
+  // an edited sequence / topology is in play. `onUpdateEdits` is the single writer
+  // that bumps `bufferGenerations` (buffer-generation-central), so a same-length
+  // substitution and a circular↔linear flip both move this token while an
+  // annotation-only patch does not. It is NEVER a length / editLog length / hash.
+  // Handed to the Inspector so every surface shares one document identity.
+  const bufferGeneration = useStore((s) => (selectedId ? s.bufferGenerations?.[selectedId] : undefined));
+  const entryGeneration = useStore((s) => (selectedId ? s.entryGenerations?.[selectedId] : undefined));
+  const docEpoch = displayedDocEpoch(item, entryState.edits, {
+    entry: entryGeneration,
+    buffer: bufferGeneration,
+  });
+
   // Unsaved (transient) SEQUENCE edits for an entry — used to warn before
   // switching away (Игорь 17.06.2026: «предупреждать перед потерей»).
   // Annotation-only edits autosave to the entry, so they're not «lost».
   const hasUnsavedSeqEdits = useCallback((id) => {
     const e = id ? perEntryState[id]?.edits : null;
-    if (!e) return false;
-    return e.editedSequence != null || (Array.isArray(e.editLog) && e.editLog.length > 0);
-  }, [perEntryState]);
+    const source = id ? entriesById[id] : null;
+    if (!e || !source) return false;
+    return isSequenceDivergent({
+      sequence: source.payload?.sequence ?? source.sequence ?? '',
+      topology: source.payload?.topology ?? source.topology ?? 'linear',
+    }, e);
+  }, [entriesById, perEntryState]);
 
   // Guarded entry switch: if the entry we're leaving has unsaved sequence
   // edits, warn; on confirm, discard them (transient model) and proceed.
@@ -447,7 +472,13 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         ...prev,
         [leaving]: {
           ...prev[leaving],
-          edits: { ...prev[leaving].edits, editedSequence: undefined, editLog: undefined, editedAnnotations: undefined },
+          edits: {
+            ...prev[leaving].edits,
+            editedSequence: undefined,
+            editedAnnotations: undefined,
+            editedTopology: undefined,
+            editLog: undefined,
+          },
         },
       } : prev));
     }
@@ -521,13 +552,29 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     // names it must move too. Never derived from the buffer — a substitution, an undo and a
     // topology flip all leave its length and edit count exactly where they were.
     if (isSequenceEdit || hasKey(patch, 'editedTopology')) useStore.getState().bumpBufferGeneration(selectedId);
-    if (!isSequenceEdit
-        && hasKey(patch, 'editedAnnotations')
+    // ANN-INTEGRITY seam BG-028 — merged-buffer SOURCE GUARD. The write-through is
+    // allowed only when the MERGED buffer (prior transient state + this patch)
+    // still matches the SAVED sequence/topology. Checking only `!isSequenceEdit`
+    // on THIS patch was insufficient: an annotation-only patch arriving AFTER a
+    // prior sequence edit carries coordinates for the EDITED document and would
+    // corrupt the saved source. A divergent buffer commits only via «Сохранить версию».
+    if (hasKey(patch, 'editedAnnotations')
         && Array.isArray(patch.editedAnnotations)
         && typeof writeLibraryEntryAnnotations === 'function') {
-      try {
-        writeLibraryEntryAnnotations(selectedId, patch.editedAnnotations);
-      } catch { /* best-effort safety-net */ }
+      const prevEdits = perEntryStateRef.current[selectedId]?.edits || {};
+      const mergedBuffer = { ...prevEdits, ...patch };
+      const savedEntry = useStore.getState().libraryEntries?.[selectedId];
+      const savedSource = savedEntry
+        ? {
+            sequence: savedEntry.payload?.sequence ?? savedEntry.sequence ?? '',
+            topology: savedEntry.payload?.topology ?? savedEntry.topology ?? 'linear',
+          }
+        : null;
+      if (annotationOnlyAutosaveAllowed(savedSource, mergedBuffer)) {
+        try {
+          writeLibraryEntryAnnotations(selectedId, patch.editedAnnotations);
+        } catch { /* best-effort safety-net */ }
+      }
     }
   }, [selectedId, writeLibraryEntryAnnotations]);
   // Direct-persist entry tags from the Overview editor (entry.tags is the
@@ -537,9 +584,19 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     updateLibraryEntryTags(selectedId, Array.isArray(nextTags) ? nextTags : []);
   }, [selectedId, updateLibraryEntryTags]);
   const onUpdateTopology = useCallback((topology) => {
-    if (!selectedId || typeof updateLibraryEntryTopology !== 'function') return;
-    updateLibraryEntryTopology(selectedId, topology);
-  }, [selectedId, updateLibraryEntryTopology]);
+    if (!selectedId || (topology !== 'linear' && topology !== 'circular')) return;
+    const source = useStore.getState().libraryEntries?.[selectedId];
+    if (!source) return;
+    const savedTopology = source.payload?.topology ?? source.topology ?? 'linear';
+    const edits = perEntryStateRef.current[selectedId]?.edits || {};
+    const currentTopology = edits.editedTopology ?? savedTopology;
+    if (topology === currentTopology) return;
+    const editLog = mergeCorrection(
+      Array.isArray(edits.editLog) ? edits.editLog : [],
+      { kind: 'topology', from: currentTopology, to: topology },
+    );
+    onUpdateEdits({ editedTopology: topology, editLog });
+  }, [onUpdateEdits, selectedId]);
   const onUpdateFlags = useCallback((patch) => {
     if (!selectedId || !patch) return;
     setPerEntryState((prev) => ({
@@ -671,6 +728,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
                   item={item}
                   flags={entryState.flags}
                   edits={entryState.edits}
+                  docEpoch={docEpoch}
                   activeTab={entryState.activeTab}
                   onActiveTabChange={onActiveTabChange}
                   onUpdateFlags={onUpdateFlags}

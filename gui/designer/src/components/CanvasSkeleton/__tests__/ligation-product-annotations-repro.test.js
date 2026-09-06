@@ -38,10 +38,23 @@ function zoneState(circular = true) {
   };
 }
 
-describe('reflectAnnotations — 1-based inclusive RC contract', () => {
-  it('[5,12] on len 24 reflects to [13,20] (matches transferAnnotations), strand flips', () => {
+describe('reflectAnnotations — canonical 0-based/end-exclusive RC contract', () => {
+  it('[5,12) on len 24 reflects to [12,19), strand flips', () => {
     expect(reflectAnnotations([{ name: 'x', start: 5, end: 12, strand: 1 }], 24)[0])
-      .toMatchObject({ start: 13, end: 20, strand: -1 });
+      .toMatchObject({ start: 12, end: 19, strand: -1 });
+  });
+
+  it('reflects every canonical compound segment and keeps the feature identity', () => {
+    const [out] = reflectAnnotations([{
+      id: 'compound', name: 'joined', start: 2, end: 14, strand: 1,
+      location: { kind: 'join', segments: [{ start: 2, end: 6 }, { start: 10, end: 14 }] },
+    }], 20);
+    expect(out.id).toBe('compound');
+    expect(out.location).toEqual({
+      kind: 'join', segments: [{ start: 14, end: 18 }, { start: 6, end: 10 }],
+    });
+    expect({ start: out.start, end: out.end, strand: out.strand })
+      .toEqual({ start: 14, end: 10, strand: -1 });
   });
 });
 

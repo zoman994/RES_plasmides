@@ -53,11 +53,34 @@ describe('K3 selectors-assembly', () => {
     expect(anns[0]).toMatchObject({ start: 1, end: 4, level: 'region' });
     expect(anns[0].id).toBeTypeOf('string');
   });
+  it('selectAssemblyDraftAnnotations shifts canonical compound geometry coherently', () => {
+    const state = {
+      zones: [],
+      assemblyDrafts: [{
+        id: 'asm-compound',
+        segments: [
+          { id: 'prefix', sequence: 'AAAA', length: 4, annotations: [] },
+          {
+            id: 'feature-segment', sequence: 'CCCCCCCC', length: 8,
+            annotations: [{
+              id: 'compound', level: 'region', start: 1, end: 7,
+              location: { kind: 'join', segments: [{ start: 1, end: 3 }, { start: 5, end: 7 }] },
+            }],
+          },
+        ],
+      }],
+    };
+    const [annotation] = selectAssemblyDraftAnnotations(state, 'asm-compound');
+    expect(annotation.location).toEqual({
+      kind: 'join', segments: [{ start: 5, end: 7 }, { start: 9, end: 11 }],
+    });
+    expect({ start: annotation.start, end: annotation.end }).toEqual({ start: 5, end: 11 });
+  });
 });
 
 describe('K4 persistence migration (v3→v4 assemblyDrafts; chain ends v5 post-T1)', () => {
   it('SCHEMA_VERSION_CURRENT is 7 (A1=4 assemblyDrafts, T1=5 pieces, T2=6 op.inputPieces, T3=7 zones)', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(12); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
+    expect(SCHEMA_VERSION_CURRENT).toBe(13); // P10: canonical assembly primer sites
   });
   it('v3 snapshot (no assemblyDrafts) → assemblyDrafts:[] added, rest intact', () => {
     const v3 = { containers: [{ id: 'x' }], junctions: [], operations: [] };

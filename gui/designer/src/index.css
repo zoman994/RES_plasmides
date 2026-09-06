@@ -103,6 +103,16 @@ body {
 
 *:focus-visible { outline: 2px solid var(--accent-500); outline-offset: 2px; }
 
+/* Primer controls are focusable SVG groups. Focus follows their single truthful
+   perimeter instead of restyling every internal run, bridge and connector. */
+[data-primer-interactive="true"]:focus {
+  outline: none;
+}
+[data-primer-interactive="true"]:focus-visible [data-primer-focus-perimeter="true"] {
+  stroke: var(--accent-500);
+  stroke-width: 1px;
+}
+
 /* ════════════ DESIGN_SYSTEM tokens ════════════
  * Source: docs/DESIGN_SYSTEM.md §2.
  * Light and dark palettes share the same semantic token names. */
@@ -118,6 +128,7 @@ body {
   --border-default: #d6d3d1;
   --border-strong: #a8a29e;
   --text-primary: #1c1917;
+  --primer-feature-body-text: #1c1917;
   --text-secondary: #57534e;
   --text-tertiary: #78716c;
   --text-disabled: #a8a29e;
@@ -183,6 +194,7 @@ body {
   --border-default: #3f3f3a;
   --border-strong: #57574f;
   --text-primary: #f5f5f4;
+  --primer-feature-body-text: #1c1917;
   --text-secondary: #a8a29e;
   --text-tertiary: #78716c;
   --text-disabled: #57574f;
@@ -238,6 +250,7 @@ body {
   --border-subtle: #e7e5e4;
   --border-default: #d6d3d1;
   --text-primary: #1c1917;
+  --primer-feature-body-text: #1c1917;
   --text-secondary: #57534e;
   --text-tertiary: #78716c;
   --accent-500: #f59e0b;

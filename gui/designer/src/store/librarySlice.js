@@ -489,11 +489,14 @@ export const createLibrarySlice = (set, get) => ({
     const baseName = (meta && meta.name) || `${parent.name || 'plasmid'} (manual edit)`;
     const safeName = get().getSuggestedLibraryName(baseName);
     const parentPayload = parent.payload || {};
+    const topology = meta?.topology === 'circular' || meta?.topology === 'linear'
+      ? meta.topology
+      : (parentPayload.topology === 'circular' ? 'circular' : 'linear');
     let resourceHash = parentPayload.resourceHash;
     try {
       resourceHash = await computeResourceHash({
         sequence,
-        topology: parentPayload.topology,
+        topology,
         ends: parentPayload.ends,
       });
     } catch { /* fallback */ }
@@ -527,6 +530,7 @@ export const createLibrarySlice = (set, get) => ({
         ...parentPayload,
         sequence,
         length: sequence.length,
+        topology,
         annotations: Array.isArray(annotations) ? annotations : (parentPayload.annotations || []),
         resourceHash,
       },

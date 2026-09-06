@@ -30,6 +30,7 @@ export function buildSelectionMenuItems({
   // FEAT-EXTRACT — consumer-gated «extract this feature to a new Library entry»
   // (spliced cDNA / protein). Same matchedRegion rail; absent prop ⇒ no item.
   onExtractFeature,
+  selectionRange = null,
 }) {
   // Build extra context-menu items lazily so we don't
   // re-allocate on every render. K3 wires «Создать
@@ -44,6 +45,30 @@ export function buildSelectionMenuItems({
   if (a == null || f == null || a === f) return null;
   const selStart = Math.min(a, f);
   const selEnd = Math.max(a, f);
+  // An origin-crossing selection has a canonical monotonic range for primer
+  // creation, but scalar annotation/Piece/BLAST writers cannot consume it yet.
+  // Offer only the safe write action; copy remains owned by the parent menu.
+  if (selectionRange?.wrapsOrigin) {
+    if (typeof onWritePrimer !== 'function') return [];
+    const makePrimer = (direction) => () => {
+      setContextMenu(null);
+      onWritePrimer({
+        direction,
+        start: selectionRange.start,
+        end: selectionRange.end,
+      });
+    };
+    return [
+      {
+        key: 'primer-fwd', label: 'Прямой праймер', shortcut: 'Ctrl+R',
+        onClick: makePrimer('forward'),
+      },
+      {
+        key: 'primer-rev', label: 'Обратный праймер', shortcut: 'Ctrl+Alt+R',
+        onClick: makePrimer('reverse'),
+      },
+    ];
+  }
   const matchedRegion = annotations.find(
     (x) => x && x.level === "region" && x.start === selStart && x.end === selEnd,
   );

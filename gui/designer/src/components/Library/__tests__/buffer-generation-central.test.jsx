@@ -24,8 +24,8 @@ import LibraryWorkspace from '../LibraryWorkspace';
 // The real inspector mounts SequenceView + the Annotator under lazy tabs. What this file needs from
 // it is the ONE prop under test, so the stub exposes `onUpdateEdits` as clickable patches.
 vi.mock('../inspector/LibrarySingleInspector', () => ({
-  default: ({ item, onUpdateEdits }) => (
-    <div data-testid="single-inspector-stub" data-item-id={item?.id || ''}>
+  default: ({ item, onUpdateEdits, docEpoch }) => (
+    <div data-testid="single-inspector-stub" data-item-id={item?.id || ''} data-doc-epoch={String(docEpoch)}>
       <button type="button" data-testid="patch-seq-a" onClick={() => onUpdateEdits({ editedSequence: 'AAAACCCC', editLog: [{ op: 'sub' }] })}>a</button>
       {/* same length, same editLog length — a substitution, the case the old token could not see */}
       <button type="button" data-testid="patch-seq-b" onClick={() => onUpdateEdits({ editedSequence: 'AAAAGGGG', editLog: [{ op: 'sub' }] })}>b</button>
@@ -116,6 +116,21 @@ describe('STAGE 1 — onUpdateEdits is the one point where the buffer generation
     await openEntry('e1');
     fireEvent.click(screen.getByTestId('patch-annotations'));
     expect(genOf('e1')).toBeUndefined();
+  });
+
+  it('the canonical docEpoch handed to the Inspector CHANGES on a same-length substitution', async () => {
+    // A1a: LibraryWorkspace computes displayedDocEpoch from the buffer generation and
+    // passes it to the Inspector. Both edits are 8→8 nt with a one-record editLog —
+    // the old edit-count/length token stood still; the epoch must not.
+    const epoch = () => screen.getByTestId('single-inspector-stub').getAttribute('data-doc-epoch');
+    await openEntry('e1');
+    const saved = epoch();
+    fireEvent.click(screen.getByTestId('patch-seq-a'));
+    const afterA = epoch();
+    fireEvent.click(screen.getByTestId('patch-seq-b'));
+    const afterB = epoch();
+    expect(afterA).not.toBe(saved); // buffer forks the saved epoch
+    expect(afterB).not.toBe(afterA); // same-length substitution still moves it
   });
 
   it('the bump is PER-ENTRY — editing one molecule does not age the other', async () => {

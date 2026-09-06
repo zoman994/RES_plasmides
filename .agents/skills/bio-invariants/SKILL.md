@@ -12,7 +12,7 @@ description: Biological safety rails for BodgeGene. Applies whenever Code modifi
 Два словаря, две разные биологии, два отдельных файла:
 
 - **GG_ENZYMES** (`golden-gate.js`): Type IIS — BsaI, BpiI, BsmBI, BtgZI, SapI. Режут **вне** своего сайта узнавания. Только для Golden Gate.
-- **RE_ENZYMES** (`restriction-db.js`): 63 классических — EcoRI, BamHI, HindIII и т.д. Режут **внутри** сайта. Только для restriction-ligation cloning.
+- **RE_ENZYMES** (`restriction-db.js`): 461 классический фермент Type IIP — REBASE-каталог (`restriction-db-rebase.js`, 459 коммерческих) ⊕ 62 curated override (EcoRI, BamHI, HindIII, DpnII, MboI…); custom-ферменты пользователя накладываются через `effectiveEnzymes()`. Режут **внутри** сайта. Только для restriction-ligation cloning. Type IIS сюда не входят.
 
 **Correct:**
 ```js

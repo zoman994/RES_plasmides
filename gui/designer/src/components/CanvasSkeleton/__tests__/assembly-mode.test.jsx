@@ -592,7 +592,7 @@ describe('K10 orphan UX + history', () => {
 
 describe('K11 persistence', () => {
   it('schema is 7 post-T3 (A2 assemblyDraftPrimers itself was additive — no A2 bump)', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(12); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
+    expect(SCHEMA_VERSION_CURRENT).toBe(13); // P10: canonical assembly primer sites
   });
 
   it('REPLACE_STATE on a pre-A2 snapshot fills assemblyDraftPrimers default', () => {

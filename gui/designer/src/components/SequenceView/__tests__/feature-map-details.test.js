@@ -13,7 +13,7 @@
  * under their parent.
  */
 import { describe, it, expect } from 'vitest';
-import { buildFeatureMap } from '../lib/feature-map.js';
+import { buildFeatureMap, flattenRawOccurrences } from '../lib/feature-map.js';
 
 const PARENT = {
   id: 'cds-1', name: 'lacZα', type: 'CDS',
@@ -79,5 +79,48 @@ describe('buildFeatureMap — detail-level features included', () => {
     const sub = out.features.find((f) => f.level === 'detail');
     expect(sub.start).toBe(600);  // 500 (f1 length) + 100
     expect(sub.end).toBe(800);    // 500 + 300
+  });
+});
+
+/**
+ * P4 context — raw recognition occurrence adapter. Unlike flattenSites (which
+ * emits ONE cut position per site, shifted by the top-strand cut offset), this
+ * emits ONE row per recognition occurrence and preserves the real recognition
+ * geometry the unified primer inspector projects (enzyme, motif, recognition
+ * start, site length, strand). Filtering still runs through the shared filter.
+ */
+describe('flattenRawOccurrences — raw recognition adapter', () => {
+  const SCAN = [
+    {
+      enzyme: 'EcoRI', site: 'GAATTC', siteLength: 6, cutCount: 1, isUnique: true,
+      positions: [{ position: 10, strand: '+' }],
+    },
+    {
+      enzyme: 'BamHI', site: 'GGATCC', siteLength: 6, cutCount: 2, isUnique: false,
+      positions: [{ position: 20, strand: '+' }, { position: 40, strand: '-' }],
+    },
+  ];
+
+  it('preserves enzyme, motif, recognition start (unshifted), length and strand', () => {
+    const rows = flattenRawOccurrences(SCAN, { mode: 'all' });
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toEqual({
+      enzyme: 'EcoRI', site: 'GAATTC', start: 10, length: 6, strand: 1,
+    });
+    // recognition start is NOT the cut position — EcoRI cut offset 1 must not leak in.
+    expect(rows[0].start).toBe(10);
+    const minus = rows.find((r) => r.enzyme === 'BamHI' && r.start === 40);
+    expect(minus.strand).toBe(-1);
+  });
+
+  it('honours the shared enzyme allow-list and cut-count filter', () => {
+    expect(flattenRawOccurrences(SCAN, { enzymes: ['EcoRI'] })
+      .every((r) => r.enzyme === 'EcoRI')).toBe(true);
+    expect(flattenRawOccurrences(SCAN, { mode: 'unique' })
+      .every((r) => r.enzyme === 'EcoRI')).toBe(true);
+  });
+
+  it('returns an empty array for a non-array input', () => {
+    expect(flattenRawOccurrences(null)).toEqual([]);
   });
 });

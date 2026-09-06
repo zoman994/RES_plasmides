@@ -286,7 +286,9 @@ function CircularMap({ L, features, linearizedFromCircular, cutPosition, excised
         const theta = (p.start / L) * TWO_PI;
         const inner = polarToCart(cx, cy, r + 2, theta);
         const outer = polarToCart(cx, cy, r + 10, theta);
-        const color = p.direction === 'reverse' ? '#dc2626' : '#3b82f6';
+        const color = p.direction === 'reverse'
+          ? 'var(--viz-primer-rev)'
+          : 'var(--viz-primer-fwd)';
         return (
           <g
             key={`pcr-pr-${i}-${p.start}`}
@@ -453,7 +455,9 @@ function LinearMap({ L, features, excised, frozen, primers = [], flank = null, w
       {(primers || []).map((p, i) => {
         if (!p || !Number.isFinite(p.start)) return null;
         const x = xOf(p.start);
-        const color = p.direction === 'reverse' ? '#dc2626' : '#3b82f6';
+        const color = p.direction === 'reverse'
+          ? 'var(--viz-primer-rev)'
+          : 'var(--viz-primer-fwd)';
         const yTip = stripY - 1;
         const yTop = stripY - 7;
         return (

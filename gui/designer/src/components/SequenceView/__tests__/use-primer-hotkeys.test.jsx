@@ -58,6 +58,24 @@ describe('usePrimerHotkeys', () => {
     });
   });
 
+  it('writes the canonical monotonic range for an origin-crossing selection', () => {
+    const onWritePrimer = vi.fn();
+    render(
+      <Host
+        onWritePrimer={onWritePrimer}
+        caretAnchor={-287}
+        caretPos={13}
+        selectionRange={{
+          start: 2399, end: 2699, length: 300, wrapsOrigin: true,
+        }}
+      />,
+    );
+    pressFwd();
+    expect(onWritePrimer).toHaveBeenCalledWith({
+      direction: 'forward', start: 2399, end: 2699,
+    });
+  });
+
   it('hands over the HOST-built draft when the host can build one', () => {
     // The host owns the sequence, so only it can turn a range into an anchored
     // record. The hook must forward that draft verbatim rather than a bare range.

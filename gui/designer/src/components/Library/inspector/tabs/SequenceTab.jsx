@@ -37,6 +37,7 @@ const EMPTY_HITS = [];
 export default function SequenceTab({
   sequence,
   annotations = [],
+  displayFeatures = null,
   topology,
   name,
   fileKey,
@@ -208,6 +209,7 @@ export default function SequenceTab({
         <SequenceView
           ref={sequenceViewRef}
           fragments={fragments}
+          displayFeatures={displayFeatures}
           circular={topology === 'circular'}
           terminalStagger={terminalStagger}
           closureSeam={closureSeam}

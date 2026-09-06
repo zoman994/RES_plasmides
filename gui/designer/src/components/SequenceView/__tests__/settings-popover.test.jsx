@@ -37,6 +37,17 @@ describe("uiSlice.sequenceView — K7 unit", () => {
   it("1) defaults present after store init", () => {
     const s = useStore.getState();
     expect(s.sequenceView).toEqual(SEQUENCE_VIEW_DEFAULTS);
+    expect(SEQUENCE_VIEW_DEFAULTS.reOrientation).toBe("horizontal");
+    expect(s.sequenceView.reOrientation).toBe("horizontal");
+  });
+
+  it("keeps Vertical as an explicit persisted choice", () => {
+    useStore.getState().setSequenceViewSetting("reOrientation", "vertical");
+    expect(useStore.getState().sequenceView.reOrientation).toBe("vertical");
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem(SEQUENCE_VIEW_STORAGE_KEY);
+      expect(JSON.parse(raw).reOrientation).toBe("vertical");
+    }
   });
 
   it("2) setSequenceViewSetting writes value and persists to localStorage", () => {

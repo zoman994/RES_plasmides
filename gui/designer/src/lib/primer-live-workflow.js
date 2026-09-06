@@ -17,20 +17,22 @@
 import { reverseComplement } from '../sequence-utils';
 import { calcTm, checkHairpin, checkHomodimer } from '../tm-calculator';
 import { makeId } from './ids';
+import { evaluateStandardPcrAnnealing } from './primer-annealing-policy';
+import { evaluatePrimerDuplexThermodynamics } from './primer-duplex-thermodynamics';
 import { projectPrimerSites, projectPrimerPool } from './primer-site-projection';
+import { attachKnownPrimerSite } from './primer-known-placement';
 import {
   PRIMER_SCOPE_PROJECT,
   normalizeOligoSequence,
   bindingOf,
   isLabStock,
   classifyLabCandidate,
-  resolveAnchoredOligo,
+  resolvePhysicalOligo,
   ANCHORED_OLIGO_OK,
 } from './primer-identity';
 
 const MIN_TM = 50;
 const MAX_DELTA_TM = 3;
-const MIN_THREE_PRIME_MATCH = 8;
 
 /**
  * A stable name for «this molecule, this version of it».
@@ -114,7 +116,7 @@ export function buildPrimerFromSelection({
   const rawId = id || makeId();
   const tm = calcTm(annealed);
 
-  return {
+  const record = {
     schemaVersion: 2,
     id: rawId,
     rawId,
@@ -132,21 +134,17 @@ export function buildPrimerFromSelection({
     length: cleanTail.length + annealed.length,
     origin: { kind: 'selection', entryId },
     addedAt: addedAt || new Date().toISOString(),
-    sites: [{
-      id: `${rawId}-s0`,
-      sourceIndex: 0,
-      // WHICH molecule and WHICH VERSION of it. `entryId` alone cannot tell
-      // that the sequence has been edited since.
-      target: { entryId, resourceHash: documentHash, topology: circular ? 'circular' : 'linear' },
-      location: { kind: segments.length > 1 ? 'join' : 'single', segments },
-      strand: dir === 'reverse' ? -1 : 1,
-      annealedSequence: annealed,
-      tail: cleanTail,
-      meltingTemperature: Number.isFinite(tm) ? tm : null,
-      sourceVisibility: 'shown',
-      sourceForms: ['designed'],
-    }],
+    sites: [],
   };
+  return attachKnownPrimerSite(record, {
+    entryId,
+    documentHash,
+    topology: circular ? 'circular' : 'linear',
+    template: tpl,
+    start,
+    end,
+    sourceForm: 'designed',
+  }) || record;
 }
 
 function countMismatches(a, b) {
@@ -242,7 +240,6 @@ export function evaluatePrimerWarnings(record, {
   const out = [];
   if (!record) return out;
   const tpl = normalizeOligoSequence(template);
-  const binding = bindingOf(record);
 
   // Trust the same projected occurrences the renderer can actually use. Raw
   // sites may belong to another entry/version, and must not leak authoritative
@@ -298,13 +295,23 @@ export function evaluatePrimerWarnings(record, {
           code: 'deletion', blocking: false, count: deletedCount, positions: deletions,
         });
       }
+      const annealing = evaluateStandardPcrAnnealing(occ.alignment);
       if (occ.alignment.threePrimeGap) {
         editWarnings.push({ code: 'three-prime-gap', blocking: false, severity: 'high' });
-      } else if (occ.alignment.editDistance > 0
-        && occ.alignment.threePrimeMatchLength < MIN_THREE_PRIME_MATCH) {
+      } else if (annealing.reason === 'no-three-prime-anchor'
+        || annealing.reason === 'short-three-prime-anchor') {
         editWarnings.push({
           code: 'three-prime-short', blocking: false, severity: 'high',
-          length: occ.alignment.threePrimeMatchLength,
+          length: annealing.threePrimeMatchLength,
+        });
+      } else if (annealing.reason === 'noncanonical-three-prime-anchor') {
+        editWarnings.push({
+          code: 'three-prime-noncanonical', blocking: false, severity: 'high',
+          length: annealing.threePrimeMatchLength,
+        });
+      } else if (annealing.reason === 'invalid-three-prime-anchor-evidence') {
+        editWarnings.push({
+          code: 'three-prime-evidence-invalid', blocking: false, severity: 'high',
         });
       }
       continue;
@@ -339,21 +346,42 @@ export function evaluatePrimerWarnings(record, {
   // composition and all of them resolve to the same effective binding. This is
   // deliberately a set decision, never "whichever raw site came first".
   const uniqueBindings = new Set(usable.map((occ) => normalizeOligoSequence(occ.annealedSequence)));
-  const hasGappedBinding = usable.some((occ) => occ.alignment?.hasGap);
-  if (hasGappedBinding) {
+  const landingThermodynamics = usable.map((occ) => (
+    evaluatePrimerDuplexThermodynamics({ alignment: occ.alignment })
+  ));
+  // A confident scalar Tm exists only for a canonical perfect duplex. An exact
+  // terminal trim still qualifies; X/I/D uses the existing gapped warning, and
+  // a noncanonical exact alignment reports why no scalar was calculated.
+  const unavailableReasons = [...new Set(landingThermodynamics
+    .filter((result) => result.fullDuplex.status !== 'calculated')
+    .map((result) => result.fullDuplex.reason || 'not-calculated'))].sort();
+  const strictUnavailableReason = unavailableReasons.find(
+    (reason) => reason !== 'imperfect-duplex',
+  );
+  if (strictUnavailableReason) {
+    out.push({
+      code: 'duplex-tm-unknown', blocking: false, tm: null,
+      reason: strictUnavailableReason,
+    });
+  } else if (unavailableReasons.includes('imperfect-duplex')) {
     out.push({ code: 'gapped-tm-unknown', blocking: false, tm: null });
   }
-  const confidentBinding = !hasGappedBinding && occurrences.length > 0
+  const hasConfidentLandingSet = unavailableReasons.length === 0 && occurrences.length > 0
     && usable.length === occurrences.length
-    && uniqueBindings.size === 1
-    ? [...uniqueBindings][0]
-    : '';
-  const tm = confidentBinding ? calcTm(confidentBinding) : Number.NaN;
+    && uniqueBindings.size === 1;
+  let tm = Number.NaN;
+  if (hasConfidentLandingSet) {
+    const values = landingThermodynamics.map((result) => result.fullDuplex.tmC);
+    if (values.length && values.every((value) => Number.isFinite(value))) tm = values[0];
+  }
   if (Number.isFinite(tm) && tm < MIN_TM) {
     out.push({ code: 'low-tm', blocking: false, tm: Math.round(tm * 10) / 10 });
   }
   if (partnerSequence) {
-    const partnerTm = calcTm(normalizeOligoSequence(partnerSequence));
+    const normalizedPartner = normalizeOligoSequence(partnerSequence);
+    const partnerTm = /^[ACGT]+$/.test(normalizedPartner)
+      ? calcTm(normalizedPartner)
+      : Number.NaN;
     if (Number.isFinite(tm) && Number.isFinite(partnerTm)
       && Math.abs(tm - partnerTm) > MAX_DELTA_TM) {
       out.push({
@@ -366,7 +394,8 @@ export function evaluatePrimerWarnings(record, {
   // stem/loop geometry with a ΔG threshold and `checkHomodimer` looks at 3'
   // complementarity — reimplementing either here would give the biolog two
   // different answers about the same oligo depending on which screen they are on.
-  const full = normalizeOligoSequence(record.sequence) || binding;
+  const physical = resolvePhysicalOligo(record);
+  const full = physical.status === ANCHORED_OLIGO_OK ? physical.sequence : '';
   if (full && checkHairpin(full)) out.push({ code: 'hairpin', blocking: false });
   if (full && checkHomodimer(full)) out.push({ code: 'self-dimer', blocking: false });
 
@@ -417,6 +446,17 @@ export function selectedOccurrencesFor(selected, primers, ctx = {}) {
       end: segs.length ? segs[segs.length - 1].end : null,
       strand: occ.strand,
       evidence: occ.evidence,
+      siteId: occ.siteId ?? null,
+      sequence: occ.sequence ?? null,
+      annealedSequence: occ.annealedSequence ?? null,
+      tail: occ.tail ?? null,
+      unpairedPrefixLength: occ.unpairedPrefixLength ?? null,
+      confirmedFivePrimeSuffixLength: occ.confirmedFivePrimeSuffixLength ?? 0,
+      bindingModel: occ.bindingModel ?? null,
+      oligoStatus: occ.oligoStatus ?? null,
+      sourceVisibility: occ.sourceVisibility ?? null,
+      wrapsOrigin: occ.wrapsOrigin === true,
+      topology: ctx.topology === 'circular' ? 'circular' : 'linear',
       // PCR must receive the same alignment the viewer projected. Rebuilding
       // the occurrence as geometry-only turns a valid aligned-v1 I/D back
       // into an unsupported length mismatch at the product boundary.

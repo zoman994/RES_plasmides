@@ -11,6 +11,10 @@
  */
 
 import { translateDNA } from './codons';
+import { reverseComplement } from './sequence-utils';
+import {
+  getSegments, makeLocation, LOCATION_KINDS, locationSpan,
+} from './lib/annotation-location';
 import {
   detectHisTag,
   generateRegionId, detectDomainsAsAnnotations,
@@ -261,6 +265,53 @@ export const ANNOTATION_COLORS = {
 // CDS-like region types that trigger protein detectors
 const CDS_TYPES = new Set(['CDS', 'gene', 'marker']);
 
+// ═══ ANN-INTEGRITY correction — canonical-segment region extraction ═══
+
+/** Concatenate a region's canonical segments (traversal order) into one sequence. */
+function extractRegionSequence(seq, segs) {
+  let out = '';
+  for (const s of segs) out += seq.slice(s.start, s.end);
+  return out;
+}
+
+/**
+ * Map a [cs, ce) range in the concatenated (traversal-order) region sequence to
+ * the list of ABSOLUTE segments it covers. A range confined to one segment
+ * yields one segment; a range straddling a splice / origin boundary yields
+ * several (a compound detail location).
+ */
+function concatRangeToSegments(segs, cs, ce) {
+  const out = [];
+  let offset = 0;
+  for (const s of segs) {
+    const segLen = s.end - s.start;
+    const lo = Math.max(cs, offset);
+    const hi = Math.min(ce, offset + segLen);
+    if (hi > lo) out.push({ start: s.start + (lo - offset), end: s.start + (hi - offset) });
+    offset += segLen;
+  }
+  return out;
+}
+
+/**
+ * Write mapped absolute segments back onto a detail: a scalar range when the hit
+ * is contiguous, a canonical compound location when it straddles a boundary.
+ */
+function applyMappedLocation(d, mappedSegs, strand, regionId) {
+  d.strand = strand;
+  d.regionId = regionId;
+  if (mappedSegs.length === 0) { d.start = 0; d.end = 0; return; }
+  if (mappedSegs.length === 1) {
+    d.start = mappedSegs[0].start;
+    d.end = mappedSegs[0].end;
+    return;
+  }
+  d.location = makeLocation(LOCATION_KINDS.JOIN, mappedSegs);
+  const span = locationSpan({ location: d.location });
+  d.start = span.start;
+  d.end = span.end;
+}
+
 // ═══════════════════════════════════════════════════════════
 // Main exports
 // ═══════════════════════════════════════════════════════════
@@ -313,22 +364,35 @@ export function autoAnnotate(part) {
 
   // 2. Per-region detection
   for (const region of regions) {
-    const regionSeq = seq.slice(region.start, region.end);
-    if (regionSeq.length === 0) continue;
+    // ANN-INTEGRITY correction — assemble the region sequence from its CANONICAL
+    // segments in traversal order. A spliced (join) or origin-crossing region has
+    // start > end in its scalar projection, so a plain `seq.slice(start,end)` was
+    // empty; concatenating segments handles non-zero offsets, linear splices and
+    // circular origin crossings alike.
+    const segs = getSegments(region);
+    const forwardSeq = extractRegionSequence(seq, segs);
+    if (forwardSeq.length === 0) continue;
 
     let details = [];
 
     if (CDS_TYPES.has(region.type)) {
-      details = annotateCDS(regionSeq);
+      // A reverse-strand CDS codes on the reverse complement of the ASSEMBLED
+      // region sequence; detect there, then map every hit back to ABSOLUTE
+      // forward coordinates through the same segments with strand −1. A forward
+      // CDS maps directly through the segments with strand +1.
+      const reverse = region.strand === -1;
+      const concatLen = forwardSeq.length;
+      const analysisSeq = reverse ? reverseComplement(forwardSeq) : forwardSeq;
+      details = annotateCDS(analysisSeq);
+      for (const d of details) {
+        // analysis-relative [d.start, d.end) → concatenated-forward range.
+        const [cs, ce] = reverse
+          ? [concatLen - d.end, concatLen - d.start]
+          : [d.start, d.end];
+        applyMappedLocation(d, concatRangeToSegments(segs, cs, ce), reverse ? -1 : 1, region.id);
+      }
     }
     // promoter / terminator detail-detection removed — see note at top of file.
-
-    // Offset all detail coordinates by region start + assign regionId
-    for (const d of details) {
-      d.start += region.start;
-      d.end += region.start;
-      d.regionId = region.id;
-    }
 
     annotations.push(...details);
   }

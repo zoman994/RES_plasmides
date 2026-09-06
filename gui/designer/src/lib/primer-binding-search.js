@@ -20,6 +20,11 @@ import { reverseComplement } from '../sequence-utils';
 // priming, so it is flagged separately from internal (tolerable) mismatches.
 const THREE_PRIME_CLAMP = 5;
 
+// Shared default for the minimum exact-match evidence. The library scanner
+// applies it to its query, while SequenceView uses it as the fixed length of a
+// canonical terminal 3′ seed before projecting the full physical oligo.
+export const DEFAULT_PRIMER_BINDING_MIN_LENGTH = 12;
+
 const clean = (s) => String(s || '').toUpperCase().replace(/[^ACGT]/g, '');
 
 function occurrences(hay, needle) {
@@ -70,7 +75,7 @@ function fuzzyOccurrences(hay, needle, maxMM, threePrimeSide) {
  *   start/end are 0-based, end-exclusive on the entry's top strand (wrapped for circular).
  */
 export function scanLibraryForPrimer(primer, entries, opts = {}) {
-  const minLen = opts.minLen || 12;
+  const minLen = opts.minLen || DEFAULT_PRIMER_BINDING_MIN_LENGTH;
   const maxMM = Math.max(0, opts.maxMismatches || 0);
   const q = clean(primer && (primer.bindingSequence || primer.sequence));
   if (q.length < minLen) return [];

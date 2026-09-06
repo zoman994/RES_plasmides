@@ -49,7 +49,6 @@ import { SEQUENCE_VIEW_DEFAULTS } from "../../store/uiSlice.js";
 import {
   SEQUENCE_FONT_FAMILY,
   measureCharPx,
-  clampCharsPerLine,
   linesFromSeq,
 } from "./lib/grid.js";
 import {
@@ -62,7 +61,6 @@ import {
 import { detectORFRanges } from "./lib/orf-ranges.js";
 import { resolveFramesMode } from "./lib/frames-mode.js";
 import { useRowSelectionIsolation } from "./lib/row-selection-isolation.js";
-import { runPredictors } from "../../predicted-detection.js";
 import { scanAllSites, RE_ENZYMES } from "../../restriction-db.js";
 import { stickyEnds as computeStickyEnds } from "./lib/selection-ops.js";
 import { FEATURE_STROKE } from "../../feature-palette.js";
@@ -74,7 +72,8 @@ import {
   EMPTY_PREDICTIONS,
   __IS_TEST_ENV__,
 } from "./constants.js";
-import { buildFeatureMap, mergeWithPredicted, flattenSites } from "./lib/feature-map.js";
+import { flattenSites } from "./lib/feature-map.js";
+import { buildSequenceDisplayContext } from "./lib/display-context.js";
 import { attachScrollHandle, findScrollingAncestor } from "./lib/scroll-handle.js";
 import {
   shouldVirtualize, computeDesiredWindow, windowsEqual, isActiveIdx, DEFAULT_OVERSCAN,
@@ -88,6 +87,11 @@ import SegmentZonesOverlay from "./overlays/SegmentZonesOverlay.jsx";
 import { computeSeamRecessBlanks } from "./seam-staircase";
 import OutOfRangeMaskOverlay from "./overlays/OutOfRangeMaskOverlay.jsx";
 import { flankedSpan } from "./lib/primer-flank.js";
+import { projectPrimerPool } from "../../lib/primer-site-projection.js";
+import {
+  fitPrimerAwareCharsPerLine,
+  primerInsertionEdgeGuardChars,
+} from "./lib/primer-edge-layout.js";
 // PRIMER-LIVE-1 — the selection actions and the anchored primer draft live
 // in small owners; this file only routes props into them.
 import PrimerSelectionActions from "./PrimerSelectionActions.jsx";
@@ -97,23 +101,23 @@ import { reverseComplement, complement } from "../../sequence-utils.js";
 import SelectionContextMenu from "./popups/SelectionContextMenu.jsx";
 import { buildSelectionMenuItems } from "./popups/build-selection-menu-items.js";
 import SequenceFloatingTooltips from "./overlays/SequenceFloatingTooltips.jsx";
-// V76 — annealing Tm for the near-cursor selection readout. Reuses the
-// v0.5-derived SantaLucia NN model; no new formula.
-import { calcTm } from "../../tm-calculator";
 import CreateAnnotationPopup from "./popups/CreateAnnotationPopup.jsx";
 import EditAnnotationModal from "./popups/EditAnnotationModal.jsx";
 import { useSequenceKeyboard } from "./hooks/useSequenceKeyboard.js";
 import { usePieceHotkey } from "./hooks/usePieceHotkey";
 import { usePrimerHotkeys } from "./hooks/usePrimerHotkeys";
 import { usePrimerEditor } from "./hooks/usePrimerEditor";
+import { usePrimerDisclosure } from "./hooks/usePrimerDisclosure";
 import { useHotkey } from "../../lib/hotkeys";
 import { useSelectionState } from "./hooks/useSelectionState.js";
+import { useSelectionContract } from "./hooks/useSelectionContract.js";
 import { buildSequencePasteOp } from "./lib/paste-op.js";
 import { useSelectionEdit } from "./hooks/useSelectionEdit.js";
 import { useAnnotationDrag } from "./hooks/useAnnotationDrag.js";
 import { useAnnotationRename } from "./hooks/useAnnotationRename.js";
 import InlineRenameInput from "./popups/InlineRenameInput.jsx";
 import SequenceLine from "./SequenceLine.jsx";
+import PrimerInspectorPanel from "./PrimerInspectorPanel.jsx";
 
 // Stable empty default for the optional `searchHits` prop — keeps
 // memo deps cheap (a fresh `[]` per render would invalidate child
@@ -292,6 +296,10 @@ const SequenceView = forwardRef(function SequenceView({
   // toolbar; every other consumer keeps the current behaviour.
   showAnnotations = true,
   showAATrack = true,
+  // Hosts that show this molecule in two simultaneous SequenceLine consumers
+  // may provide the already-computed display features. This keeps predicted
+  // and confident annotations identical and avoids running predictors twice.
+  displayFeatures = null,
 }, ref) {
   const containerRef = useRef(null);
   const [charPx, setCharPx] = useState(7.2);
@@ -378,27 +386,6 @@ const SequenceView = forwardRef(function SequenceView({
   // bars + overhang by this key.
   const [hoveredRestrictionKey, setHoveredRestrictionKey] = useState(null);
 
-  // 18.05.2026 (Игорь) — primer redesign: primers are clickable
-  // everywhere; selecting TWO highlights the fragment they flank
-  // (reuses SegmentZonesOverlay — no new overlay). Keep at most 2
-  // (a fwd/rev pair); a 3rd click drops the oldest. Toggle to deselect.
-  const [selectedPrimers, setSelectedPrimers] = useState([]); // [{key,hit}]
-  const onPrimerClick = useCallback((key, hit) => {
-    setSelectedPrimers((prev) => {
-      if (prev.some((s) => s.key === key)) return prev.filter((s) => s.key !== key);
-      const next = [...prev, { key, hit }];
-      return next.length > 2 ? next.slice(next.length - 2) : next;
-    });
-  }, []);
-  const selectedPrimerKeys = useMemo(
-    () => selectedPrimers.map((s) => s.key),
-    [selectedPrimers],
-  );
-  // PRIMER-LIVE-1 — the landings behind the clicked arrows, resolved through
-  // the same projection the track drew them with (an origin-crossing binding
-  // is two arrows but ONE landing). Declared after `fullSeq` would be a TDZ,
-  // so the memo reads it lazily via the deps below.
-
   const [promoteDraft, setPromoteDraft] = useState(null);
 
   useEffect(() => {
@@ -427,25 +414,40 @@ const SequenceView = forwardRef(function SequenceView({
   // which enzymes' sites are visible, applied on TOP of the cut-count filter.
   const activeSetEnzymes = useStore(selectActiveSetEnzymes);
 
-  const { fullSeq, features: confidentFeatures } = useMemo(
-    () => buildFeatureMap(fragments),
-    [fragments],
-  );
-
-  // M-X.1 K3 — Structural Predictor consumer integration (DEC-PRED-06).
-  // Predicted regions are TRANSIENT: computed here on every (fullSeq,
-  // settings.predictions, confidentFeatures) shift, not persisted into
-  // baseSnapshot.
   const predictionsSettings = settings.predictions || EMPTY_PREDICTIONS;
-  const predictedRegions = useMemo(
-    () => runPredictors(fullSeq, predictionsSettings, confidentFeatures),
-    [fullSeq, predictionsSettings, confidentFeatures],
+  // M-X.1 K3 — predicted regions stay transient. When an embedding host has
+  // already computed the shared display set, the helper keeps that exact array
+  // and skips a second predictor run.
+  const { fullSeq, features } = useMemo(
+    () => buildSequenceDisplayContext(fragments, predictionsSettings, displayFeatures),
+    [fragments, predictionsSettings, displayFeatures],
   );
+  const projectedPrimerOccurrences = useMemo(
+    () => (fullSeq && Array.isArray(primers) && primers.length ? projectPrimerPool(primers, {
+      template: fullSeq,
+      entryId,
+      documentHash,
+      topology: topology || (circular ? 'circular' : 'linear'),
+    }) : []),
+    [primers, fullSeq, entryId, documentHash, topology, circular],
+  );
+  const primerEdgeGuardChars = primerInsertionEdgeGuardChars(projectedPrimerOccurrences);
 
-  const features = useMemo(
-    () => mergeWithPredicted(confidentFeatures, predictedRegions),
-    [confidentFeatures, predictedRegions],
-  );
+  // P16 — pair selection and one expanded subject share one pure transition
+  // owner. Document identity is part of that state, so a reused SequenceView
+  // cannot edit/delete a hit retained from the previous library entry.
+  const primerDisclosureScope = `${entryId ?? fragments?.[0]?.id ?? ''}|${documentHash ?? ''}|${
+    circular ? 'circular' : 'linear'
+  }`;
+  const {
+    selectedPrimers,
+    selectedPrimerKeys,
+    activePrimer,
+    expandedPrimerKey,
+    onPrimerClick,
+    onDisclosureKeyDown,
+    clearPrimerSelection,
+  } = usePrimerDisclosure(primerDisclosureScope);
 
   const orfRanges = useMemo(() => detectORFRanges(fullSeq, 20), [fullSeq]);
 
@@ -470,12 +472,18 @@ const SequenceView = forwardRef(function SequenceView({
     onReuseLabPrimer,
   });
 
-  const primerSelectionRange = useMemo(() => {
-    const a = Number.isFinite(caretAnchor) ? caretAnchor : null;
-    const f = Number.isFinite(caretPos) ? caretPos : null;
-    if (a == null || f == null || a === f) return null;
-    return { start: Math.min(a, f), end: Math.max(a, f) };
-  }, [caretAnchor, caretPos]);
+  const activeOccurrenceKey = activePrimer?.hit?._occKey || activePrimer?.key || null;
+  const activeOccurrence = activeOccurrenceKey
+    ? (selectedOccurrences.find((occurrence) => occurrence.key === activeOccurrenceKey) || null)
+    : null;
+  const activeOccurrenceIsLive = activeOccurrence != null && activeOccurrence.stale !== true;
+  const activePrimerRecord = activePrimer && activeOccurrenceIsLive
+    ? (primersById[activeOccurrence.primerId || activePrimer.hit?.id] || activePrimer.hit)
+    : null;
+
+  useEffect(() => {
+    if (activePrimer && !activeOccurrenceIsLive) clearPrimerSelection();
+  }, [activeOccurrenceIsLive, activePrimer, clearPrimerSelection]);
 
   // DEC-CF-05 — menu → draft. Bake region strand into the draft sequence
   // (coding 5'→3') so the hook translates protein in frame 0.
@@ -518,6 +526,17 @@ const SequenceView = forwardRef(function SequenceView({
     }
     return flattenSites(scan, { mode: reFilter, enzymes: activeSetEnzymes });
   }, [showReSites, fullSeq, circular, reMinSiteLen, reFilter, activeSetEnzymes, reEnzKey]);
+  // The primer editor's template preview is contextual evidence, not the
+  // optional global RE track. Compute it only while that editor is open, but
+  // keep the same allow-list / cut-count semantics even when showReSites=false.
+  const primerTemplateReSites = useMemo(() => {
+    if (!primerDraft || !fullSeq) return [];
+    const scan = scanAllSites(fullSeq, { circular, minSiteLen: reMinSiteLen || 6 });
+    if (reEnzKey != null) {
+      return flattenSites(scan, { enzymes: reEnzKey.split('|') });
+    }
+    return flattenSites(scan, { mode: reFilter, enzymes: activeSetEnzymes });
+  }, [primerDraft, fullSeq, circular, reMinSiteLen, reFilter, activeSetEnzymes, reEnzKey]);
 
   // «Липкие концы» — when the current selection's ends land on restriction cuts
   // (reSites[].position is the top-strand cut), derive the per-end overhang so
@@ -560,9 +579,13 @@ const SequenceView = forwardRef(function SequenceView({
       if (!chW) return;
       const available = host.clientWidth - 24;
       if (available <= 0) return; // host hidden / collapsed — wait for ResizeObserver
-      const fitChars = Math.floor(available / chW) - LABEL_WIDTH;
       const cap = wrapPreferenceRef.current || 150;
-      const nextCpl = Math.min(clampCharsPerLine(fitChars), cap);
+      const nextCpl = fitPrimerAwareCharsPerLine({
+        availableChars: Math.floor(available / chW),
+        labelChars: LABEL_WIDTH,
+        edgeGuardChars: primerEdgeGuardChars,
+        preference: cap,
+      });
       // Sprint M-X.3 follow-up (05.05.2026) — biolog: «грузит процессор
       // на 30-60% даже просто в открытой вкладке без работы». The
       // ResizeObserver fires on every layout pass; without an equality
@@ -598,7 +621,7 @@ const SequenceView = forwardRef(function SequenceView({
     const ro = new ResizeObserver(remeasure);
     ro.observe(host);
     return () => ro.disconnect();
-  }, []);
+  }, [primerEdgeGuardChars]);
 
   const baseLines = useMemo(
     () => linesFromSeq(fullSeq, charsPerLine),
@@ -840,48 +863,6 @@ const SequenceView = forwardRef(function SequenceView({
     }));
   }, [selectedPrimers, circular, seqLength]);
 
-  // Bug-rush #8 (04.05.2026 evening): when the AA selection is
-  // active, derive the reading frame from (selection range, strand)
-  // so SelectionOverlay can pick exactly ONE matching aa-row to
-  // light blue. Forward strand: frame = selStart % 3 (matches
-  // AATrack's `frame: 0/1/2` mapping for labels +1/+2/+3). Reverse
-  // strand: frame = (seqLen − selEnd) % 3 (V50 walkCodons
-  // antisense convention). null when selection is empty / DNA-only.
-  const selectionAaFrame = (() => {
-    if (selectionMode !== 'aa') return null;
-    const a = (typeof caretAnchor === 'number' && Number.isFinite(caretAnchor)) ? caretAnchor : null;
-    const f = (typeof caretPos === 'number' && Number.isFinite(caretPos)) ? caretPos : null;
-    if (a == null || f == null || a === f) return null;
-    const start = Math.min(a, f);
-    const end = Math.max(a, f);
-    if (selectionStrand === -1) {
-      return ((seqLength - end) % 3 + 3) % 3;
-    }
-    return ((start % 3) + 3) % 3;
-  })();
-
-  // V76 — annealing Tm of the current DNA selection, shown near the
-  // cursor. Opt-in (showSelectionTm), DNA-only (Tm is meaningless for
-  // an aa selection), needs a non-empty range + a known pointer pos.
-  const selectionTm = (() => {
-    if (!showSelectionTm || !tmPt) return null;
-    if (selectionMode === 'aa') return null;
-    const a = (typeof caretAnchor === 'number' && Number.isFinite(caretAnchor)) ? caretAnchor : null;
-    const f = (typeof caretPos === 'number' && Number.isFinite(caretPos)) ? caretPos : null;
-    if (a == null || f == null || a === f) return null;
-    const lo = Math.max(0, Math.min(a, f));
-    const hi = Math.max(a, f);
-    const sub = (fullSeq || '').slice(lo, hi);
-    if (!sub.length) return null;
-    // Игорь 18.05.2026: счётчик нуклеотидов остаётся ВСЕГДА; убирается
-    // только Tm вне диапазона. >150 п.о. — праймер длиннее физически невозможен
-    // (и считать тяжело на огромных выделениях). RC-CLOSE-GATE (25.06): нижняя
-    // граница 7 нт — короче праймер не отжигается, а NN-модель там недостоверна
-    // (давала бессмысленные «−100.6 °C · 3 bp»). tm=null → подсказка только «N bp».
-    const tm = (sub.length >= 7 && sub.length <= 150) ? calcTm(sub) : null;
-    return { tm, len: sub.length };
-  })();
-
   // «Тянуть до конца» (Игорь 22.06): a LINEAR fragment's terminal overhang that
   // PROTRUDES on the bottom strand (protruding==='bottom') sits OUTSIDE fullSeq,
   // so the caret can't reach it. Derive the protruding lengths + displayed bases
@@ -902,6 +883,24 @@ const SequenceView = forwardRef(function SequenceView({
     };
   }, [terminalStagger, circular]);
 
+  const selectionContract = useSelectionContract({
+    fullSeq,
+    seqLength,
+    circular,
+    caretAnchor,
+    caretPos,
+    selectionMode,
+    selectionStrand,
+    showSelectionTm,
+    tmPoint: tmPt,
+  });
+  const safeActionAnchor = selectionContract.safeAnchor;
+  const safeActionFocus = selectionContract.safeFocus;
+  const menuAnchor = selectionContract.usesWrapContext && selectionContract.range
+    ? selectionContract.range.start : caretAnchor;
+  const menuFocus = selectionContract.usesWrapContext && selectionContract.range
+    ? selectionContract.range.end : caretPos;
+
   // Selection state hook — owns the contextMenu state, drag refs,
   // pointer handlers, copy dispatcher, click fallback. Returns a
   // bundle of callbacks the JSX wires onto the root <div>.
@@ -911,6 +910,7 @@ const SequenceView = forwardRef(function SequenceView({
     onRootPointerDown,
     onRootPointerMove,
     onRootPointerUp,
+    onRootPointerCancel,
     onRootContextMenu,
     onRootClickFallback,
     copySelection,
@@ -958,21 +958,24 @@ const SequenceView = forwardRef(function SequenceView({
 
   // T5 K3 — «P» marks the selection as a piece (consumer-gated;
   // no-op when onCreatePiece is absent or there is no selection).
-  usePieceHotkey({ onCreatePiece, caretAnchor, caretPos });
+  usePieceHotkey({ onCreatePiece, caretAnchor: safeActionAnchor, caretPos: safeActionFocus });
   // 18.05.2026 — Ctrl+R / Ctrl+Alt+R make a fwd/rev primer from the
   // selection in EVERY viewer (same flow as right-click «primer»),
   // not just the assembler (Игорь). Consumer-gated on onWritePrimer.
   usePrimerHotkeys({
-    onWritePrimer, buildPrimerDraft, caretAnchor, caretPos,
+    onWritePrimer,
+    buildPrimerDraft,
+    caretAnchor,
+    caretPos,
+    selectionRange: selectionContract.primerRange,
   });
-  // PRIMER-LIVE-1 — «E» is the keyboard twin of double-click: it edits the
-  // primer occurrence that is currently selected. With none or several
-  // selected there is no single subject, so it does nothing.
+  // PRIMER-LIVE-1 / P16 — «E» edits the active occurrence. A PCR partner is
+  // context for a reaction, not a second edit subject.
   const editSelectedPrimer = useCallback(() => {
     if (!onWritePrimer) return;
-    if (selectedPrimers.length !== 1) return;
-    onPrimerDoubleClick(selectedPrimers[0].hit);
-  }, [onWritePrimer, selectedPrimers, onPrimerDoubleClick]);
+    if (!activePrimer || !activeOccurrenceIsLive) return;
+    onPrimerDoubleClick(activePrimer.hit);
+  }, [activeOccurrenceIsLive, activePrimer, onWritePrimer, onPrimerDoubleClick]);
   useHotkey("primer-edit", editSelectedPrimer);
 
   // K3 — Del / H / E edit handlers + popup state. Mounts above the
@@ -995,8 +998,8 @@ const SequenceView = forwardRef(function SequenceView({
     closeEditModal,
   } = useSelectionEdit({
     annotations,
-    caretPos,
-    caretAnchor,
+    caretPos: safeActionFocus,
+    caretAnchor: safeActionAnchor,
     onAnnotationEdit,
     onCaretChange,
     containerRef,
@@ -1008,7 +1011,7 @@ const SequenceView = forwardRef(function SequenceView({
   // When onDeletePrimer is absent (read-only Library viewers) the event is
   // still swallowed → no deletion, the sequence stays untouched.
   const onPrimerDeleteKeyDown = (e) => {
-    if (selectedPrimers.length === 0) return false;
+    if (!activePrimer || !activeOccurrenceIsLive) return false;
     if (e.key !== 'Delete' && e.key !== 'Backspace') return false;
     if (e.ctrlKey || e.metaKey || e.altKey) return false;
     // don't hijack typing in fields (rename inputs, modal forms)
@@ -1018,14 +1021,14 @@ const SequenceView = forwardRef(function SequenceView({
     e.preventDefault();
     e.stopPropagation();
     if (typeof onDeletePrimer === 'function') {
-      // «удаляется то, что выделено» — every selected primer goes.
-      selectedPrimers.forEach(({ hit }) => onDeletePrimer(hit));
-      setSelectedPrimers([]);
+      onDeletePrimer(activePrimer.hit);
+      clearPrimerSelection();
     }
     return true;
   };
 
   const onRootKeyDown = (e) => {
+    if (onDisclosureKeyDown(e)) return;
     if (onPrimerDeleteKeyDown(e)) return;
     if (onEditKeyDown(e)) return;
     keyboardHandler(e);
@@ -1041,7 +1044,11 @@ const SequenceView = forwardRef(function SequenceView({
     if (!editable || typeof onSequenceEdit !== 'function') return;
     let raw = '';
     try { raw = (e.clipboardData && e.clipboardData.getData('text')) || ''; } catch { raw = ''; }
-    const op = buildSequencePasteOp(raw, caretAnchor, caretPos);
+    if (selectionContract.wrapsOrigin) {
+      e.preventDefault();
+      return;
+    }
+    const op = buildSequencePasteOp(raw, safeActionAnchor, safeActionFocus);
     if (!op) return;
     e.preventDefault();
     onSequenceEdit(op);
@@ -1212,9 +1219,12 @@ const SequenceView = forwardRef(function SequenceView({
         fullSeq={fullSeq}
         features={features}
         primers={primers}
+        primerOccurrences={projectedPrimerOccurrences}
+        primerEdgeGuardPx={primerEdgeGuardChars * charPx}
         onPrimerClick={onPrimerClick}
         onPrimerDoubleClick={onPrimerDoubleClick}
         selectedPrimerKeys={selectedPrimerKeys}
+        expandedPrimerKey={expandedPrimerKey}
         reSites={reSites}
         charPx={charPx}
         showBottomStrand={effShowBottomStrand}
@@ -1279,8 +1289,9 @@ const SequenceView = forwardRef(function SequenceView({
     }
     return out;
   }, [
-    measured, lines, wrapTailLines, fullSeq, circular, features, primers, reSites, charPx,
-    onPrimerClick, onPrimerDoubleClick, selectedPrimerKeys,
+    measured, lines, wrapTailLines, fullSeq, circular, features, primers,
+    projectedPrimerOccurrences, primerEdgeGuardChars, reSites, charPx,
+    onPrimerClick, onPrimerDoubleClick, selectedPrimerKeys, expandedPrimerKey,
     effShowBottomStrand, effFramesMode, settings.primerStyle,
     settings.reOrientation, effVisibleFrames,
     effFramesResolution, orfRanges, effRenderHybrid,
@@ -1338,6 +1349,12 @@ const SequenceView = forwardRef(function SequenceView({
 
   return (
     <div
+      className="sequence-view-shell"
+      data-testid="sequence-view-shell"
+      data-block-global-escape={expandedPrimerKey != null ? 'true' : undefined}
+      onKeyDown={onDisclosureKeyDown}
+    >
+    <div
       ref={containerRef}
       tabIndex={0}
       onKeyDown={onRootKeyDown}
@@ -1350,7 +1367,7 @@ const SequenceView = forwardRef(function SequenceView({
       }}
       onPointerLeave={showSelectionTm ? () => setTmPt(null) : undefined}
       onPointerUp={onRootPointerUp}
-      onPointerCancel={onRootPointerUp}
+      onPointerCancel={onRootPointerCancel}
       onClick={onRootClickFallback}
       onContextMenu={onRootContextMenu}
       data-testid="sequence-view-root"
@@ -1365,7 +1382,7 @@ const SequenceView = forwardRef(function SequenceView({
       style={{
         flex: "1 1 auto",
         minWidth: 0,
-        overflowX: "hidden",
+        overflowX: "auto",
         overflowY: "auto",
         // Keep room for the scrollbar even when the content is short
         // — avoids the layout reshuffle (and accompanying ~1-frame
@@ -1432,7 +1449,7 @@ const SequenceView = forwardRef(function SequenceView({
         showBottomStrand={effShowBottomStrand}
         selectionMode={selectionMode}
         selectionStrand={selectionStrand}
-        selectionFrame={selectionAaFrame}
+        selectionFrame={selectionContract.selectionFrame}
         seqLength={seqLength}
         layoutEpoch={layoutEpoch}
         inverted={effInverted}
@@ -1476,13 +1493,13 @@ const SequenceView = forwardRef(function SequenceView({
         contextMenu={contextMenu}
         selectionMode={selectionMode}
         onCopy={copySelection}
-        onInvert={toggleInverted}
+        onInvert={selectionContract.usesWrapContext ? undefined : toggleInverted}
         inverted={effInverted}
         onClose={() => setContextMenu(null)}
         extraItems={buildSelectionMenuItems({
           contextMenu,
-          caretAnchor,
-          caretPos,
+          caretAnchor: menuAnchor,
+          caretPos: menuFocus,
           annotations,
           setContextMenu,
           onEditKeyDown,
@@ -1493,6 +1510,7 @@ const SequenceView = forwardRef(function SequenceView({
           onCreatePiece,
           onPromoteToCommon: onPromoteToCommon ? requestPromoteToCommon : undefined,
           onExtractFeature,
+          selectionRange: selectionContract.range,
         })}
       />
       {/* PRIMER-LIVE-1 — lab matches for the live selection and the single
@@ -1506,7 +1524,7 @@ const SequenceView = forwardRef(function SequenceView({
           <PrimerSelectionActions
             template={fullSeq}
             topology={circular ? "circular" : "linear"}
-            selection={primerSelectionRange}
+            selection={selectionContract.primerRange}
             occurrences={selectedOccurrences}
             primersById={primersById}
             labRecords={labPrimers}
@@ -1523,6 +1541,19 @@ const SequenceView = forwardRef(function SequenceView({
           topology={circular ? "circular" : "linear"}
           entryId={entryId}
           documentHash={documentHash}
+          features={features}
+          templateReSites={primerTemplateReSites}
+          viewSettings={{
+            showBottomStrand: effShowBottomStrand,
+            primerStyle: settings.primerStyle,
+            reOrientation: settings.reOrientation,
+            showAATrack,
+            framesMode: effFramesMode,
+            visibleFrames: effVisibleFrames,
+            framesResolution: effFramesResolution,
+            orfRanges,
+            renderHybrid: effRenderHybrid,
+          }}
           onClose={closePrimerDraft}
           onCreate={submitPrimerDraft}
         />
@@ -1588,9 +1619,20 @@ const SequenceView = forwardRef(function SequenceView({
       )}
       <SequenceFloatingTooltips
         dragTooltip={dragTooltip}
-        selectionTm={selectionTm}
+        selectionTm={selectionContract.selectionTm}
         tmPt={tmPt}
       />
+    </div>
+      <div className="primer-inspector-slot" data-testid="primer-inspector-slot">
+        {expandedPrimerKey != null && activePrimer && activeOccurrenceIsLive && (
+          <PrimerInspectorPanel
+            selection={activePrimer}
+            occurrence={activeOccurrence}
+            primer={activePrimerRecord}
+            onEdit={onWritePrimer ? onPrimerDoubleClick : undefined}
+          />
+        )}
+      </div>
     </div>
   );
 });

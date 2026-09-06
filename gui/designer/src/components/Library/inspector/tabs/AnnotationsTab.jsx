@@ -53,8 +53,13 @@ export default function AnnotationsTab({
   // embedded annotator preview is showing.
   entryId = null,
   documentHash = null,
+  // Canonical document generation + topology. Async Annotator runs bind their
+  // replies to these exact values, so equal-length edits are still distinct.
+  docEpoch = null,
+  topology = 'linear',
   onWritePrimer,
   onDeletePrimer,
+  loadGeneParserModules,
   // «Убрать дубли» (Игорь 17.06) — count of redundant overlapping annotations
   // (a generic feature covered ~identically by a higher-priority one, e.g.
   // bla(M) marker under the AmpR CDS) + handler to drop them from the data.
@@ -137,8 +142,11 @@ export default function AnnotationsTab({
         primers={primers}
         entryId={entryId}
         documentHash={documentHash}
+        docEpoch={docEpoch}
+        topology={topology}
         onWritePrimer={onWritePrimer}
         onDeletePrimer={onDeletePrimer}
+        loadGeneParserModules={loadGeneParserModules}
       />
     </div>
   );

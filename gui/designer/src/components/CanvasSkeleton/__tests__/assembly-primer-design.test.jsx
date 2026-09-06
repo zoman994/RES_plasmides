@@ -22,15 +22,30 @@ import EditorWindowShell from '../editor/EditorWindowShell';
 import { buildAssemblyPrimer } from '../lib/assembly-primer-utils';
 import { selectBoundaryCoverage } from '../store/selectors-assembly';
 import { reverseComplement } from '../../../sequence-utils';
-import { bootstrapStore } from '../../../store';
+import { bootstrapStore, useStore } from '../../../store';
+import { PREDICTIONS_DEFAULTS } from '../../../store/uiSlice';
+import { runPredictors } from '../../../predicted-detection';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  useStore.setState({
+    showReSites: undefined,
+    reFilter: undefined,
+    reMinSiteLen: undefined,
+    reActiveSet: null,
+    sequenceView: {
+      ...useStore.getState().sequenceView,
+      predictions: { ...PREDICTIONS_DEFAULTS },
+    },
+  });
+});
 beforeEach(() => { try { bootstrapStore(); } catch { /* idempotent */ } });
 
 // Assembly: seg0 = 20 bp [0,20), seg1 = 16 bp [20,36).
-const SEG0 = 'AAAACCCCGGGGTTTTAAAA';
+const SEG0 = 'AAAAGAATTCCCGGGTTTAA';
 const SEG1 = 'CCCCGGGGTTTTAAAA';
 const ASM = SEG0 + SEG1;
+const PREDICTED_ASSEMBLY = `ATG${'GCC'.repeat(149)}TAA`;
 const B = [
   { segmentId: 's0', startOnAssembly: 0, endOnAssembly: 20 },
   { segmentId: 's1', startOnAssembly: 20, endOnAssembly: 36 },
@@ -90,6 +105,26 @@ function mountDraft() {
   act(() => { A.createAssemblyDraft({ id: 'a3', name: 'A3' }); });
   act(() => { A.insertManualSegment('a3', { sequence: SEG0 }); });
   act(() => { A.insertManualSegment('a3', { sequence: SEG1 }); });
+  act(() => { A.openEditorAssemblyTab('a3'); });
+}
+
+function mountAnnotatedDraft() {
+  render(<SkeletonProvider><H /><EditorWindowShell /></SkeletonProvider>);
+  act(() => {
+    A.addContainer({
+      id: 'a3-source',
+      kind: 'molecule',
+      name: 'A3 source',
+      sequence: ASM,
+      annotations: [{
+        id: 'feature-promoter', level: 'region', type: 'promoter',
+        name: 'test promoter', start: 2, end: 14, strand: 1,
+      }],
+    });
+  });
+  act(() => { A.createAssemblyDraft({ id: 'a3', name: 'A3' }); });
+  act(() => { A.insertSegment('a3', 'a3-source', 0, 20, false); });
+  act(() => { A.insertSegment('a3', 'a3-source', 20, 36, false); });
   act(() => { A.openEditorAssemblyTab('a3'); });
 }
 const prims = () => S.assemblyDraftPrimers.a3 || [];
@@ -178,12 +213,143 @@ describe('A3.K6-K7 AssemblyPrimerPanel (pairs / rename / edit / coverage)', () =
     writePair();
     const panel = screen.getByTestId('assembly-primers-panel');
     act(() => { fireEvent.click(within(panel).getAllByTestId('assembly-primer-edit')[0]); });
-    const modal = screen.getByTestId('assembly-primer-edit-modal');
-    act(() => { fireEvent.change(within(modal).getByTestId('assembly-primer-edit-seq'), { target: { value: 'gggcccaaatttgggcccaa' } }); });
-    act(() => { fireEvent.click(within(modal).getByTestId('assembly-primer-edit-save')); });
+    const modal = screen.getByTestId('primer-from-selection-modal');
+    act(() => { fireEvent.change(within(modal).getByTestId('primer-modal-seq'), { target: { value: 'gggcccaaatttgggcccaa' } }); });
+    act(() => { fireEvent.click(within(modal).getByTestId('primer-modal-create')); });
     const p = S.assemblyDraftPrimers.a3.find((x) => x.direction === 'forward');
-    expect(p.sequence).toBe('GGGCCCAAATTTGGGCCCAA');
+    expect(p.bindingSequence).toBe('GGGCCCAAATTTGGGCCCAA');
+    expect(p.sequence).toBe(`${p.tail}GGGCCCAAATTTGGGCCCAA`);
     expect(p.status).toBe('edited');
+  });
+
+  it('opens the shared rich primer editor with template landing and restriction context', () => {
+    act(() => {
+      useStore.setState({
+        showReSites: true, reFilter: 'all', reMinSiteLen: 6, reActiveSet: null,
+      });
+    });
+    mountAnnotatedDraft();
+    act(() => {
+      A.writeAssemblyPrimer({
+        draftId: 'a3', range: { start: 0, end: 20 }, direction: 'forward',
+      });
+    });
+    const primer = prims()[0];
+    act(() => {
+      A.updateAssemblyPrimer('a3', primer.id, {
+        sites: [{
+          id: 'old-version-site', sourceIndex: 0,
+          target: {
+            entryId: 'a3', resourceHash: 'old-version-hash', topology: 'linear',
+          },
+          location: { kind: 'single', segments: [{ start: 0, end: 20 }] },
+          strand: 1, annealedSequence: SEG0, sourceForms: ['assembly-draft'],
+        }],
+      });
+    });
+    const panel = screen.getByTestId('assembly-primers-panel');
+    act(() => { fireEvent.click(within(panel).getByTestId('assembly-primer-edit')); });
+
+    expect(screen.getByTestId('primer-from-selection-modal')).toBeTruthy();
+    expect(screen.getByTestId('primer-modal-helper-re-EcoRI')).toBeTruthy();
+    expect(screen.getByTestId('primer-binding-preview')).toBeTruthy();
+    const templatePreview = within(screen.getByTestId('primer-binding-template-preview'));
+    expect(templatePreview.getByTestId('sequence-view-line')).toBeTruthy();
+    expect(templatePreview.getByTestId('sequence-view-primer')).toBeTruthy();
+    const annotation = templatePreview.getByTestId('sequence-view-annotation');
+    expect(annotation.dataset.regionId).toBeTruthy();
+    expect(annotation.textContent).toContain('test promoter');
+    expect(templatePreview.getAllByTestId('sequence-view-re-site')
+      .some((site) => site.dataset.enzyme === 'EcoRI')).toBe(true);
+    act(() => { fireEvent.click(screen.getByTestId('primer-modal-helper-re-EcoRI')); });
+    const productPreview = within(screen.getByTestId('primer-binding-product-preview'));
+    expect(productPreview.getAllByTestId('sequence-view-re-site')
+      .some((site) => site.dataset.enzyme === 'EcoRI')).toBe(true);
+  });
+
+  it('passes the exact predicted feature set from the assembly viewer into the shared editor', () => {
+    const predictionSettings = {
+      cds: true, sgRNA: false, promoter: false, terminator: false, threshold: 0.5,
+    };
+    const [expectedFeature] = runPredictors(PREDICTED_ASSEMBLY, predictionSettings, []);
+    expect(expectedFeature).toBeTruthy();
+    act(() => {
+      useStore.setState({
+        sequenceView: {
+          ...useStore.getState().sequenceView,
+          predictions: predictionSettings,
+        },
+      });
+    });
+    render(<SkeletonProvider><H /><EditorWindowShell /></SkeletonProvider>);
+    act(() => {
+      A.addContainer({
+        id: 'predicted-source',
+        kind: 'molecule',
+        name: 'Predicted source',
+        sequence: PREDICTED_ASSEMBLY,
+        // One short confident region prevents buildFeatureMap's intentional
+        // whole-fragment fallback while leaving the long ORF free to predict.
+        annotations: [{
+          id: 'seed-feature', level: 'region', type: 'promoter',
+          name: 'seed', start: 0, end: 6, strand: 1,
+        }],
+      });
+      A.createAssemblyDraft({ id: 'predicted-assembly', name: 'Predicted assembly' });
+      A.insertSegment('predicted-assembly', 'predicted-source', 0, PREDICTED_ASSEMBLY.length, false);
+      A.openEditorAssemblyTab('predicted-assembly');
+      A.writeAssemblyPrimer({
+        draftId: 'predicted-assembly', range: { start: 40, end: 60 }, direction: 'forward',
+      });
+    });
+
+    const panel = screen.getByTestId('assembly-primers-panel');
+    act(() => { fireEvent.click(within(panel).getByTestId('assembly-primer-edit')); });
+
+    const previewFeatures = within(screen.getByTestId('primer-binding-template-preview'))
+      .getAllByTestId('sequence-view-annotation');
+    expect(previewFeatures.map((node) => ({
+      name: node.dataset.regionName,
+      source: node.dataset.regionSource,
+      predicted: node.dataset.predicted,
+    }))).toContainEqual(expect.objectContaining({
+      source: expectedFeature.source,
+      predicted: 'true',
+    }));
+    const previewFeature = previewFeatures
+      .find((node) => node.dataset.regionSource === expectedFeature.source);
+    expect(previewFeature).toBeTruthy();
+    expect(previewFeature.dataset.regionSource).toBe(expectedFeature.source);
+    expect(previewFeature.dataset.regionStart).toBe(String(expectedFeature.start));
+    expect(previewFeature.dataset.regionEnd).toBe(String(expectedFeature.end));
+  });
+
+  it('canonicalizes valid IUPAC and atomically rejects an invalid prospective value', () => {
+    writePair();
+    const panel = screen.getByTestId('assembly-primers-panel');
+    act(() => { fireEvent.click(within(panel).getAllByTestId('assembly-primer-edit')[0]); });
+    const modal = screen.getByTestId('primer-from-selection-modal');
+    const field = within(modal).getByTestId('primer-modal-seq');
+
+    act(() => { fireEvent.change(field, { target: { value: 'atgcnryswkmbdhv' } }); });
+    expect(field.value).toBe('ATGCNRYSWKMBDHV');
+    act(() => { fireEvent.change(field, { target: { value: 'ATGC J' } }); });
+    expect(field.value).toBe('ATGCNRYSWKMBDHV');
+  });
+
+  it('refuses to save an invalid legacy/programmatic sequence', () => {
+    writePair();
+    const primer = prims()[0];
+    act(() => { A.updateAssemblyPrimer('a3', primer.id, { sequence: 'ATGCJ' }); });
+    const panel = screen.getByTestId('assembly-primers-panel');
+    act(() => { fireEvent.click(within(panel).getAllByTestId('assembly-primer-edit')[0]); });
+    const modal = screen.getByTestId('primer-from-selection-modal');
+
+    const save = within(modal).getByTestId('primer-modal-create');
+    expect(save.disabled).toBe(true);
+    act(() => { fireEvent.click(save); });
+    expect(screen.getByTestId('primer-from-selection-modal')).toBeTruthy();
+    expect(prims().find((candidate) => candidate.id === primer.id).sequence).toBe('ATGCJ');
   });
 
   it('Boundaries tab lists coverage rows', () => {

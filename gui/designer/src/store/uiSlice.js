@@ -102,7 +102,7 @@ export const SEQUENCE_VIEW_DEFAULTS = Object.freeze({
   // a biolog hide e.g. all reverse rows while keeping +1/+2/+3.
   visibleFrames: { ...DEFAULT_VISIBLE_FRAMES },
   primerStyle: 'filled',
-  reOrientation: 'vertical',
+  reOrientation: 'horizontal',
   predictions: { ...PREDICTIONS_DEFAULTS },
   // Bug-rush #19 (04.05.2026 evening): biolog «при нажатии на фичу
   // идёт телепорт к её началу, это мы сделаем опцией и возможность

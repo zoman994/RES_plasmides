@@ -9,10 +9,16 @@
  * and the click hit-target extended to cover it. Strictly additive — primers
  * without a tail render exactly as before.
  */
-import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import {
+  describe, it, expect, afterEach, vi,
+} from 'vitest';
+import {
+  render, screen, cleanup, fireEvent,
+} from '@testing-library/react';
 import PrimerTrack from '../tracks/PrimerTrack';
 import { reverseComplement } from '../../../sequence-utils';
+import { PRIMER_GLYPH_HEIGHT } from '../tracks/PrimerStepGlyph';
+import { PRIMER_LABEL_GAP, PRIMER_LABEL_HEIGHT } from '../tracks/primer-track-layout';
 
 afterEach(cleanup);
 
@@ -85,32 +91,46 @@ describe('PrimerTrack — overlap tail segment', () => {
     expect(Number(hitRect.getAttribute('x'))).toBeLessThanOrEqual(-(TAIL.length * 7.2));
   });
 
-  // The reverse tail sits to the RIGHT of binding [W, W+tailW]; the name label
-  // must clear it (else the name renders on top of the tail bases).
-  it('reverse: name label is placed PAST the tail (no overlap with the tail segment)', () => {
+  const expectLabelTemplateFacing = (direction) => {
+    const label = screen.getByTestId('sequence-view-primer-label');
+    const primer = screen.getByTestId('sequence-view-primer');
+    const start = Number(label.getAttribute('x'));
+    const end = start + Number(label.getAttribute('textLength'));
+    const body = primer.querySelector(
+      '[data-testid="sequence-view-primer-compact-run"], '
+      + '[data-testid="sequence-view-primer-arrowhead"]',
+    );
+    const bodyY = Number(body.getAttribute('data-primer-lane-y'));
+    expect(Math.min(end, BINDING.length * 7.2) - Math.max(start, 0)).toBeGreaterThan(0);
+    if (direction === 'reverse') {
+      expect(Number(label.dataset.primerLabelY) + PRIMER_LABEL_HEIGHT + PRIMER_LABEL_GAP)
+        .toBe(bodyY);
+    } else {
+      expect(Number(label.dataset.primerLabelY))
+        .toBe(bodyY + PRIMER_GLYPH_HEIGHT + PRIMER_LABEL_GAP);
+    }
+  };
+
+  it('reverse: name label is above the primer instead of competing with its tail', () => {
     const p = {
       name: 'rev', direction: 'reverse', bindingSequence: BINDING, tail: TAIL, sequence: TAIL + BINDING, tmBinding: 60,
     };
     render(<PrimerTrack {...base} primers={[p]} />);
-    const W = BINDING.length * 7.2;
-    const label = screen.getByTestId('sequence-view-primer-label');
-    expect(Number(label.getAttribute('x'))).toBeGreaterThanOrEqual(W + TAIL.length * 7.2);
+    expectLabelTemplateFacing('reverse');
   });
 
-  it('reverse WITHOUT tail → label at W+4 (unchanged)', () => {
+  it('reverse WITHOUT tail → label remains above its body', () => {
     const p = { name: 'rev', direction: 'reverse', bindingSequence: BINDING, tmBinding: 60 };
     render(<PrimerTrack {...base} primers={[p]} />);
-    const W = BINDING.length * 7.2;
-    expect(Number(screen.getByTestId('sequence-view-primer-label').getAttribute('x'))).toBeCloseTo(W + 4, 3);
+    expectLabelTemplateFacing('reverse');
   });
 
-  it('forward: tail is on the left, so the right-side label is unaffected (W+HEAD+4)', () => {
+  it('forward: name label is below the binding body instead of competing with its tail', () => {
     const p = {
       name: 'fwd', direction: 'forward', bindingSequence: BINDING, tail: TAIL, sequence: TAIL + BINDING, tmBinding: 60,
     };
     render(<PrimerTrack {...base} primers={[p]} />);
-    const W = BINDING.length * 7.2;
-    expect(Number(screen.getByTestId('sequence-view-primer-label').getAttribute('x'))).toBeCloseTo(W + 6 + 4, 3);
+    expectLabelTemplateFacing('forward');
   });
 });
 
@@ -148,12 +168,15 @@ describe('PrimerTrack — aligned-v1 M/X/I/D glyphs keep source geometry', () =>
     expect(screen.getByTestId('sequence-view-primer-bases').textContent).toHaveLength(ANCHOR.length);
   });
 
-  it('draws a target-only deletion as a dash in the target column', () => {
+  it('draws a target-only deletion as an empty interval with a dashed bridge', () => {
     const body = `${ANCHOR.slice(0, 6)}${ANCHOR.slice(7)}`;
     render(<PrimerTrack {...props} primers={[primer(body, { tail: '' })]} />);
-    const deletion = screen.getByTestId('sequence-view-primer-base-deletion');
-    expect(deletion.textContent).toBe('–');
+    const deletion = screen.getByTestId('sequence-view-primer-deletion-bridge');
     expect(deletion.getAttribute('data-primer-alignment-op')).toBe('D');
+    expect(deletion.getAttribute('stroke-dasharray')).toBeTruthy();
+    expect(screen.queryByTestId('sequence-view-primer-base-deletion')).toBeNull();
+    expect(screen.queryAllByTestId('sequence-view-primer-bases')
+      .map((node) => node.textContent).join('')).not.toContain('–');
     expect(screen.getByTestId('sequence-view-primer').getAttribute('data-primer-span')).toBe('5-21');
   });
 
@@ -277,6 +300,36 @@ describe('PrimerTrack — 5′-tail wraps onto the adjacent line', () => {
     expect(Number(tail.getAttribute('width'))).toBeCloseTo(WTAIL.length * 7.2, 3);
   });
 
+  it('a wrapped tail exposes the same keyboard action as its off-line binding', () => {
+    const onPrimerClick = vi.fn();
+    const props = { ...fwdLine(0), onPrimerClick };
+    const { rerender } = render(<PrimerTrack {...props} />);
+    const tailGroup = screen.getByTestId('sequence-view-primer-tail-wrap');
+
+    expect(tailGroup.getAttribute('role')).toBe('button');
+    expect(tailGroup.getAttribute('tabindex')).toBe('0');
+    expect(tailGroup.getAttribute('aria-label')).toMatch(/f.*прям/i);
+    expect(tailGroup.dataset.primerInteractive).toBe('true');
+    expect(tailGroup.dataset.primerOccurrenceKey).toBe(tailGroup.dataset.primerKey);
+    fireEvent.keyDown(tailGroup, { key: 'Enter' });
+    fireEvent.keyDown(tailGroup, { key: ' ' });
+    expect(onPrimerClick).toHaveBeenCalledTimes(2);
+    expect(onPrimerClick.mock.calls[0][0]).toBe(onPrimerClick.mock.calls[1][0]);
+
+    rerender(
+      <PrimerTrack
+        {...props}
+        selectedPrimerKeys={[tailGroup.dataset.primerKey]}
+        expandedPrimerKey={tailGroup.dataset.primerKey}
+      />,
+    );
+    const selectedTail = screen.getByTestId('sequence-view-primer-tail-wrap');
+    expect(selectedTail.dataset.selected).toBe('true');
+    const shape = screen.getByTestId('sequence-view-primer-tail');
+    expect(shape.getAttribute('stroke')).toBe('var(--viz-primer-fwd)');
+    expect(selectedTail.querySelectorAll('[data-primer-selection-bracket]')).toHaveLength(0);
+  });
+
   // reverse: 16-col lines → binding [20,32) ends flush at line [16,32)'s edge,
   // so the tail belongs to columns [32,38) on the NEXT line [32,48).
   const REV_SEQ = 'T'.repeat(20) + WBIND + 'T'.repeat(8); // len 40
@@ -329,6 +382,7 @@ describe('PrimerTrack — 5′-tail wraps onto the adjacent line', () => {
 // ▶1 origin divider — instead of dangling it into the static side margin.
 const CBIND = 'ACGTACGTACGT';            // 12 nt, self-rev-comp → reverse reuse
 const CTAIL = 'GGGGGG';                   // 6 nt closure overhang
+const ASYMMETRIC_TAIL = 'AGTC';           // catches reversal/duplication at origin
 
 describe('PrimerTrack — circularisation tail wraps across the origin', () => {
   // seqLength 90, last partial line [80,90) extended by the first 10 nt → a
@@ -366,6 +420,38 @@ describe('PrimerTrack — circularisation tail wraps across the origin', () => {
     const wrap = screen.getByTestId('sequence-view-primer-tail-wrap');
     expect(txX(wrap)).toBeCloseTo((8 + 10) * 7.2, 3);
     expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe(CTAIL);
+  });
+
+  it.each([
+    ['forward', FWD_SEQ, 80, 20, 10],
+    ['reverse', REV_SEQ, 80, 20, 10],
+  ])('%s origin tail keeps one asymmetric 5′ sequence', (direction, fullSeq, lineStart, lineLen, wrapAt) => {
+    const bindingSequence = CBIND;
+    render(<PrimerTrack
+      fullSeq={fullSeq}
+      lineStart={lineStart}
+      lineLen={lineLen}
+      labelChars={8}
+      primerStyle="filled"
+      charPx={7.2}
+      wrapsOrigin
+      wrapAt={wrapAt}
+      seqLength={90}
+      circular
+      directionFilter={direction}
+      primers={[{
+        name: `asymmetric-${direction}`,
+        direction,
+        bindingSequence,
+        tail: ASYMMETRIC_TAIL,
+        sequence: ASYMMETRIC_TAIL + bindingSequence,
+      }]}
+    />);
+    expect(screen.getAllByTestId('sequence-view-primer-tail')).toHaveLength(1);
+    expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent)
+      .toBe(ASYMMETRIC_TAIL);
+    expect(screen.getByTestId('sequence-view-primer-tail').getAttribute('data-primer-tail-direction'))
+      .toBe(direction);
   });
 
   // The dangle bug: on the FIRST line (lineStart 0, non-wrap) a forward closure
@@ -537,7 +623,7 @@ describe('PrimerTrack — anchored source binding with a longer current oligo', 
     expect(screen.getByTestId('sequence-view-primer-bases').textContent).toBe(current);
     const mismatch = screen.getByTestId('sequence-view-primer-base-mismatch');
     expect(mismatch.textContent).toBe('A');
-    expect(mismatch.getAttribute('fill')).toBe('var(--warning-fg)');
+    expect(mismatch.getAttribute('fill')).toBe('var(--danger-fg)');
     expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe(POLY_A);
     expect(Number(screen.getByTestId('sequence-view-primer-tail').getAttribute('width')))
       .toBeCloseTo(POLY_A.length * CHAR_PX, 3);
@@ -546,8 +632,9 @@ describe('PrimerTrack — anchored source binding with a longer current oligo', 
   it('maps reverse current binding into top-strand coordinate order and marks its substitution', () => {
     const top = 'AACCGGTTAACC';
     const primerBinding = 'GGTTAACCGGTT'; // reverse-complement(top)
-    const currentBinding = `A${primerBinding.slice(1)}`;
-    const expectedTop = 'AACCGGTTA ACT'.replace(/ /g, ''); // reverse-complement(currentBinding)
+    const replacement = primerBinding[5] === 'A' ? 'C' : 'A';
+    const currentBinding = `${primerBinding.slice(0, 5)}${replacement}${primerBinding.slice(6)}`;
+    const expectedTop = reverseComplement(currentBinding);
     const template = `${'T'.repeat(5)}${top}${'T'.repeat(8)}`;
     render(
       <PrimerTrack
@@ -578,15 +665,16 @@ describe('PrimerTrack — anchored source binding with a longer current oligo', 
     expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe('GG');
   });
 
-  it('draws no current binding or tail composition for an unreadable occurrence', () => {
+  it('draws no current binding or tail composition for a contradictory occurrence', () => {
+    const short = ANCHOR.slice(4);
     renderTrack({
       ...legacyPrimer,
       tail: 'GAATTC',
-      bindingSequence: ANCHOR.slice(4),
-      sequence: `GAATTC${ANCHOR.slice(4)}`,
+      bindingSequence: short,
+      sequence: `TTTTTT${short}`,
     });
     const glyph = screen.getByTestId('sequence-view-primer');
-    expect(glyph.getAttribute('data-primer-oligo-status')).toBe('unsupported');
+    expect(glyph.getAttribute('data-primer-oligo-status')).toBe('conflict');
     expect(screen.queryByTestId('sequence-view-primer-bases')).toBeNull();
     expect(screen.queryByTestId('sequence-view-primer-tail')).toBeNull();
   });

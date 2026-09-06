@@ -6,8 +6,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildPieceFromSelection, buildPieceFromFeature,
-  buildPieceFromExistingPrimers, buildPieceFromNewPrimers,
+  buildPieceFromExistingPrimers, buildPieceFromNewPrimers, buildPieceFromPcrProduct,
 } from '../lib/piece-authoring';
+import { resolvePcrProduct } from '../../../lib/pcr-amplicon';
+import { alignPrimerBinding } from '../../../lib/primer-binding-alignment';
 
 const C = { id: 'c-1', name: 'pUC', sequence: 'AAAACCCCGGGGTTTTACGTACGT' };
 
@@ -66,5 +68,61 @@ describe('T5 K1 buildPieceFromNewPrimers', () => {
     expect(p.acquisitionMethod).toBe('pcr');
     expect(p.ranges[0]).toEqual({ sourceId: 'c-1', start: 0, end: 24, orientation: 'forward' });
     expect(p.acquisitionParams.primerPairId).toEqual({ forward: 'AAAACCCC', reverse: 'ACGTACGT' });
+  });
+});
+
+describe('P5 — resolved PCR evidence is frozen into the authored piece', () => {
+  it('deep-copies segments, verified alignment and binding model into both snapshots', () => {
+    const anchor = 'ACGTGACCTAGCTTGA';
+    const forwardBinding = 'ACGTACCTAGCTTGA'; // one internal D, then an 11-nt 3′ anchor
+    const reverseTop = 'TTTTGGAATTCC';
+    const reverseBinding = 'GGAATTCCAAAA';
+    const template = `TT${anchor}${'C'.repeat(8)}${reverseTop}GG`;
+    const forwardSegments = [{ start: 2, end: 18 }];
+    const forwardAlignment = alignPrimerBinding(forwardBinding, anchor);
+    const reverseAlignment = alignPrimerBinding(reverseBinding, reverseBinding);
+    const resolved = resolvePcrProduct({
+      template,
+      topology: 'linear',
+      occurrences: [{
+        key: 'f#site', primerId: 'f', start: 2, end: 10, strand: 1,
+        segments: forwardSegments, alignment: forwardAlignment,
+      }, {
+        key: 'r#site', primerId: 'r', start: 26, end: 38, strand: -1,
+        segments: [{ start: 26, end: 38 }], alignment: reverseAlignment,
+      }],
+      primersById: {
+        f: {
+          id: 'f', name: 'fwd', sequence: forwardBinding,
+          bindingSequence: forwardBinding, bindingModel: 'aligned-v1', tail: '',
+        },
+        r: {
+          id: 'r', name: 'rev', sequence: reverseBinding,
+          bindingSequence: reverseBinding, bindingModel: 'aligned-v1', tail: '',
+        },
+      },
+    });
+    expect(resolved.ok).toBe(true);
+
+    const piece = buildPieceFromPcrProduct({ id: 'c-replay', sequence: template }, resolved);
+    const snapshot = piece.acquisitionParams.primerSnapshots.forward;
+    expect(snapshot).toMatchObject({
+      bindingModel: 'aligned-v1',
+      segments: [{ start: 2, end: 18 }],
+      alignment: expect.objectContaining({ editDistance: 1 }),
+    });
+    expect(snapshot.segments).not.toBe(resolved.product.forward.segments);
+    expect(snapshot.alignment).not.toBe(resolved.product.forward.alignment);
+    expect(snapshot.alignment.runs).not.toBe(resolved.product.forward.alignment.runs);
+    expect(piece.acquisitionParams.primerSnapshots.reverse).toMatchObject({
+      bindingModel: 'aligned-v1',
+      segments: [{ start: 26, end: 38 }],
+      alignment: expect.objectContaining({ editDistance: 0 }),
+    });
+
+    resolved.product.forward.segments[0].start = 99;
+    resolved.product.forward.alignment.runs[0].op = 'X';
+    expect(snapshot.segments).toEqual([{ start: 2, end: 18 }]);
+    expect(snapshot.alignment.runs[0].op).toBe('M');
   });
 });

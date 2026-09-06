@@ -25,6 +25,7 @@
 import { useLayoutEffect, useState } from "react";
 import { LABEL_WIDTH } from "../constants.js";
 import { complementSegments, invertedStickyStrandRanges } from "../lib/selection-ops.js";
+import { selectionDisplaySegments } from "../lib/selection-range.js";
 
 export default function SelectionOverlay({
   caretPos,
@@ -165,8 +166,8 @@ export default function SelectionOverlay({
     //   - extended via trailing-wrap (one end > seqLen):
     //         segment 1 in main         [anchor .. seqLen)
     //         segment 2 in trailing-wrap [0 .. end-seqLen)
-    // Anchor stays in main band by construction (the resolver gates
-    // the initial click). caret may have wrapped in either direction.
+    // Either endpoint may live in a duplicated context row. The shared
+    // selection contract projects only the visible portion into each band.
     // Inverted = «выделить ВСЁ, кроме выделенного руками куска» (Игорь 22.06): the
     // COMPLEMENT becomes the orange selection, and the hand-picked piece [lo,hi] is
     // de-selected and rendered as a dim SHADE so it reads as the excluded part.
@@ -174,9 +175,9 @@ export default function SelectionOverlay({
     const segments = inverted
       ? [
         ...complementSegments(sLo, sHi, seqLength).map((s) => ({ ...s, dim: false })),
-        ...computeSegments(caretAnchor, caretPos, seqLength).map((s) => ({ ...s, dim: true })),
+        ...selectionDisplaySegments(caretAnchor, caretPos, seqLength).map((s) => ({ ...s, dim: true })),
       ]
-      : computeSegments(caretAnchor, caretPos, seqLength);
+      : selectionDisplaySegments(caretAnchor, caretPos, seqLength);
     const out = [];
     // Round-13: locate the wrap-bridge row (line carrying
     // `data-wraps-origin="true"`) so trailing-wrap segments can
@@ -396,7 +397,6 @@ export default function SelectionOverlay({
     </>
   );
 }
-
 /**
  * terminalOverhangSpans — which protruding terminal overhangs the selection
  * [anchor,caret] reaches into, and how many columns of each. Right when the
@@ -413,69 +413,4 @@ export function terminalOverhangSpans(anchor, caret, seqLength, terminalSelect) 
   if (rLen && hi > seqLength) spans.push({ end: 'right', len: Math.min(rLen, hi - seqLength) });
   if (lLen && lo < 0) spans.push({ end: 'left', len: Math.min(lLen, -lo) });
   return spans;
-}
-
-/**
- * Round-8 wrap-aware segments. Translates an extended-domain
- * (anchor, caret) pair into 1 or 2 rendering segments:
- *   { kind, start, end }
- * where `kind ∈ {'main','leading-wrap','trailing-wrap'}` selects
- * which DOM rows to overlay and `[start, end)` are the absolute
- * plasmid coords inside that kind's coordinate frame.
- *
- * Rules:
- *   - both ends in [0, seqLen]: single main segment.
- *   - one end < 0 (came from leading-wrap drag): two segments —
- *       leading-wrap [end+seqLen, seqLen)  +  main [0, anchor]
- *     (covers the «end of plasmid» context strip + the start of
- *     main, i.e. visually two strips around the top origin marker.)
- *   - one end > seqLen (trailing-wrap drag): two segments —
- *       main [anchor, seqLen)  +  trailing-wrap [0, end-seqLen)
- *     (covers main:last + first strip after bottom origin marker.)
- *
- * Anchor is assumed to live in main band (resolver pins it). Both
- * cases above are symmetric — swap anchor/caret as needed.
- */
-function computeSegments(anchor, caret, seqLength) {
-  const a = anchor;
-  const c = caret;
-  if (!Number.isFinite(seqLength) || seqLength <= 0) {
-    const start = Math.min(a, c);
-    const end = Math.max(a, c);
-    if (start === end) return [];
-    return [{ kind: 'main', start, end }];
-  }
-  // Caret wrapped via leading-wrap: caret < 0.
-  if (c < 0) {
-    return [
-      { kind: 'leading-wrap', start: c + seqLength, end: seqLength },
-      { kind: 'main', start: 0, end: a },
-    ].filter((s) => s.end > s.start);
-  }
-  // Anchor wrapped via leading-wrap (rare — biolog clicked into
-  // wrap-tail first; resolver normally prevents this but symmetry).
-  if (a < 0) {
-    return [
-      { kind: 'leading-wrap', start: a + seqLength, end: seqLength },
-      { kind: 'main', start: 0, end: c },
-    ].filter((s) => s.end > s.start);
-  }
-  // Caret wrapped via trailing-wrap: caret > seqLength.
-  if (c > seqLength) {
-    return [
-      { kind: 'main', start: a, end: seqLength },
-      { kind: 'trailing-wrap', start: 0, end: c - seqLength },
-    ].filter((s) => s.end > s.start);
-  }
-  if (a > seqLength) {
-    return [
-      { kind: 'main', start: c, end: seqLength },
-      { kind: 'trailing-wrap', start: 0, end: a - seqLength },
-    ].filter((s) => s.end > s.start);
-  }
-  // Normal: both in main, single segment.
-  const start = Math.min(a, c);
-  const end = Math.max(a, c);
-  if (start === end) return [];
-  return [{ kind: 'main', start, end }];
 }

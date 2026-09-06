@@ -31,6 +31,7 @@ export default function LibrarySaveActions({
   hasChanges,
   editedSequence,        // working sequence to commit (transient buffer)
   editedAnnotations,
+  editedTopology,
   changesSummary = [],   // string[] — «что изменено», one line per coalesced edit
   changeText = '',       // joined summary → stamped as origin.changes provenance
   parentName,
@@ -76,6 +77,7 @@ export default function LibrarySaveActions({
         {
           name: trimmed,
           changes: changeText,
+          topology: editedTopology,
           reason: (versionPrompt.reason || '').trim(),
           lineageRole: versionPrompt.lineageRole === 'branch' ? 'branch' : 'version',
         },
@@ -89,10 +91,12 @@ export default function LibrarySaveActions({
       } else {
         showToast?.('Не удалось создать версию — попробуйте ещё раз.', { kind: 'error', duration: 4000 });
       }
+    } catch {
+      showToast?.('Не удалось создать версию — правки сохранены, попробуйте ещё раз.', { kind: 'error', duration: 4000 });
     } finally {
       setBusy(false);
     }
-  }, [versionPrompt, createManualEditBranch, libraryEntryId, editedSequence, editedAnnotations, changeText, parentName, showToast, onAfterSaveAsVersion]);
+  }, [versionPrompt, createManualEditBranch, libraryEntryId, editedSequence, editedAnnotations, editedTopology, changeText, parentName, showToast, onAfterSaveAsVersion]);
 
   if (!libraryEntryId) return null;
 

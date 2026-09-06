@@ -285,6 +285,63 @@ describe('K4 — hotkey infrastructure', () => {
     modal.remove();
   });
 
+  it('an escape-only boundary shields disclosure Escape but leaves E and Ctrl+S available', () => {
+    _setPlatformOverrideForTests('other');
+    _setGetContextForTests(() => ({ currentProjectId: 'p-1', activeFullscreen: 'assembly' }));
+    const escape = vi.fn();
+    const edit = vi.fn();
+    const save = vi.fn();
+    renderHook(() => useHotkey('escape', escape));
+    renderHook(() => useHotkey('primer-edit', edit));
+    renderHook(() => useHotkey('save-bodge', save));
+    const boundary = document.createElement('section');
+    boundary.setAttribute('data-block-global-escape', 'true');
+    const target = document.createElement('button');
+    boundary.appendChild(target);
+    document.body.appendChild(boundary);
+
+    expect(runHotkeyResolver(makeEvent({ key: 'Escape', target }))).toBe(false);
+    expect(escape).not.toHaveBeenCalled();
+    expect(runHotkeyResolver(makeEvent({ key: 'e', target }))).toBe(true);
+    expect(edit).toHaveBeenCalledTimes(1);
+    expect(runHotkeyResolver(makeEvent({ key: 's', ctrl: true, target }))).toBe(true);
+    expect(save).toHaveBeenCalledTimes(1);
+    boundary.remove();
+  });
+
+  it('an active escape-only boundary shields Escape after focus moves elsewhere', () => {
+    _setPlatformOverrideForTests('other');
+    const escape = vi.fn();
+    renderHook(() => useHotkey('escape', escape));
+    const boundary = document.createElement('section');
+    boundary.setAttribute('data-block-global-escape', 'true');
+    const outside = document.createElement('button');
+    document.body.append(boundary, outside);
+
+    expect(runHotkeyResolver(makeEvent({ key: 'Escape', target: outside }))).toBe(false);
+    expect(escape).not.toHaveBeenCalled();
+    boundary.remove();
+    outside.remove();
+  });
+
+  it('an open opt-in modal blocks global hotkeys even when focus is outside its boundary', () => {
+    _setPlatformOverrideForTests('other');
+    const handler = vi.fn();
+    renderHook(() => useHotkey('escape', handler));
+    const modal = document.createElement('section');
+    modal.setAttribute('data-modal-open', '');
+    modal.setAttribute('data-block-global-hotkeys', 'true');
+    const escapedFocus = document.createElement('button');
+    document.body.append(modal, escapedFocus);
+
+    const event = makeEvent({ key: 'Escape', target: escapedFocus });
+    expect(runHotkeyResolver(event)).toBe(false);
+    expect(event.defaultPrevented).toBe(false);
+    expect(handler).not.toHaveBeenCalled();
+    modal.remove();
+    escapedFocus.remove();
+  });
+
   // PRIMER-LIVE-1 — «E» edits the selected primer occurrence, the keyboard
   // twin of double-click. It is the standard edit key in this project's
   // layout, so it is registered centrally rather than as a local listener

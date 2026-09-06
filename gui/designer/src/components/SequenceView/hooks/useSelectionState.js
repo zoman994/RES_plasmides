@@ -38,73 +38,24 @@ import { findScrollingAncestor } from "../lib/scroll-handle.js";
 import { invertedSlice } from "../lib/selection-ops.js";
 import { LABEL_WIDTH } from "../constants.js";
 import { registerCopySource, setActiveCopySource } from "../../../lib/global-copy.js";
+import {
+  canonicalSequenceCaret,
+  selectionSlice,
+  terminalCaretBounds,
+} from "../lib/selection-range.js";
 
-/**
- * selectionSlice — pure wrap-aware extraction of the selected
- * substring. Mirrors the inline logic copySelection has always used:
- * a selection that crosses the origin (one end in the extended domain,
- * < 0 or > seqLength) is stitched from the two halves around 0.
- * Returns '' when there is no selection (anchor == focus or either is
- * null). Exported for unit reuse + the global copy-source getText.
- */
-/**
- * terminalCaretBounds — the caret's allowed [min,max] for a LINEAR fragment whose
- * terminal sticky-end overhang protrudes past the duplex on the bottom strand
- * («Тянуть до конца», Игорь 22.06). `terminalSelect` carries the protruding
- * lengths; null (circular / blunt) collapses the bounds to [0, seqLength].
- */
-export function terminalCaretBounds(seqLength, terminalSelect) {
-  const r = terminalSelect && terminalSelect.rightLen ? terminalSelect.rightLen : 0;
-  const l = terminalSelect && terminalSelect.leftLen ? terminalSelect.leftLen : 0;
-  return { min: l ? -l : 0, max: seqLength + r };
-}
+export { selectionSlice, terminalCaretBounds } from "../lib/selection-range.js";
 
-export function selectionSlice({ fullSeq, anchor, focus, seqLength, terminalSelect = null }) {
-  const a = (typeof anchor === "number" && Number.isFinite(anchor)) ? anchor : null;
-  const f = (typeof focus === "number" && Number.isFinite(focus)) ? focus : null;
-  if (a == null || f == null || a === f) return "";
-  const seq = fullSeq || "";
-  if (seqLength > 0 && (Math.min(a, f) < 0 || Math.max(a, f) > seqLength)) {
-    // «Тянуть + копировать выступ» (Игорь): on a LINEAR fragment the terminal
-    // overhang lives OUTSIDE fullSeq (bottom strand past the cut). Clip the top
-    // strand to [0,seqLength] and append/prepend the single-stranded overhang
-    // bases as displayed. terminalSelect is null for circular, so the wrap-stitch
-    // below stays the circular-only path.
-    if (terminalSelect) {
-      const lo = Math.min(a, f);
-      const hi = Math.max(a, f);
-      const topLo = Math.max(0, lo);
-      const topHi = Math.min(seqLength, hi);
-      let s = topHi > topLo ? seq.slice(topLo, topHi) : "";
-      const rLen = terminalSelect.rightLen || 0;
-      const lLen = terminalSelect.leftLen || 0;
-      if (hi > seqLength && terminalSelect.rightBases) {
-        s += terminalSelect.rightBases.slice(0, Math.min(rLen, hi - seqLength));
-      }
-      if (lo < 0 && terminalSelect.leftBases) {
-        const take = Math.min(lLen, -lo);
-        s = terminalSelect.leftBases.slice(lLen - take) + s;
-      }
-      return s;
-    }
-    let head;
-    let tail;
-    if (Math.min(a, f) < 0) {
-      const negEnd = Math.min(a, f); // < 0
-      const posEnd = Math.max(a, f); // ≥ 0
-      head = seq.slice(negEnd + seqLength, seqLength);
-      tail = seq.slice(0, posEnd);
-    } else {
-      const lo = Math.min(a, f); // ≤ seqLength
-      const hi = Math.max(a, f); // > seqLength
-      head = seq.slice(lo, seqLength);
-      tail = seq.slice(0, hi - seqLength);
-    }
-    return head + tail;
+function findSequenceLineElement(node, stopAt) {
+  let el = node;
+  while (el && el !== stopAt) {
+    const testId = el.getAttribute?.('data-testid');
+    const hasLineMetadata = el.dataset?.lineStart != null
+      && (el.dataset.wraptailKind != null || el.dataset.wrapsOrigin != null);
+    if (testId === 'sequence-view-line' || hasLineMetadata) return el;
+    el = el.parentElement;
   }
-  const start = Math.min(a, f);
-  const end = Math.max(a, f);
-  return seq.slice(start, end);
+  return null;
 }
 
 export function useSelectionState({
@@ -194,11 +145,10 @@ export function useSelectionState({
   // accordingly.
   const posFromPointerEvent = (e, opts = {}) => {
     if (!seqLength || !charPx) return null;
-    let el = e.target;
-    while (el && el !== containerRef.current) {
-      if (el.dataset && el.dataset.lineStart != null) break;
-      el = el.parentElement;
-    }
+    // Ruler/strand/track descendants also expose data-line-start, but circular
+    // wrap metadata belongs to the outer sequence-view-line. Resolve that
+    // owner or a nested leading run is mistaken for an ordinary main row.
+    let el = findSequenceLineElement(e.target, containerRef.current);
     // Drag fast path: setPointerCapture rebinds `e.target` to the root, so the
     // walk above fails on EVERY pointermove → without this we'd scan every
     // line's getBoundingClientRect below (O(lines) forced layout per move at
@@ -209,10 +159,7 @@ export function useSelectionState({
         && typeof document !== 'undefined' && typeof document.elementFromPoint === 'function'
         && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
       let hit = document.elementFromPoint(e.clientX, e.clientY);
-      while (hit && hit !== containerRef.current) {
-        if (hit.dataset && hit.dataset.lineStart != null) { el = hit; break; }
-        hit = hit.parentElement;
-      }
+      el = findSequenceLineElement(hit, containerRef.current);
     }
     // Fallback: y-bounded line search. During a drag, INCLUDE
     // wrap-tail rows so the extended-domain caret can engage.
@@ -222,7 +169,7 @@ export function useSelectionState({
       for (const candidate of lines) {
         const k = candidate.getAttribute('data-wraptail-kind');
         // Skip wrap-tail on plain click; engage on drag.
-        if (!opts.extending && k && k !== 'main') continue;
+        if (!opts.extending && !opts.allowWrapAnchor && k && k !== 'main') continue;
         let r;
         try { r = candidate.getBoundingClientRect(); } catch { continue; }
         if (e.clientY >= r.top && e.clientY <= r.bottom) {
@@ -233,8 +180,9 @@ export function useSelectionState({
       if (!el) return null;
     }
     const kind = (el.getAttribute && el.getAttribute('data-wraptail-kind')) || 'main';
-    // Click on wrap-tail row → bail (anchor must live in main band).
-    if (!opts.extending && kind !== 'main') return null;
+    // Plain click on wrap-tail remains a no-op. Pointerdown may explicitly
+    // resolve it as a PENDING drag anchor; it is committed only after motion.
+    if (!opts.extending && !opts.allowWrapAnchor && kind !== 'main') return null;
     const lineStart = parseInt(el.dataset.lineStart, 10);
     if (Number.isNaN(lineStart)) return null;
     // Round-14: bridge line carries data-wraps-origin + data-wrap-at.
@@ -294,6 +242,10 @@ export function useSelectionState({
         && offsetCh > bridgeWrapAt) {
       const cpl = charsPerLine || 80;
       const wrapPos = Math.max(0, Math.min(cpl - bridgeWrapAt, offsetCh - bridgeWrapAt));
+      // The bridge's duplicated half is a ghost row even though its DOM kind
+      // is `main`. It may seed/extend a drag, but a plain click must not leave
+      // the controlled caret outside [0, seqLength].
+      if (!opts.extending && !opts.allowWrapAnchor) return null;
       return wrapPos + seqLength;
     }
     const lineLen = Math.min(charsPerLine || 80, seqLength - lineStart);
@@ -345,7 +297,9 @@ export function useSelectionState({
       }
     }
 
-    // 18.05.2026 — primer click? Bail (same as RE-site above) so root
+    // A logical primer occurrence may be split into a binding group and a
+    // separately wrapped 5′ tail. Both expose the same canonical marker, so
+    // neither press becomes DNA caret placement / pointer capture.
     // caret-placement / setPointerCapture / preventDefault don't STEAL
     // the click+dblclick from the primer's own <g> handlers. Без этого
     // pointer-capture на root уводит click мимо праймера (Игорь «клик
@@ -355,7 +309,7 @@ export function useSelectionState({
       let pEl = e.target;
       while (pEl && pEl !== containerRef.current) {
         if (pEl.getAttribute
-            && pEl.getAttribute('data-testid') === 'sequence-view-primer') break;
+            && pEl.getAttribute('data-primer-interactive') === 'true') break;
         pEl = pEl.parentElement;
       }
       if (pEl && pEl !== containerRef.current) {
@@ -439,12 +393,24 @@ export function useSelectionState({
     }
 
     if (typeof onCaretChange !== "function") return;
-    const pos = posFromPointerEvent(e);
+    const pos = posFromPointerEvent(e, { allowWrapAnchor: circular });
     if (pos == null) return;
-    dragRef.current = { active: true, pointerId: e.pointerId };
+    const pendingWrapAnchor = circular && (pos < 0 || pos > seqLength);
+    const continuingSelection = !!e.shiftKey && Number.isFinite(caretAnchor);
+    dragRef.current = {
+      active: true,
+      pointerId: e.pointerId,
+      // Shift-drag moves the focus of the controlled selection. Its anchor is
+      // the existing anchor, not the point where the second gesture began.
+      anchorPos: continuingSelection ? caretAnchor : pos,
+      lastPos: pos,
+      anchorCommitted: continuingSelection || !pendingWrapAnchor,
+    };
     pointerMovedRef.current = false;
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
-    onCaretChange(pos, { extendSelection: !!e.shiftKey, needsScroll: false });
+    if (!pendingWrapAnchor) {
+      onCaretChange(pos, { extendSelection: !!e.shiftKey, needsScroll: false });
+    }
     try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
     e.preventDefault();
   };
@@ -458,6 +424,29 @@ export function useSelectionState({
       autoScrollRafRef.current = null;
     }
   };
+  const extendDnaDragTo = (rawPos) => {
+    const drag = dragRef.current;
+    if (!drag.active || drag.mode === 'aa' || !Number.isFinite(rawPos)) return;
+    const anchor = Number.isFinite(drag.anchorPos) ? drag.anchorPos : caretAnchor;
+    let pos = rawPos;
+    // One physical gesture may traverse the ring once, never select the same
+    // nucleotide twice through duplicated context rows.
+    if (circular && Number.isFinite(anchor) && seqLength > 0) {
+      pos = Math.max(anchor - seqLength, Math.min(anchor + seqLength, pos));
+    }
+    if (pos === drag.lastPos) return;
+    if (!drag.anchorCommitted) {
+      onCaretChange(anchor, {
+        extendSelection: false,
+        needsScroll: false,
+        forceAnchor: true,
+      });
+      drag.anchorCommitted = true;
+    }
+    drag.lastPos = pos;
+    pointerMovedRef.current = true;
+    onCaretChange(pos, { extendSelection: true, needsScroll: false });
+  };
   const tickAutoScroll = (direction, scroller) => {
     const EDGE_SPEED = 18; // px/frame
     scroller.scrollBy({ top: direction * EDGE_SPEED, behavior: "auto" });
@@ -465,10 +454,9 @@ export function useSelectionState({
     if (last && dragRef.current.active) {
       const target = document.elementFromPoint(last.clientX, last.clientY) || last.target;
       const synth = { clientX: last.clientX, clientY: last.clientY, target };
-      const pos = posFromPointerEvent(synth, { extending: true, anchor: caretAnchor });
-      if (pos != null && typeof onCaretChange === "function") {
-        onCaretChange(pos, { extendSelection: true, needsScroll: false });
-      }
+      const anchor = dragRef.current.anchorPos;
+      const pos = posFromPointerEvent(synth, { extending: true, anchor });
+      if (pos != null && typeof onCaretChange === "function") extendDnaDragTo(pos);
     }
     autoScrollRafRef.current = requestAnimationFrame(() => tickAutoScroll(direction, scroller));
   };
@@ -521,20 +509,49 @@ export function useSelectionState({
       return;
     }
 
-    const pos = posFromPointerEvent(e, { extending: true, anchor: caretAnchor });
+    const anchor = dragRef.current.anchorPos;
+    const pos = posFromPointerEvent(e, { extending: true, anchor });
     if (pos == null) return;
-    pointerMovedRef.current = true;
-    onCaretChange(pos, { extendSelection: true, needsScroll: false });
+    extendDnaDragTo(pos);
   };
 
-  const onRootPointerUp = (e) => {
+  const finishPointerGesture = (e, commitFinal) => {
     if (!dragRef.current.active) return;
     if (dragRef.current.pointerId != null && e.pointerId !== dragRef.current.pointerId) return;
+    const drag = dragRef.current;
+    if (commitFinal && drag.mode !== 'aa') {
+      const anchor = drag.anchorPos;
+      // A pending ghost anchor is still a plain click until real motion has
+      // committed it. Resolve that pointerup with click rounding; using drag
+      // ceil/floor here can turn the exact same fractional screen coordinate
+      // into an adjacent base and fabricate a 1-bp selection on the bridge.
+      const extending = drag.anchorCommitted || pointerMovedRef.current;
+      const pos = posFromPointerEvent(e, {
+        extending,
+        allowWrapAnchor: circular && !extending,
+        anchor,
+      });
+      if (pos != null) {
+        extendDnaDragTo(pos);
+        // Returning exactly to a ghost anchor collapses the selection. Keep
+        // the visible drag semantics, but never leave a negative/>N caret for
+        // sequence writers after the gesture has ended.
+        if (drag.anchorCommitted && pos === anchor && (pos < 0 || pos > seqLength)) {
+          onCaretChange(canonicalSequenceCaret(pos, seqLength, true), {
+            extendSelection: false,
+            needsScroll: false,
+            forceAnchor: true,
+          });
+        }
+      }
+    }
     try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* ignore */ }
     dragRef.current = { active: false, pointerId: null };
     stopAutoScroll();
     lastPointerCoordsRef.current = null;
   };
+  const onRootPointerUp = (e) => finishPointerGesture(e, true);
+  const onRootPointerCancel = (e) => finishPointerGesture(e, false);
 
   // ---------------------------------------------------------------
   // Right-click → context menu over the active selection
@@ -625,6 +642,7 @@ export function useSelectionState({
     onRootPointerDown,
     onRootPointerMove,
     onRootPointerUp,
+    onRootPointerCancel,
     onRootContextMenu,
     onRootClickFallback,
     copySelection,

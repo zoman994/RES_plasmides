@@ -37,6 +37,11 @@
 import { reverseComplement } from "../../../sequence-utils";
 import { translateDNA } from "../../../codons";
 import { buildSequencePasteOp } from "../lib/paste-op.js";
+import {
+  canonicalSequenceCaret,
+  describeSequenceSelection,
+  selectionSlice,
+} from "../lib/selection-range.js";
 
 // IUPAC accept set follows annotation-model defaults; same charset
 // useManualEditDetection relies on. Single regex to share across
@@ -67,6 +72,23 @@ export function useSequenceKeyboard({
 }) {
   return function onRootKeyDown(e) {
     if (!seqLength) return;
+    const logicalSelection = describeSequenceSelection({
+      anchor: caretAnchor,
+      focus: caretPos,
+      seqLength,
+      circular: topology === 'circular',
+    });
+    const wrappedSelection = !!logicalSelection?.wrapsOrigin;
+    const safeCaretAnchor = canonicalSequenceCaret(
+      caretAnchor, seqLength, topology === 'circular',
+    );
+    const safeCaretPos = canonicalSequenceCaret(
+      caretPos, seqLength, topology === 'circular',
+    );
+    const canonicalAnchor = logicalSelection?.usesWrapContext
+      ? logicalSelection.start : safeCaretAnchor;
+    const canonicalFocus = logicalSelection?.usesWrapContext
+      ? logicalSelection.end : safeCaretPos;
 
     // Sprint M-X.3 follow-up — Ctrl+A select-all hotkey (and the
     // Alt-modified reverse-strand variant). Layout-independent via
@@ -86,9 +108,13 @@ export function useSequenceKeyboard({
       const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
       const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
       if (a == null || f == null || a === f) return; // no selection — let browser handle native copy
-      const start = Math.min(a, f);
-      const end = Math.max(a, f);
-      const slice = (fullSeq || "").slice(start, end);
+      const slice = selectionSlice({
+        fullSeq,
+        anchor: a,
+        focus: f,
+        seqLength,
+        circular: topology === 'circular',
+      });
       if (!slice) return;
       e.preventDefault();
       let text;
@@ -114,11 +140,12 @@ export function useSequenceKeyboard({
     if ((e.ctrlKey || e.metaKey) && e.code === "KeyV" && !e.altKey) {
       if (!editable || typeof onSequenceEdit !== "function") return;
       e.preventDefault();
+      if (wrappedSelection) return;
       try {
         const read = navigator.clipboard?.readText?.();
         if (read && typeof read.then === "function") {
           read.then((raw) => {
-            const op = buildSequencePasteOp(raw, caretAnchor, caretPos);
+            const op = buildSequencePasteOp(raw, canonicalAnchor, canonicalFocus);
             if (op) onSequenceEdit(op);
           }).catch(() => { /* clipboard read denied — no-op */ });
         }
@@ -143,11 +170,18 @@ export function useSequenceKeyboard({
       const aPos = (typeof caretAnchor === 'number' && Number.isFinite(caretAnchor)) ? caretAnchor : null;
       const fPos = (typeof caretPos === 'number' && Number.isFinite(caretPos)) ? caretPos : null;
       const hasSelection = aPos != null && fPos != null && aPos !== fPos;
-      const selStart = hasSelection ? Math.min(aPos, fPos) : null;
-      const selEnd = hasSelection ? Math.max(aPos, fPos) : null;
-      const cur = fPos != null ? fPos : 0;
+      const selStart = hasSelection
+        ? (logicalSelection?.start ?? Math.min(aPos, fPos)) : null;
+      const selEnd = hasSelection
+        ? (logicalSelection?.end ?? Math.max(aPos, fPos)) : null;
+      const cur = fPos != null ? (safeCaretPos ?? 0) : 0;
       const key = e.key;
       const isChar = typeof key === 'string' && key.length === 1 && IUPAC_RE.test(key);
+
+      if (wrappedSelection && (isChar || key === 'Backspace' || key === 'Delete')) {
+        e.preventDefault();
+        return;
+      }
 
       if (isChar) {
         // V151 — typing a base without Shift gives a LOWERCASE e.key; normalize to

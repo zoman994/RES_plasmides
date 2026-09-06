@@ -13,6 +13,7 @@ import {
   mergeAnnotations,
 } from '../annotation-edit.js';
 import { getIntronsForRegion } from '../../intron-utils.js';
+import { LOCATION_KINDS, makeLocation } from '../annotation-location.js';
 
 const SEQLEN = 5000;
 
@@ -66,9 +67,16 @@ describe('annotation-edit — validateAnnotationCoords', () => {
 });
 
 describe('annotation-edit — createAnnotation', () => {
-  it('builds a valid region with auto-id', () => {
+  it('builds a valid region with an OPAQUE auto-id (ANN-INTEGRITY seam 4)', () => {
+    // Old assumption: a new annotation's id was the coordinate-derived
+    // `region:start:end:type:name`. New contract: new ids are opaque
+    // (crypto.randomUUID) so two features sharing coords/type/name never collide.
     const a = createAnnotation({ name: 'AmpR', type: 'CDS', start: 1626, end: 2486 }, SEQLEN);
-    expect(a.id).toBe('region:1626:2486:CDS:AmpR');
+    expect(typeof a.id).toBe('string');
+    expect(a.id.length).toBeGreaterThan(0);
+    expect(a.id).not.toMatch(/^region:/);
+    const b = createAnnotation({ name: 'AmpR', type: 'CDS', start: 1626, end: 2486 }, SEQLEN);
+    expect(b.id).not.toBe(a.id); // opaque → no collision on identical coords
     expect(a.level).toBe('region');
     expect(a.strand).toBe(1);
   });
@@ -116,6 +124,22 @@ describe('annotation-edit — createAnnotation', () => {
   it('preserves an explicit id (cross-referenced annotations keep their link)', () => {
     expect(createAnnotation({ id: 'gene1', type: 'gene', start: 0, end: 30 }, SEQLEN).id).toBe('gene1');
   });
+
+  it('preserves qualifiers, provenance and unknown fields losslessly', () => {
+    const qualifiers = { note: ['first', 'second'], codon_start: ['1'] };
+    const provenance = { source: 'snapgene', parser: { version: 2 } };
+    const custom = { nested: ['kept'] };
+    const a = createAnnotation({
+      name: 'rich', type: 'CDS', start: 10, end: 40,
+      description: 'full description', qualifiers, provenance, custom,
+      origin: { type: 'imported', file: 'x.gb' }, customScalar: 'value',
+    }, SEQLEN);
+    expect(a).toMatchObject({
+      description: 'full description', qualifiers, provenance, custom,
+      origin: { type: 'imported', file: 'x.gb' }, customScalar: 'value',
+    });
+    expect(a.qualifiers.note).toEqual(['first', 'second']); // order is semantic
+  });
 });
 
 describe('annotation-edit — create-batch keeps the gene↔intron link (apply path)', () => {
@@ -130,6 +154,23 @@ describe('annotation-edit — create-batch keeps the gene↔intron link (apply p
     expect(gene.id).toBe('g1'); // id NOT regenerated
     // link survives → AA splice + exon-block render both work
     expect(getIntronsForRegion(next, gene)).toHaveLength(1);
+  });
+
+  it('repairs a cross-level explicit-id collision as one batch and keeps the child on its unique region', () => {
+    const existing = [{
+      id: 'x', type: 'domain', level: 'detail', start: 120, end: 140,
+    }];
+    const { next } = applyAnnotationEdit(existing, {
+      kind: 'create-batch',
+      payload: [
+        { id: 'x', type: 'gene', level: 'region', start: 0, end: 100 },
+        { id: 'child', type: 'intron', level: 'detail', regionId: 'x', start: 30, end: 50 },
+      ],
+    }, 200);
+    expect(new Set(next.map((a) => a.id)).size).toBe(next.length);
+    const region = next.find((a) => a.level === 'region');
+    expect(region.id).not.toBe('x');
+    expect(next.find((a) => a.id === 'child').regionId).toBe(region.id);
   });
 });
 
@@ -154,11 +195,13 @@ describe('annotation-edit — deleteAnnotation', () => {
 });
 
 describe('annotation-edit — updateAnnotation', () => {
-  it('shallow-merges patch and regenerates id when coords/type/name shift', () => {
+  it('shallow-merges patch and KEEPS the stable id when coords shift (ANN-INTEGRITY seam 4)', () => {
+    // Old assumption: a coord/name/type edit regenerated the id. New contract:
+    // the existing id is opaque and stable across the edit.
     const arr = [lacZ];
     const next = updateAnnotation(arr, lacZ.id, { start: 100, end: 469 }, SEQLEN);
     expect(next[0].start).toBe(100);
-    expect(next[0].id).toBe('region:100:469:CDS:lacZα');
+    expect(next[0].id).toBe(lacZ.id);
   });
 
   it('keeps the original id when patch only touches strand', () => {
@@ -177,31 +220,107 @@ describe('annotation-edit — updateAnnotation', () => {
     const arr = [lacZ];
     expect(() => updateAnnotation(arr, lacZ.id, { start: 600 }, SEQLEN)).toThrow(/Начало/);
   });
+
+  it('treats a location patch as authoritative and derives its scalar projection', () => {
+    const original = {
+      ...lacZ,
+      qualifiers: { note: ['keep'] },
+      provenance: { source: 'import' },
+      customScalar: 'keep-too',
+      segments: [{ start: 999, end: 1000 }], // stale display shape
+    };
+    const location = makeLocation(LOCATION_KINDS.ORDER, [
+      { start: 100, end: 120 },
+      { start: 200, end: 230 },
+    ]);
+    const next = updateAnnotation(
+      [original], original.id,
+      // Stale scalar values from a UI projection must not override the
+      // canonical location supplied by the segment editor.
+      { location, start: 999, end: 1000, name: 'ordered' },
+      SEQLEN,
+      { length: SEQLEN, topology: 'linear' },
+    )[0];
+    expect(next.location.kind).toBe(LOCATION_KINDS.ORDER);
+    expect(next.location.segments).toEqual([
+      { start: 100, end: 120 },
+      { start: 200, end: 230 },
+    ]);
+    expect(next.start).toBe(100);
+    expect(next.end).toBe(230);
+    expect(next.segments).toBeUndefined();
+    expect(next.id).toBe(original.id);
+    expect(next.qualifiers).toEqual({ note: ['keep'] });
+    expect(next.provenance).toEqual({ source: 'import' });
+    expect(next.customScalar).toBe('keep-too');
+  });
+
+  it('treats location:undefined as metadata-only and preserves JOIN/ORDER geometry', () => {
+    const original = {
+      id: 'compound', name: 'old', type: 'CDS', level: 'region', strand: 1,
+      location: makeLocation(LOCATION_KINDS.ORDER, [
+        { start: 10, end: 20 },
+        { start: 40, end: 50 },
+      ]),
+      start: 10, end: 50,
+    };
+    const next = updateAnnotation(
+      [original], original.id,
+      { name: 'renamed', location: undefined },
+      100,
+    )[0];
+    expect(next.name).toBe('renamed');
+    expect(next.location).toEqual(original.location);
+    expect(next.start).toBe(10);
+    expect(next.end).toBe(50);
+  });
+
+  it('dispatcher forwards circular topology for an explicit origin-crossing location patch', () => {
+    const original = {
+      id: 'wrap', name: 'wrap', type: 'misc_feature', level: 'region', strand: 1,
+      location: makeLocation(LOCATION_KINDS.SINGLE, [{ start: 4, end: 8 }]),
+      start: 4, end: 8,
+    };
+    const wrap = makeLocation(LOCATION_KINDS.JOIN, [
+      { start: 16, end: 20 },
+      { start: 0, end: 4 },
+    ]);
+    const next = applyAnnotationEdit(
+      [original],
+      { kind: 'update', id: original.id, patch: { location: wrap } },
+      20,
+      { length: 20, topology: 'circular' },
+    )[0];
+    expect(next.location).toEqual(wrap);
+    expect(next.start).toBe(16);
+    expect(next.end).toBe(4);
+  });
 });
 
-// V180 — editing a region's coords/name/type regenerates its id; its detail/
-// point children link via `regionId = <old id>` and were left dangling →
-// orphaned sub-features (intron loses exon-block + AA splice, domain vanishes
-// from FeatureEditorModal). updateAnnotation must CASCADE the id change onto
-// children so the gene↔intron link survives the edit.
-describe('annotation-edit — updateAnnotation cascades regionId to children (V180)', () => {
+// ANN-INTEGRITY seam 4 (supersedes V180) — a region's id is opaque and STABLE
+// across a coord/name/type edit, so its detail/point children (linked via
+// `regionId = <id>`) stay attached WITHOUT any re-link. The old V180 behaviour
+// (id regenerated → children re-pointed) is gone: identity no longer moves, so
+// there is nothing to orphan in the first place.
+describe('annotation-edit — updateAnnotation keeps children linked via a stable id', () => {
   const gene = { id: 'g-uuid', type: 'gene', level: 'region', start: 0, end: 120, strand: 1, name: 'ген' };
   const intron = { id: 'i1', type: 'intron', level: 'detail', regionId: 'g-uuid', start: 30, end: 90, strand: 1, name: 'интрон 1' };
 
-  it('coord edit re-links detail children (no orphan; intron link survives)', () => {
+  it('coord edit keeps the id stable and the intron link intact (no orphan)', () => {
     const next = updateAnnotation([gene, intron], 'g-uuid', { end: 130 }, 200);
     const g = next.find((a) => a.type === 'gene');
     const i = next.find((a) => a.type === 'intron');
-    expect(g.id).not.toBe('g-uuid');        // id regenerated (existing contract)
-    expect(i.regionId).toBe(g.id);          // child re-linked to the new id
-    expect(getIntronsForRegion(next, g)).toHaveLength(1); // link intact
+    expect(g.id).toBe('g-uuid');            // id STABLE across the coord edit
+    expect(i.regionId).toBe('g-uuid');      // child still linked
+    expect(getIntronsForRegion(next, g)).toHaveLength(1);
   });
 
-  it('rename re-links children', () => {
+  it('rename keeps the id stable and children linked', () => {
     const next = updateAnnotation([gene, intron], 'g-uuid', { name: 'ген2' }, 200);
     const g = next.find((a) => a.type === 'gene');
     const i = next.find((a) => a.type === 'intron');
-    expect(i.regionId).toBe(g.id);
+    expect(g.id).toBe('g-uuid');
+    expect(i.regionId).toBe('g-uuid');
   });
 
   it('strand-only edit keeps the id and does not disturb children', () => {
@@ -212,20 +331,20 @@ describe('annotation-edit — updateAnnotation cascades regionId to children (V1
     expect(i.regionId).toBe('g-uuid');
   });
 
-  it('point children (e.g. mutation) are re-linked too', () => {
+  it('point children (e.g. mutation) stay linked too', () => {
     const mut = { id: 'm1', type: 'mutation', level: 'point', regionId: 'g-uuid', start: 45, end: 46 };
     const next = updateAnnotation([gene, mut], 'g-uuid', { end: 130 }, 200);
-    const g = next.find((a) => a.type === 'gene');
-    expect(next.find((a) => a.type === 'mutation').regionId).toBe(g.id);
+    expect(next.find((a) => a.type === 'mutation').regionId).toBe('g-uuid');
   });
 
-  it('legacy region without id: edit re-links its backfill-linked children', () => {
+  it('legacy region without id: first edit freezes the backfill id and keeps children linked', () => {
     const lg = { type: 'gene', level: 'region', start: 0, end: 120, strand: 1, name: 'ген' }; // no id
     const child = { id: 'd1', type: 'domain', level: 'detail', regionId: 'region:0:120:gene:ген', start: 10, end: 50 };
     const next = updateAnnotation([lg, child], 'region:0:120:gene:ген', { end: 130 }, 200);
     const g = next.find((a) => a.type === 'gene');
-    expect(g.id).toBe('region:0:130:gene:ген');
-    expect(next.find((a) => a.type === 'domain').regionId).toBe('region:0:130:gene:ген');
+    // Stamped with the id it was ALREADY known by (pre-edit backfill), then stable.
+    expect(g.id).toBe('region:0:120:gene:ген');
+    expect(next.find((a) => a.type === 'domain').regionId).toBe('region:0:120:gene:ген');
   });
 
   it('does not touch unrelated children of other regions', () => {
@@ -282,6 +401,17 @@ describe('annotation-edit — applyAnnotationEdit dispatcher', () => {
     expect(next[0].name).toBe('foo');
   });
 
+  it('single create reserves existing ids even when the injected mint collides first', () => {
+    const minted = ['taken', 'fresh-create'];
+    const next = applyAnnotationEdit(
+      [{ id: 'taken', type: 'domain', level: 'detail', start: 20, end: 30 }],
+      { kind: 'create', payload: { name: 'foo', type: 'CDS', start: 0, end: 10 } },
+      100,
+      { idFactory: () => minted.shift() },
+    );
+    expect(next.map((a) => a.id)).toEqual(['taken', 'fresh-create']);
+  });
+
   it('dispatches kind=delete', () => {
     const next = applyAnnotationEdit([lacZ], { kind: 'delete', id: lacZ.id }, SEQLEN);
     expect(next).toHaveLength(0);
@@ -294,7 +424,7 @@ describe('annotation-edit — applyAnnotationEdit dispatcher', () => {
       patch: { name: 'lacZ-renamed' },
     }, SEQLEN);
     expect(next[0].name).toBe('lacZ-renamed');
-    expect(next[0].id).toBe('region:145:469:CDS:lacZ-renamed');
+    expect(next[0].id).toBe(lacZ.id); // stable id across rename (ANN-INTEGRITY seam 4)
   });
 
   it('dispatches kind=create-batch and returns {next, skipped, accepted}', () => {
@@ -333,7 +463,10 @@ describe('annotation-edit — backfill-id matching for imported annotations', ()
     const next = updateAnnotation(arr, 'region:145:469:CDS:lacZα', { end: 500 }, SEQLEN);
     expect(next).not.toBe(arr);
     expect(next[0].end).toBe(500);
-    expect(next[0].id).toBe('region:145:500:CDS:lacZα');
+    // The legacy no-id annotation is stamped with the id it was ALREADY known by
+    // (the pre-edit backfill) and that id is then stable — it does not track the
+    // new coords (ANN-INTEGRITY seam 4).
+    expect(next[0].id).toBe('region:145:469:CDS:lacZα');
   });
 
   it('updateAnnotation stamps the canonical id even when the patch only changes strand', () => {
@@ -402,6 +535,20 @@ describe('splitAnnotation', () => {
     expect(next[0].id).not.toBe(next[1].id);
   });
 
+  it('reserves every current id when split uses an injected colliding mint', () => {
+    const occupied = {
+      id: 'taken', name: 'domain', type: 'domain', level: 'detail', start: 2000, end: 2010,
+    };
+    const minted = ['taken', 'split-a', 'split-b'];
+    const next = splitAnnotation(
+      [cds, occupied], 'r1', 2, 5000,
+      { idFactory: () => minted.shift() },
+    );
+    expect(next.filter((a) => a.level === 'region').map((a) => a.id))
+      .toEqual(['split-a', 'split-b']);
+    expect(next.find((a) => a.id === 'taken')).toBe(occupied);
+  });
+
   it('rounding: total length preserved on uneven divisions', () => {
     // 1000 - 100 = 900; 900 / 4 = 225 (exact) — pick uneven 7 chunks of 900.
     const next = splitAnnotation([cds], 'r1', 7, 5000);
@@ -447,6 +594,19 @@ describe('mergeAnnotations', () => {
     expect(next).toHaveLength(1);
     expect(next[0].start).toBe(0);
     expect(next[0].end).toBe(900);
+  });
+
+  it('reserves every current id when merge uses an injected colliding mint', () => {
+    const occupied = {
+      id: 'taken', name: 'domain', type: 'domain', level: 'detail', start: 2000, end: 2010,
+    };
+    const minted = ['taken', 'merged-fresh'];
+    const next = mergeAnnotations(
+      [left, mid, occupied], 'L', 'M',
+      { idFactory: () => minted.shift() },
+    );
+    expect(next.find((a) => a.level === 'region').id).toBe('merged-fresh');
+    expect(next.find((a) => a.id === 'taken')).toBe(occupied);
   });
 
   it('keeps the LARGER feature\'s name when merging', () => {

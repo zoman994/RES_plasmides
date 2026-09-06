@@ -15,6 +15,11 @@
  * the same container reused in two segments yields two distinct,
  * non-colliding features.
  */
+import {
+  shiftAnnotations,
+  transferAnnotationsForRanges,
+} from './segment-annotation-transfer';
+
 export function collectAssemblyAnnotations(draft, boundaries, containers) {
   const segs = (draft && draft.segments) || [];
   if (segs.length === 0) return [];
@@ -25,33 +30,37 @@ export function collectAssemblyAnnotations(draft, boundaries, containers) {
     const b = boundaries && boundaries[i];
     if (!seg || !b) continue;
     if (!seg.source || seg.source.type !== 'container' || seg.source.unavailable) continue;
+    const base = b.startOnAssembly || 0;
+    // Current drafts persist one canonical, identity-safe projection per
+    // segment. Reuse it so render-time selection never remints identities.
+    if (Array.isArray(seg.annotations)) {
+      out.push(...shiftAnnotations(seg.annotations, base));
+      continue;
+    }
+
+    // Legacy drafts may predate stored segment annotations. Project from the
+    // source with deterministic per-segment namespacing as a read-only fallback.
     const c = cmap.get(seg.source.containerId);
     if (!c || !Array.isArray(c.annotations)) continue;
     const segStart = Number(seg.start) || 0;
     const segEnd = Number.isFinite(seg.end) ? seg.end : segStart;
-    const L = Math.max(0, segEnd - segStart);
-    if (L === 0) continue;
-    const rc = !!seg.reverseComplement;
-    const base = b.startOnAssembly || 0;
-    for (const a of c.annotations) {
-      const aS = Number(a.start);
-      const aE = Number(a.end);
-      if (!Number.isFinite(aS) || !Number.isFinite(aE) || aE <= aS) continue;
-      const s = Math.max(aS, segStart);
-      const e = Math.min(aE, segEnd);
-      if (e <= s) continue; // annotation lies outside this segment's slice
-      const ls = s - segStart;
-      const le = e - segStart;
-      const localStart = rc ? (L - le) : ls;
-      const localEnd = rc ? (L - ls) : le;
-      out.push({
-        ...a,
-        id: `asm:${seg.id}:${a.id != null ? a.id : `${aS}-${aE}`}`,
-        start: base + localStart,
-        end: base + localEnd,
-        strand: rc ? -(Number(a.strand) || 1) : (Number(a.strand) || 1),
-      });
-    }
+    if (segEnd <= segStart) continue;
+    out.push(...transferAnnotationsForRanges(
+      c.annotations,
+      [{
+        start: segStart,
+        end: segEnd,
+        offset: base,
+        rc: !!seg.reverseComplement,
+      }],
+      c.id,
+      {
+        idFactory: (source, index, attempt) => {
+          const sourceKey = source?.id ?? `${index}`;
+          return `asm:${seg.id}:${sourceKey}${attempt ? `:${attempt}` : ''}`;
+        },
+      },
+    ));
   }
   return out;
 }

@@ -125,6 +125,20 @@ describe('projectPrimerSites — computed fallback', () => {
     const [occ] = projectPrimerSites(p, { template: REPEAT, entryId: 'E1', documentHash: HASH, topology: 'circular' });
     expect(occ.tail).toBe(null);
   });
+
+  it('carries an exact alignment for a computed 7-nt landing', () => {
+    const binding = 'ATGCGTA';
+    const [occ] = projectPrimerSites(
+      { id: 'short', direction: 'forward', sequence: binding, sites: [] },
+      { template: `GG${binding}CC`, topology: 'linear' },
+    );
+    expect(occ.alignment).toMatchObject({
+      query: binding,
+      target: binding,
+      editDistance: 0,
+      threePrimeMatchLength: 7,
+    });
+  });
 });
 
 describe('projectPrimerPool', () => {
@@ -302,8 +316,9 @@ describe('ANN-0L C2 - the computed fallback keeps its own facts', () => {
  * glyph, and the live pE-SUMOpro Kan record — eight A's stored inside a long
  * `bindingSequence`, `tail:''` — drew only its 31-nt historical snapshot.
  *
- * Geometry is untouched by this: the footprint is the site's, and a 5' overhang
- * does not lengthen it.
+ * The source 3′ endpoint stays fixed. The 5′ footprint may grow when the current
+ * physical oligo has a positive-scoring local landing upstream of the saved
+ * anchor; neither the record nor site helper field can veto that biology.
  */
 describe('SEQ-VIS-1 — source occurrences report the effective tail and binding', () => {
   const ANCHOR = 'ACGTTGCAACGTTGCAACGTTGCAACGTTGC';   // 31 nt
@@ -342,14 +357,16 @@ describe('SEQ-VIS-1 — source occurrences report the effective tail and binding
     expect(occ.segments).toEqual([{ start: 10, end: 41 }]);
   });
 
-  it('prefers a current record tail over a stale one remembered by the site', () => {
+  it('ignores both helper tails and locally aligns the current physical oligo', () => {
     const [occ] = projectPrimerSites(
       anchored({ tail: 'GAATTC', bindingSequence: ANCHOR, sequence: `GAATTC${ANCHOR}` },
         { tail: 'TTTTTT' }),
       ctx(),
     );
-    expect(occ.tail).toBe('GAATTC');
-    expect(occ.annealedSequence).toBe(ANCHOR);
+    expect(occ.tail).toBe('GAA');
+    expect(occ.annealedSequence).toBe(`TTC${ANCHOR}`);
+    expect(occ.segments).toEqual([{ start: 7, end: 41 }]);
+    expect(occ.alignment.counts).toEqual({ M: 33, X: 1, I: 0, D: 0 });
   });
 
   it('keeps a substitution visible in the binding letters', () => {
@@ -372,7 +389,11 @@ describe('SEQ-VIS-1 — source occurrences report the effective tail and binding
       annealedSequence: ANCHOR,
       tail: null,
     });
-    const occs = projectPrimerSites(rec, ctx());
+    // Both declared sites must describe the same CURRENT biology. The previous
+    // fixture put the second site over unrelated T-only sequence, so copying
+    // one helper tail to both landings merely hid their different alignments.
+    const repeatedTemplate = `${TPL.slice(0, 60)}${ANCHOR}${TPL.slice(91)}`;
+    const occs = projectPrimerSites(rec, ctx({ template: repeatedTemplate }));
     expect(occs).toHaveLength(2);
     expect(occs.map((o) => o.tail)).toEqual([POLY_A, POLY_A]);
   });
@@ -408,15 +429,17 @@ describe('SEQ-VIS-1 — source occurrences report the effective tail and binding
     expect(occ.annealedSequence).toBeNull();
   });
 
-  it('invents nothing when the current oligo is shorter than the anchor', () => {
-    const short = ANCHOR.slice(0, 20);
+  it('places a shorter legacy oligo by its biological 3-prime end', () => {
+    const short = ANCHOR.slice(2);
     const [occ] = projectPrimerSites(
       anchored({ bindingSequence: short, sequence: short }),
       ctx(),
     );
-    expect(occ.oligoStatus).toBe('unsupported');
+    expect(occ.oligoStatus).toBe('ok');
     expect(occ.tail).toBeNull();
-    expect(occ.annealedSequence).toBeNull();
+    expect(occ.annealedSequence).toBe(short);
+    expect(occ.segments).toEqual([{ start: 12, end: 41 }]);
+    expect(occ.alignment.counts).toMatchObject({ M: short.length, X: 0, I: 0, D: 0 });
   });
 
   it('projects an aligned-v1 insertion without lengthening source geometry', () => {
@@ -454,5 +477,92 @@ describe('SEQ-VIS-1 — source occurrences report the effective tail and binding
       sequence: `TTTTTT${ANCHOR}`,
     });
     expect(projectPrimerSites(rec, ctx())).toEqual([]);
+  });
+});
+
+describe('P5 — terminal trims project an effective landing', () => {
+  const DOC = 'sha256:p5-projection';
+
+  function alignedPrimer({
+    template, anchor, binding, segments, strand = 1, topology = 'linear',
+  }) {
+    return {
+      primer: {
+        id: 'p5', direction: strand === -1 ? 'reverse' : 'forward',
+        bindingModel: 'aligned-v1', tail: '', bindingSequence: binding,
+        sequence: binding,
+        sites: [{
+          id: 'site',
+          target: { entryId: 'E5', resourceHash: DOC, topology },
+          location: { kind: segments.length > 1 ? 'join' : 'single', segments },
+          strand, annealedSequence: anchor, tail: '',
+        }],
+      },
+      context: {
+        template, topology, entryId: 'E5', documentHash: DOC,
+      },
+    };
+  }
+
+  it('shrinks the forward 5-prime edge while preserving the confirmed 3-prime endpoint', () => {
+    const anchor = 'CTCACTATAGGGGAATT';
+    const { primer, context } = alignedPrimer({
+      template: `AA${anchor}GG`, anchor, binding: anchor.slice(-10),
+      segments: [{ start: 2, end: 2 + anchor.length }],
+    });
+    const [occurrence] = projectPrimerSites(primer, context);
+    expect(occurrence.segments).toEqual([{ start: 9, end: 19 }]);
+    expect(occurrence.alignment.target).toBe(anchor.slice(-10));
+    expect(occurrence.alignment.targetSpan).toEqual({ start: 0, end: 10 });
+    expect(occurrence.alignment.counts.D).toBe(0);
+    expect(occurrence.alignment.threePrimeMatchLength).toBe(10);
+  });
+
+  it('keeps a reverse 5-prime trim anchored at 3-prime while crossing the origin', () => {
+    const template = 'AAAACCCCGGGGTTTTACGT';
+    const anchor = 'TTTTACGT'; // RC(template[16..20] + template[0..4])
+    const { primer, context } = alignedPrimer({
+      template, anchor, binding: anchor.slice(-6), strand: -1,
+      topology: 'circular',
+      segments: [{ start: 16, end: 20 }, { start: 0, end: 4 }],
+    });
+    const [occurrence] = projectPrimerSites(primer, context);
+    expect(occurrence.segments).toEqual([
+      { start: 16, end: 20 }, { start: 0, end: 2 },
+    ]);
+    expect(occurrence.wrapsOrigin).toBe(true);
+    expect(occurrence.alignment.target).toBe(anchor.slice(-6));
+    expect(occurrence.alignment.counts.D).toBe(0);
+  });
+
+  it('aligns a legacy source oligo to the CURRENT template, not its site snapshot', () => {
+    const actual = 'ACGTCAGTACGATCGA';
+    const internal = `${actual.slice(0, 7)}A${actual.slice(8)}`;
+    const terminal = `${actual.slice(0, -1)}T`;
+    const legacyOccurrence = (binding) => projectPrimerSites({
+      id: 'legacy', direction: 'forward', tail: '',
+      bindingSequence: binding, sequence: binding,
+      sites: [{
+        id: 'legacy-site',
+        target: { entryId: 'E5', resourceHash: DOC, topology: 'linear' },
+        location: { kind: 'single', segments: [{ start: 2, end: 2 + actual.length }] },
+        strand: 1,
+        // Historical data agrees with the oligo. The current molecule does not.
+        annealedSequence: binding,
+        tail: '',
+      }],
+    }, {
+      template: `TT${actual}GG`, topology: 'linear', entryId: 'E5', documentHash: DOC,
+    })[0];
+
+    const internalHit = legacyOccurrence(internal);
+    expect(internalHit.alignment.target).toBe(actual);
+    expect(internalHit.alignment.counts.X).toBe(1);
+    expect(internalHit.alignment.threePrimeMatchLength).toBeGreaterThan(0);
+
+    const terminalHit = legacyOccurrence(terminal);
+    expect(terminalHit.alignment.target).toBe(actual);
+    expect(terminalHit.alignment.counts.X).toBe(1);
+    expect(terminalHit.alignment.threePrimeMatchLength).toBe(0);
   });
 });

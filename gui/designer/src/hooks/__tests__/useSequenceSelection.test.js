@@ -93,6 +93,24 @@ describe('useSequenceSelection — drag-grace', () => {
     expect(result.current.hasSelection).toBe(true);
   });
 
+  it('forceAnchor commits a pending wrap-row drag anchor during the grace window', () => {
+    const { result } = renderHook(() => useSequenceSelection({ initialCaret: 0 }));
+    act(() => { result.current.onCaretChange(10, { extendSelection: false }); });
+    act(() => { result.current.onCaretChange(40, { extendSelection: true }); });
+
+    // A new drag may start in the duplicated leading row while the previous
+    // synthetic-click grace timer is still active. This is an explicit pointer
+    // anchor, not that trailing click, so it must replace the old selection.
+    act(() => {
+      result.current.onCaretChange(-20, {
+        extendSelection: false,
+        forceAnchor: true,
+      });
+    });
+    expect(result.current.caretAnchor).toBe(-20);
+    expect(result.current.caretPos).toBe(-20);
+  });
+
   it('non-extend click after grace window collapses normally', () => {
     const { result } = renderHook(() => useSequenceSelection({ initialCaret: 0 }));
     act(() => { result.current.onCaretChange(10, { extendSelection: false }); });

@@ -67,6 +67,10 @@ export function formatCorrection(c) {
   if (c.kind === 'origin') {
     return `смена начала отсчёта → поз ${c.position ?? 1}`;
   }
+  if (c.kind === 'topology') {
+    const label = (value) => (value === 'circular' ? 'кольцевая' : (value === 'linear' ? 'линейная' : value));
+    return `топология · ${label(c.from)} → ${label(c.to)}`;
+  }
   return 'правка';
 }
 
@@ -110,6 +114,19 @@ export function mergeCorrection(corrections, descriptor) {
   const list = Array.isArray(corrections) ? corrections : [];
   const d = normalizeDescriptor(descriptor);
   if (!d) return list.slice();
+
+  if (d.kind === 'topology') {
+    if (d.from === d.to) return list.slice();
+    let index = -1;
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      if (list[i]?.kind === 'topology') { index = i; break; }
+    }
+    if (index < 0) return [...list, d];
+    const next = list.slice();
+    if (d.to === list[index].from) next.splice(index, 1);
+    else next[index] = { ...list[index], to: d.to };
+    return next;
+  }
   const last = list[list.length - 1];
   const head = list.slice(0, -1);
 

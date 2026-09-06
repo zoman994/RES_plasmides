@@ -16,7 +16,7 @@ const gapSeg = { id: 'seg-2', source: { type: 'manual' }, sequence: '', length: 
 
 describe('T6 K4 — migration v7 → v8 (assemblyDrafts → zones + pieces)', () => {
   it('SCHEMA_VERSION_CURRENT bumped to 8', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(12); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
+    expect(SCHEMA_VERSION_CURRENT).toBe(13); // P10: canonical assembly primer sites
   });
 
   it('one draft → one zone (viewMode sequence) + pieces (legacy-migration / gap)', () => {

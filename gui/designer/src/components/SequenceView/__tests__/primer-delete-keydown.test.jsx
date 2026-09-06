@@ -142,7 +142,7 @@ describe('SequenceView — Del on a selected primer deletes the primer, not the 
     expect(onAnnotationEdit).not.toHaveBeenCalled();
   });
 
-  it('two primers selected → Delete removes BOTH («удаляется то, что выделено»)', () => {
+  it('PCR partner is not a batch selection: Delete removes only the active primer', () => {
     const onDeletePrimer = vi.fn();
     render(
       <SequenceView
@@ -154,14 +154,13 @@ describe('SequenceView — Del on a selected primer deletes the primer, not the 
       />,
     );
     fireEvent.click(screen.getAllByTestId('sequence-view-primer')[0]);
-    fireEvent.click(screen.getAllByTestId('sequence-view-primer')[1]);
+    fireEvent.click(screen.getAllByTestId('sequence-view-primer')[1], { ctrlKey: true });
     fireEvent.keyDown(root(), { key: 'Delete' });
-    expect(onDeletePrimer).toHaveBeenCalledTimes(2);
-    const ids = onDeletePrimer.mock.calls.map((c) => c[0].id).sort();
-    expect(ids).toEqual(['asmprm-1', 'asmprm-2']);
+    expect(onDeletePrimer).toHaveBeenCalledTimes(1);
+    expect(onDeletePrimer.mock.calls[0][0].id).toBe('asmprm-2');
   });
 
-  it('selecting a primer hides the caret; deselecting restores it (read-only viewer)', () => {
+  it('collapsing a selected primer keeps the selection and caret hidden (read-only viewer)', () => {
     render(
       <SequenceView
         fragments={[FRAGMENT]}
@@ -171,11 +170,14 @@ describe('SequenceView — Del on a selected primer deletes the primer, not the 
         onDeletePrimer={vi.fn()}
       />,
     );
+    const interactivePrimer = () => screen.getAllByTestId('sequence-view-primer')
+      .find((node) => node.getAttribute('role') === 'button');
     expect(screen.queryByTestId('sequence-view-caret')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('sequence-view-primer'));
+    fireEvent.click(interactivePrimer());
     expect(screen.queryByTestId('sequence-view-caret')).toBeNull(); // hidden while selected
-    fireEvent.click(screen.getByTestId('sequence-view-primer')); // toggle off
-    expect(screen.queryByTestId('sequence-view-caret')).toBeTruthy(); // restored
+    fireEvent.click(interactivePrimer()); // collapse, not deselect
+    expect(screen.queryByTestId('sequence-view-caret')).toBeNull();
+    expect(interactivePrimer().getAttribute('data-expanded')).toBe('false');
   });
 
   // V143 (Игорь 12.06, screenshot) — in an EDITABLE view (the assembly editor),

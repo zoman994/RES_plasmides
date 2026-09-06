@@ -307,7 +307,7 @@ describe('K3 — selectors-pcr', () => {
 // and the region they flank (for the canvas MiniPlasmidMap overlay).
 // Same binding-match math as the adapter (indexOf binding / revRc).
 describe('V75 — selectPcrSpans (canvas minimap primer/flank positions)', () => {
-  const SYNTH = 'AAAA' + 'ATGCATGC' + 'GCGCGCGC' + 'CCCCTTTT' + 'TTTT'; // fwd@4, revRc@20
+  const SYNTH = 'AAAA' + 'ATGCATGCAA' + 'GCGCGCGC' + 'CCCCTTTTGG' + 'TTTT'; // fwd@4, revRc@22
   function stateWithSpans(extra = {}) {
     const s = buildInitialState();
     return {
@@ -322,8 +322,8 @@ describe('V75 — selectPcrSpans (canvas minimap primer/flank positions)', () =>
         inputs: ['c-s'], outputs: [], junctionRefs: [], position: { x: 0, y: 0 },
         params: {
           userPrimers: [{
-            forward: 'ATGCATGC', fwdBinding: 'ATGCATGC',
-            reverse: 'AAAAGGGG', revBinding: 'AAAAGGGG', // RC = CCCCTTTT @20
+            forward: 'ATGCATGCAA', fwdBinding: 'ATGCATGCAA',
+            reverse: 'CCAAAAGGGG', revBinding: 'CCAAAAGGGG', // RC = CCCCTTTTGG @22
             source: 'edited',
           }],
         },
@@ -335,11 +335,11 @@ describe('V75 — selectPcrSpans (canvas minimap primer/flank positions)', () =>
   it('returns flank + fwd/rev primer spans on the template', () => {
     const r = selectPcrSpans(stateWithSpans(), 'op-s');
     expect(r).toBeTruthy();
-    expect(r.flank).toEqual({ start: 4, end: 28 });
+    expect(r.flank).toEqual({ start: 4, end: 32 });
     const fwd = r.primers.find((p) => p.direction === 'forward');
     const rev = r.primers.find((p) => p.direction === 'reverse');
-    expect(fwd).toMatchObject({ start: 4, end: 12 });
-    expect(rev).toMatchObject({ start: 20, end: 28 });
+    expect(fwd).toMatchObject({ start: 4, end: 14 });
+    expect(rev).toMatchObject({ start: 22, end: 32 });
   });
 
   it('null when op is not PCR / not found / primers do not match template', () => {

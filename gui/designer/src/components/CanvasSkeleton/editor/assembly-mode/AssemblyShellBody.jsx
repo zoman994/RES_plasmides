@@ -38,6 +38,7 @@ import AssemblyToolbar from './AssemblyToolbar';
 // bespoke assembly-only pickers were removed.
 import LibrarySearchBar from '../../canvas/LibrarySearchBar';
 import { useStore } from '../../../../store';
+import { SEQUENCE_VIEW_DEFAULTS } from '../../../../store/uiSlice';
 import RangePickerModal from './RangePickerModal';
 import OpGroupPicker from './OpGroupPicker';
 import AssemblyPipelinePanel from './AssemblyPipelinePanel';
@@ -56,6 +57,7 @@ import CircularizeModal from './CircularizeModal';
 import { suggestMethodForBoundary } from '../../lib/assembly-realise-suggest';
 import JunctionControl from '../../canvas/JunctionControl';
 import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
+import { buildSequenceDisplayContext } from '../../../SequenceView/lib/display-context';
 import { SYNTHESIS_THRESHOLD_DEFAULT } from '../../lib/assembly-edit-router';
 import { useAssemblyEdit } from './useAssemblyEdit';
 import { assemblyMutationPlan } from '../../lib/assembly-mutation-plan';
@@ -141,6 +143,23 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
     () => collectAssemblyAnnotations(draft, boundaries, state.containers || []),
     [draft, boundaries, state.containers],
   );
+  const predictionsSettings = useStore(
+    (s) => s.sequenceView?.predictions || SEQUENCE_VIEW_DEFAULTS.predictions,
+  );
+  const assemblyDisplayFeatures = useMemo(() => buildSequenceDisplayContext([{
+    id: 'importer-current',
+    name: draft.name || 'assembly',
+    sequence,
+    annotations: assemblyAnnotations,
+    type: assemblyTopology === 'circular' ? 'plasmid' : 'misc_feature',
+    strand: 1,
+  }], predictionsSettings).features, [
+    sequence,
+    assemblyAnnotations,
+    assemblyTopology,
+    draft.name,
+    predictionsSettings,
+  ]);
 
   // RC-B2 — pinned reading frame (RC-B1) so the junction-seam readout can show
   // the AA that straddles each join + flag a premature stop. null → bases only.
@@ -382,7 +401,8 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   // K8 — primer writing (Ctrl+R / Ctrl+Alt+R + right-click), reuses the
   // F3 V72/V74 mechanism but attaches the primer to the assembly draft.
   const { onWritePrimer, primers: viewerPrimers } = useAssemblyPrimerWriting({
-    draftId, sequence, boundaries, caretAnchor, caretPos, actions, state,
+    draftId, sequence, topology: assemblyTopology,
+    boundaries, caretAnchor, caretPos, actions, state,
   });
   // Del on a selected primer in the assembly sequence-view removes it from
   // the draft (the viewer hit carries `id` via viewerPrimers).
@@ -893,6 +913,7 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
               <SequenceTab
                 sequence={sequence}
                 annotations={assemblyAnnotations}
+                displayFeatures={assemblyDisplayFeatures}
                 topology={draft.topology?.circular ? 'circular' : 'linear'}
                 terminalStagger={constructTerminalStagger}
                 closureSeam={closureSeam}
@@ -942,6 +963,12 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
                 {showPrimers && (
                   <AssemblyPrimersPanel
                     draftId={draftId}
+                    template={sequence}
+                    topology={assemblyTopology}
+                    documentHash={assemblyDocumentHash}
+                    annotations={assemblyAnnotations}
+                    displayFeatures={assemblyDisplayFeatures}
+                    boundaries={boundaries}
                     onClose={() => hidePanel('primers')}
                   />
                 )}

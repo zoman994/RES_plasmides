@@ -292,10 +292,25 @@ function _isInInputElement(target) {
   return false;
 }
 
-function _blocksGlobalHotkeys(target) {
-  if (!target) return false;
-  const element = typeof target.closest === 'function' ? target : target.parentElement;
-  return !!element?.closest?.('[data-block-global-hotkeys="true"]');
+function _blocksGlobalHotkeys(target, event) {
+  const element = target && typeof target.closest === 'function' ? target : target?.parentElement;
+  if (element?.closest?.('[data-block-global-hotkeys="true"]')) return true;
+  // P16 disclosure owns only an unmodified Escape. Other viewer shortcuts
+  // (notably E and Ctrl/Cmd+S) must continue through the global resolver.
+  if (String(event?.key || '').toLowerCase() === 'escape'
+    && !event?.ctrlKey && !event?.metaKey && !event?.altKey && !event?.shiftKey) {
+    if (element?.closest?.('[data-block-global-escape="true"]')) return true;
+    if (typeof document !== 'undefined'
+      && document.querySelector('[data-block-global-escape="true"]')) return true;
+  }
+  // A portal dialog may mount while focus remains on its opener. In that case
+  // `event.target` is outside the modal even though the modal visibly owns the
+  // keyboard. An explicitly open blocking boundary must therefore suppress the
+  // App resolver document-wide; the dialog's local Escape handler still closes it.
+  if (typeof document === 'undefined') return false;
+  return !!document.querySelector(
+    '[data-modal-open][data-block-global-hotkeys="true"]',
+  );
 }
 
 function _defaultGetContext() {
@@ -346,7 +361,7 @@ function _scopeAllowed(scope, ctx) {
  */
 export function runHotkeyResolver(event, opts = {}) {
   if (!event || event.defaultPrevented) return false;
-  if (_blocksGlobalHotkeys(event.target)) return false;
+  if (_blocksGlobalHotkeys(event.target, event)) return false;
   const platform = detectPlatform();
   const ctx = opts.context ? opts.context : _getContext();
   const inInput = _isInInputElement(event.target);

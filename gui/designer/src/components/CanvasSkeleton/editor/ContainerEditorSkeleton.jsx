@@ -40,7 +40,7 @@ import { useStore } from '../../../store';
 import { documentIdentityOf } from '../../../lib/primer-live-workflow';
 import { useSequenceSelection } from '../../../hooks/useSequenceSelection';
 import { getRegions } from '../../../annotation-model';
-import { applyAnnotationEdit } from '../../../lib/annotation-edit.js';
+import { buildCurrentDocument } from '../../../lib/library-current-document';
 import TabBar from '../../Library/inspector/tabs/TabBar';
 // OverviewTab выпилен 12.05.2026 — categorised summary это фича
 // Library/Importer, не нужна при заходе из canvas-skeleton editor'а.
@@ -59,7 +59,7 @@ import LinearFeatureBar from '../../Library/inspector/tabs/LinearFeatureBar';
 import FeatureEditorModal from '../../Library/inspector/FeatureEditorModal';
 import InlineEditableTitle from '../../Library/inspector/InlineEditableTitle';
 import { useAnnotationUndoRedo } from '../../Library/inspector/hooks/useAnnotationUndoRedo';
-import { useFeatureEditorFlow } from '../../Library/inspector/hooks/useFeatureEditorFlow';
+import { useCurrentAnnotationController } from '../../Library/inspector/hooks/useCurrentAnnotationController';
 import { useEntryPrimers } from '../../Library/inspector/hooks/useEntryPrimers';
 import { usePromoteToCommon } from '../../SequenceView/hooks/usePromoteToCommon';
 import {
@@ -125,7 +125,11 @@ export default function ContainerEditorSkeleton() {
   // Item shape for sub-tabs / hooks.
   const item = useMemo(() => buildItemFromContainer(activeContainer), [activeContainer]);
   const itemKey = item?.id || null;
-
+  // ONE coherent currentDocument DTO (same helper the Library inspector uses):
+  // saved container payload overlaid with the pending edit buffer. The feature
+  // flow, dedupe and every applyAnnotationEdit read this, never a separately
+  // reconstructed saved item + edits.
+  const currentDocument = useMemo(() => buildCurrentDocument(item, edits, 0), [item, edits]);
   // 12.05.2026 — Игорь: «при нажатии два раза на контейнер должен
   // открываться сиквенс вивер без оверьвю». Default activeTab перешёл
   // на 'sequence' (был 'overview', match Library pattern). Overview
@@ -279,66 +283,29 @@ export default function ContainerEditorSkeleton() {
   // Same flow as Library: SequenceView dispatches `{kind, id?, patch?,
   // payload?}` → applyAnnotationEdit → setPendingEdits.editedAnnotations.
   // Pushes BEFORE-state onto undo stack so Ctrl+Z works.
-  const currentAnnotationsForUndo = Array.isArray(edits?.editedAnnotations)
-    ? edits.editedAnnotations
-    : (item?.annotations || []);
+  const currentAnnotationsForUndo = currentDocument?.annotations || [];
   const { pushSnapshot } = useAnnotationUndoRedo({
     itemKey,
     currentAnnotations: currentAnnotationsForUndo,
     onUpdateEdits,
   });
-
-  const itemRef = useRef(item);
-  const editsRef = useRef(edits);
-  useEffect(() => { itemRef.current = item; }, [item]);
-  useEffect(() => { editsRef.current = edits; }, [edits]);
-
-  const onAnnotationEditFromView = useCallback((edit) => {
-    if (!edit || !tabContainerId) return;
-    try {
-      const curItem = itemRef.current;
-      const curEdits = editsRef.current;
-      const seqLength = (curItem?.sequence || '').length;
-      const baseAnnotations = Array.isArray(curEdits?.editedAnnotations)
-        ? curEdits.editedAnnotations
-        : (curItem?.annotations || []);
-      const result = applyAnnotationEdit(baseAnnotations, edit, seqLength);
-      const next = Array.isArray(result) ? result : result?.next;
-      if (Array.isArray(next) && next !== baseAnnotations) {
-        pushSnapshot(baseAnnotations);
-        actions.setPendingEdits(tabContainerId, { editedAnnotations: next });
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[ContainerEditorSkeleton] annotation edit failed:', err.message);
-    }
-  }, [tabContainerId, actions, pushSnapshot]);
-
-  const applyOpToAnnotations = useCallback((nextAnnotations) => {
-    if (!tabContainerId) return;
-    const curItem = itemRef.current;
-    const curEdits = editsRef.current;
-    const baseAnnotations = Array.isArray(curEdits?.editedAnnotations)
-      ? curEdits.editedAnnotations
-      : (curItem?.annotations || []);
-    if (!Array.isArray(nextAnnotations) || nextAnnotations === baseAnnotations) return;
-    pushSnapshot(baseAnnotations);
-    actions.setPendingEdits(tabContainerId, { editedAnnotations: nextAnnotations });
-  }, [tabContainerId, actions, pushSnapshot]);
-
-  // ─── FeatureEditorModal flow ─────────────────────────────────────
   const {
+    onAnnotationEditFromView,
+    applyAnnotationBatch,
     featureUnderEdit,
     openFeatureEditor,
     closeFeatureEditor,
     onFeatureSave,
     onFeatureMerge,
     onFeatureDelete,
-  } = useFeatureEditorFlow({
-    item,
-    edits,
-    applyOp: applyOpToAnnotations,
-    dispatchEdit: onAnnotationEditFromView,
+    duplicateCount,
+    onRemoveDuplicates,
+  } = useCurrentAnnotationController({
+    currentDocument,
+    onUpdateEdits,
+    pushSnapshot,
+    canWrite: Boolean(tabContainerId),
+    warnScope: 'ContainerEditorSkeleton',
   });
 
   // ─── LinearFeatureBar + caret callbacks (LibrarySingleInspector pattern) ──
@@ -401,31 +368,9 @@ export default function ContainerEditorSkeleton() {
   }, [openAnnotator, tabContainerId]);
 
   const onApplyAnnotatorResults = useCallback((acceptedRegions) => {
-    if (!Array.isArray(acceptedRegions) || acceptedRegions.length === 0) {
-      closeAnnotator?.();
-      return;
-    }
-    if (!tabContainerId) { closeAnnotator?.(); return; }
-    try {
-      const seqLength = (item?.sequence || '').length;
-      const baseAnnotations = Array.isArray(edits?.editedAnnotations)
-        ? edits.editedAnnotations
-        : (item?.annotations || []);
-      const result = applyAnnotationEdit(
-        baseAnnotations,
-        { kind: 'create-batch', payload: acceptedRegions },
-        seqLength,
-      );
-      const next = result?.next;
-      if (Array.isArray(next)) {
-        actions.setPendingEdits(tabContainerId, { editedAnnotations: next });
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[ContainerEditorSkeleton] annotator apply failed:', err.message);
-    }
+    applyAnnotationBatch(acceptedRegions);
     closeAnnotator?.();
-  }, [tabContainerId, item, edits, actions, closeAnnotator]);
+  }, [applyAnnotationBatch, closeAnnotator]);
 
   // F1 DEC-WIN-09 — apply / discard / rename / Save-As-fork / back
   // handlers moved to EditorWindowShell (window-level chrome).
@@ -510,17 +455,13 @@ export default function ContainerEditorSkeleton() {
     ? `${rePopover.site.enzyme}-${rePopover.site.position}`
     : null;
 
-  // ─── derived for tabs ────────────────────────────────────────────
-  const sequence = edits?.editedSequence ?? item?.sequence ?? '';
-  const length = sequence.length || item?.length || 0;
-  const topology = edits?.editedTopology ?? item?.topology ?? 'linear';
+  // ─── derived for tabs — ONE coherent currentDocument ─────────────
+  const sequence = currentDocument?.sequence ?? '';
+  const length = currentDocument?.length ?? 0;
+  const topology = currentDocument?.topology ?? 'linear';
   // RC-C1 (Игорь 24.06) — circular products get a «Карта» tab (PlasmidMapV2).
-  // Drive off the RESOLVED topology (respects pending editedTopology); handle both
-  // the string form ('circular') and a defensive object form ({circular:true}).
-  const isCircular = topology === 'circular' || topology?.circular === true;
-  const displayAnnotations = Array.isArray(edits?.editedAnnotations)
-    ? edits.editedAnnotations
-    : (item?.annotations || []);
+  const isCircular = topology === 'circular';
+  const displayAnnotations = currentDocument?.annotations ?? [];
   // displayItem useMemo выпилен 12.05.2026 — единственный consumer
   // был OverviewTab, который тоже удалён.
   const regionCount = useMemo(() => getRegions(displayAnnotations).length, [displayAnnotations]);
@@ -543,12 +484,8 @@ export default function ContainerEditorSkeleton() {
   // A stable name for the molecule on screen, so a primer's landing can later
   // be confirmed against it rather than trusted on coordinates alone.
   const containerDocumentHash = useMemo(
-    () => documentIdentityOf({
-      sequence: activeContainer?.sequence || '',
-      topology: isCircular ? 'circular' : 'linear',
-      resourceHash: activeContainer?.resourceHash ?? null,
-    }),
-    [activeContainer?.sequence, activeContainer?.resourceHash, isCircular],
+    () => documentIdentityOf({ sequence, topology }),
+    [sequence, topology],
   );
   // SPEC_COMMON_FEATURES DEC-CF-05 — «Add to common features» in the Container
   // Editor (an IN viewer); consumer-gated via SequenceTab props.
@@ -822,6 +759,8 @@ export default function ContainerEditorSkeleton() {
                 onApplyAnnotatorResults={onApplyAnnotatorResults}
                 onAnnotationEdit={onAnnotationEditFromView}
                 onOpenFeatureEditor={openFeatureEditor}
+                duplicateCount={duplicateCount}
+                onRemoveDuplicates={onRemoveDuplicates}
                 pendingScroll={pendingScroll}
                 onPendingScrollHandled={onPendingScrollHandled}
                 primers={entryPrimers}
@@ -955,6 +894,7 @@ export default function ContainerEditorSkeleton() {
       <FeatureEditorModal
         feature={featureUnderEdit}
         seqLength={length}
+        topology={topology}
         neighbours={displayAnnotations}
         onSave={onFeatureSave}
         onMerge={onFeatureMerge}

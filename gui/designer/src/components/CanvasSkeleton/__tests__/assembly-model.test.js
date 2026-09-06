@@ -51,9 +51,8 @@ describe('K1 segment-color-palette', () => {
 });
 
 // ── segment-annotation-transfer ──────────────────────────────────────
-// Annotation coords are 1-based inclusive (annotation-contract). Segment
-// range is 0-based [start,end) (DEC-PARSER-COORD-01). transferAnnotations
-// converts at the boundary.
+// Annotation and segment coordinates share the canonical 0-based [start,end)
+// contract. transferAnnotations clips and projects canonical locations.
 describe('K1 segment-annotation-transfer', () => {
   const ann = (o) => ({ id: 'src', level: 'region', type: 'CDS', name: 'x', strand: 1, ...o });
 
@@ -78,8 +77,8 @@ describe('K1 segment-annotation-transfer', () => {
   it('clips a partially-overlapping annotation to the segment window', () => {
     const out = transferAnnotations([ann({ start: 15, end: 35, name: 'straddle' })], 20, 60, false);
     expect(out).toHaveLength(1);
-    expect(out[0].start).toBe(1);   // clipped to segment start
-    expect(out[0].end).toBe(15);    // parent 1-based 35 → local
+    expect(out[0].start).toBe(0);   // clipped to segment start
+    expect(out[0].end).toBe(15);    // source end 35 → local end 15
   });
 
   it('RC flips coordinates within the segment and inverts strand', () => {
@@ -87,9 +86,84 @@ describe('K1 segment-annotation-transfer', () => {
     const out = transferAnnotations([ann({ start: 21, end: 30, name: 'r', strand: 1 })], 20, 60, true);
     expect(out).toHaveLength(1);
     expect(out[0].strand).toBe(-1);
-    // local fwd [1,10] in length-40 → RC: 40-10+1 .. 40-1+1 = 31..40
-    expect(out[0].start).toBe(31);
-    expect(out[0].end).toBe(40);
+    // local fwd [1,10) in length 40 → RC [30,39).
+    expect(out[0].start).toBe(30);
+    expect(out[0].end).toBe(39);
+  });
+
+  it('two-pass transfer remaps child regionId to the fresh opaque parent id', () => {
+    const parent = {
+      id: 'source-region', level: 'region', type: 'CDS', name: 'gene',
+      start: 21, end: 50, strand: 1,
+      qualifiers: { note: ['keep'] }, provenance: { source: 'snapgene' },
+    };
+    const child = {
+      id: 'source-detail', level: 'detail', type: 'domain', name: 'domain',
+      regionId: 'source-region', start: 25, end: 35, strand: 1,
+      description: 'keep too',
+    };
+    const out = transferAnnotations([parent, child], 20, 60, false, 'container-1');
+    const movedParent = out.find((a) => a.level === 'region');
+    const movedChild = out.find((a) => a.level === 'detail');
+    expect(movedParent.id).not.toBe('source-region');
+    expect(movedParent.id).not.toMatch(/^region:/);
+    expect(movedChild.id).not.toBe('source-detail');
+    expect(movedChild.id).not.toMatch(/^region:/);
+    expect(new Set(out.map((a) => a.id)).size).toBe(out.length);
+    expect(movedChild.regionId).toBe(movedParent.id);
+    expect(out.some((a) => a.id === movedChild.regionId && a.level === 'region')).toBe(true);
+    expect(movedParent.qualifiers).toEqual({ note: ['keep'] });
+    expect(movedParent.provenance).toEqual({ source: 'snapgene' });
+    expect(movedChild.description).toBe('keep too');
+  });
+
+  it('detaches a transferred child when its source parent is outside the segment', () => {
+    const parent = ann({ id: 'outside-parent', start: 1, end: 10, name: 'outside' });
+    const child = {
+      id: 'inside-child', level: 'detail', type: 'domain', name: 'inside',
+      regionId: 'outside-parent', start: 25, end: 35, strand: 1,
+    };
+    const out = transferAnnotations([parent, child], 20, 60, false);
+    expect(out).toHaveLength(1);
+    expect(out[0].name).toBe('inside');
+    expect(out[0].regionId).toBeUndefined();
+  });
+
+  it('projects every canonical compound segment with coherent 0-based scalars', () => {
+    const source = ann({
+      id: 'compound', start: 22, end: 34,
+      location: { kind: 'join', segments: [{ start: 22, end: 26 }, { start: 30, end: 34 }] },
+      qualifiers: { note: ['keep'] },
+    });
+    const [out] = transferAnnotations([source], 20, 40, false);
+    expect(out.location).toEqual({
+      kind: 'join', segments: [{ start: 2, end: 6 }, { start: 10, end: 14 }],
+    });
+    expect({ start: out.start, end: out.end }).toEqual({ start: 2, end: 14 });
+    expect(out.qualifiers).toEqual({ note: ['keep'] });
+    expect(out.segments).toBeUndefined();
+  });
+
+  it('reverse-complements every compound segment without changing traversal order', () => {
+    const source = ann({
+      id: 'compound-rc', start: 2, end: 14, strand: -1,
+      location: { kind: 'order', segments: [{ start: 10, end: 14 }, { start: 2, end: 6 }] },
+    });
+    const [out] = transferAnnotations([source], 0, 20, true);
+    expect(out.location).toEqual({
+      kind: 'order', segments: [{ start: 6, end: 10 }, { start: 14, end: 18 }],
+    });
+    expect({ start: out.start, end: out.end, strand: out.strand })
+      .toEqual({ start: 6, end: 18, strand: 1 });
+  });
+
+  it('counts duplicate source parents before clipping and detaches the ambiguous child', () => {
+    const out = transferAnnotations([
+      ann({ id: 'dup-parent', start: 0, end: 5, name: 'outside' }),
+      ann({ id: 'dup-parent', start: 20, end: 40, name: 'inside' }),
+      { id: 'child', level: 'detail', type: 'domain', regionId: 'dup-parent', start: 22, end: 25 },
+    ], 20, 40, false);
+    expect(out.find((a) => a.level === 'detail').regionId).toBeUndefined();
   });
 
   it('empty / no-overlap → empty array (never throws)', () => {

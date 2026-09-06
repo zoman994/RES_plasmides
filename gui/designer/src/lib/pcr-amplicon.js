@@ -22,8 +22,15 @@
  */
 
 import { reverseComplement } from '../sequence-utils';
-import { calcTm } from '../tm-calculator';
-import { normalizeOligoSequence } from './primer-identity';
+import {
+  normalizeOligoSequence,
+  resolvePhysicalOligo,
+  ANCHORED_OLIGO_OK,
+  ANCHORED_OLIGO_CONFLICT,
+} from './primer-identity';
+import { alignPrimerBinding } from './primer-binding-alignment';
+import { evaluatePrimerDuplexThermodynamics } from './primer-duplex-thermodynamics';
+import { evaluateStandardPcrAnnealing } from './primer-annealing-policy';
 
 /** Bases of a circular template starting at `from`, `len` long. */
 function sliceCircular(template, from, len) {
@@ -42,8 +49,50 @@ function occLength(occ) {
   return occ.end - occ.start;
 }
 
+function occStart(occ) {
+  if (Number.isSafeInteger(occ?.start)) return occ.start;
+  return Array.isArray(occ?.segments) && occ.segments.length
+    ? occ.segments[0].start
+    : null;
+}
+
+function occEnd(occ) {
+  if (Number.isSafeInteger(occ?.end)) return occ.end;
+  return Array.isArray(occ?.segments) && occ.segments.length
+    ? occ.segments[occ.segments.length - 1].end
+    : null;
+}
+
 function fail(reason, extra = {}) {
   return { ok: false, reason, warnings: [], ...extra };
+}
+
+function copySegments(segments) {
+  return Array.isArray(segments)
+    ? segments.map(({ start, end }) => ({ start, end }))
+    : null;
+}
+
+function copyAlignment(alignment) {
+  if (!alignment) return null;
+  return {
+    ...alignment,
+    runs: Array.isArray(alignment.runs)
+      ? alignment.runs.map((run) => ({ ...run }))
+      : alignment.runs,
+    counts: alignment.counts ? { ...alignment.counts } : alignment.counts,
+    targetSpan: alignment.targetSpan ? { ...alignment.targetSpan } : alignment.targetSpan,
+  };
+}
+
+function copyThermodynamics(result) {
+  if (!result) return null;
+  return {
+    conditions: { ...result.conditions },
+    fullDuplex: { ...result.fullDuplex },
+    threePrimeAnchor: { ...result.threePrimeAnchor },
+    pcr: { ...result.pcr, reasons: [...result.pcr.reasons] },
+  };
 }
 
 /** One resolved landing, complete enough to be copied out of the pool. */
@@ -53,15 +102,15 @@ function describeSide(side, direction) {
     primerId: side.occ.primerId,
     name: side.record?.name ?? null,
     direction,
-    start: side.occ.start,
-    end: side.occ.end,
+    start: occStart(side.occ),
+    end: occEnd(side.occ),
     fullSequence: side.full,
     bindingSequence: side.binding,
     bindingModel: side.record?.bindingModel || null,
-    alignment: side.alignment || null,
-    tail: typeof side.record?.tail === 'string'
-      ? normalizeOligoSequence(side.record.tail)
-      : null,
+    segments: copySegments(side.occ.segments),
+    alignment: copyAlignment(side.alignment),
+    thermodynamics: copyThermodynamics(side.thermodynamics),
+    tail: side.tail || null,
   };
 }
 
@@ -79,13 +128,51 @@ function mismatchPositions(annealedTop, templateTop, start, n) {
   return out;
 }
 
-function validAlignedLanding(side) {
-  if (side.record?.bindingModel !== 'aligned-v1') return null;
-  const alignment = side.occ?.alignment;
-  if (!alignment || !Array.isArray(alignment.runs)) return null;
-  if (normalizeOligoSequence(alignment.query) !== side.binding) return null;
-  if (normalizeOligoSequence(alignment.target).length !== occLength(side.occ)) return null;
-  return alignment;
+function occurrenceTargetSequence(occ, template, circular) {
+  const n = template.length;
+  const segments = Array.isArray(occ.segments) && occ.segments.length
+    ? occ.segments
+    : [{ start: occ.start, end: occ.end }];
+  if (segments.length > 2 || (segments.length > 1 && !circular)) return null;
+  if (segments.length === 2
+    && (segments[0].end !== n || segments[1].start !== 0
+      || segments[1].start >= segments[0].start)) return null;
+  for (const segment of segments) {
+    if (!Number.isSafeInteger(segment.start) || !Number.isSafeInteger(segment.end)
+      || segment.start < 0 || segment.end <= segment.start || segment.end > n) return null;
+  }
+  const top = segments.map(({ start, end }) => template.slice(start, end)).join('');
+  return occ.strand === -1 ? reverseComplement(top) : top;
+}
+
+function sameAlignmentEvidence(stated, canonical) {
+  return stated.editDistance === canonical.editDistance
+    && stated.threePrimeGap === canonical.threePrimeGap
+    && stated.threePrimeMatchLength === canonical.threePrimeMatchLength
+    && JSON.stringify(stated.targetSpan) === JSON.stringify(canonical.targetSpan)
+    && JSON.stringify(stated.counts) === JSON.stringify(canonical.counts)
+    && JSON.stringify(stated.runs) === JSON.stringify(canonical.runs);
+}
+
+/** Verify occurrence-carried evidence against current bases and geometry. */
+function verifiedOccurrenceAlignment(side, template, circular) {
+  const stated = side.occ?.alignment;
+  if (stated == null) return { alignment: null, invalid: false };
+  if (!Array.isArray(stated.runs)) return { alignment: null, invalid: true };
+  const target = occurrenceTargetSequence(side.occ, template, circular);
+  if (target == null || target.length !== occLength(side.occ)) {
+    return { alignment: null, invalid: true };
+  }
+  if (normalizeOligoSequence(stated.query) !== side.binding
+    || normalizeOligoSequence(stated.target) !== target
+    || stated.targetSpan?.start !== 0
+    || stated.targetSpan?.end !== target.length) {
+    return { alignment: null, invalid: true };
+  }
+  const canonical = alignPrimerBinding(side.binding, target);
+  return sameAlignmentEvidence(stated, canonical)
+    ? { alignment: canonical, invalid: false }
+    : { alignment: null, invalid: true };
 }
 
 function occurrenceTargetPositions(occ) {
@@ -142,11 +229,12 @@ function alignmentWarnings(side, length, circular) {
   if (deletedCount) {
     out.push(warn('deletion', { count: deletedCount, positions: deletions }));
   }
+  const annealing = evaluateStandardPcrAnnealing(alignment);
   if (alignment.threePrimeGap) {
     out.push(warn('three-prime-gap', { severity: 'high' }));
-  } else if (alignment.editDistance > 0 && alignment.threePrimeMatchLength < 8) {
+  } else if (annealing.reason === 'short-three-prime-anchor') {
     out.push(warn('three-prime-short', {
-      severity: 'high', length: alignment.threePrimeMatchLength,
+      severity: 'high', length: annealing.threePrimeMatchLength,
     }));
   }
   return out;
@@ -195,26 +283,49 @@ export function resolvePcrProduct({
   const forward = sides.find((s) => !s.reverse);
   const reverse = sides.find((s) => s.reverse);
 
-  // The full oligo must be known before anything can be built from it: a
-  // product assembled from an unknown sequence is a guess with a length.
+  // Resolve the physical oligo once. `sequence` and tail/binding are equivalent
+  // storage shapes when either proves the same 5′→3′ molecule; the helper
+  // boundary is never allowed to change PCR biology.
   for (const side of [forward, reverse]) {
-    const full = normalizeOligoSequence(side.record.sequence);
-    if (!full) return fail('unknown-sequence');
-    side.full = full;
-  }
-
-  // A record that states all three of sequence / tail / binding must agree
-  // with itself. Picking one of the two contradictory answers here would make
-  // the product depend on which field this code happened to read.
-  for (const side of [forward, reverse]) {
-    const tail = typeof side.record.tail === 'string'
-      ? normalizeOligoSequence(side.record.tail) : null;
-    const bind = typeof side.record.bindingSequence === 'string'
-      ? normalizeOligoSequence(side.record.bindingSequence) : null;
-    if (tail !== null && bind !== null && `${tail}${bind}` !== side.full) {
+    const physical = resolvePhysicalOligo(side.record);
+    if (physical.status === ANCHORED_OLIGO_CONFLICT) {
       return fail('tail-binding-conflict');
     }
-    side.binding = bind || side.full;
+    if (physical.status !== ANCHORED_OLIGO_OK || !physical.sequence) {
+      return fail('unknown-sequence');
+    }
+    side.physical = physical;
+    side.full = physical.sequence;
+    if (typeof side.occ?.sequence === 'string'
+      && normalizeOligoSequence(side.occ.sequence) !== side.full) {
+      return fail('tail-binding-conflict');
+    }
+  }
+
+  // A projected occurrence may carry the biological split established by the
+  // current template. Verify that evidence against the resolved full oligo;
+  // otherwise retain the record split only as a fallback for older callers.
+  for (const side of [forward, reverse]) {
+    const projectedBinding = typeof side.occ?.annealedSequence === 'string'
+      ? normalizeOligoSequence(side.occ.annealedSequence)
+      : null;
+    if (projectedBinding !== null) {
+      if (!projectedBinding || !side.full.endsWith(projectedBinding)) {
+        return fail('tail-binding-conflict');
+      }
+      const derivedTail = side.full.slice(0, side.full.length - projectedBinding.length);
+      if (Object.prototype.hasOwnProperty.call(side.occ, 'tail')) {
+        const statedOccurrenceTail = side.occ.tail == null
+          ? ''
+          : normalizeOligoSequence(side.occ.tail);
+        if (statedOccurrenceTail !== derivedTail) return fail('tail-binding-conflict');
+      }
+      side.binding = projectedBinding;
+      side.tail = derivedTail;
+    } else {
+      side.binding = side.physical.binding;
+      side.tail = side.physical.tail;
+    }
   }
 
   // A legacy landing cannot explain a length difference. aligned-v1 can: its
@@ -222,16 +333,40 @@ export function resolvePcrProduct({
   // which target bases are deleted, while the occurrence still owns the
   // template footprint.
   for (const side of [forward, reverse]) {
-    side.alignment = validAlignedLanding(side);
-    if (occLength(side.occ) !== side.binding.length && !side.alignment) {
+    const verified = verifiedOccurrenceAlignment(side, tpl, circular);
+    if (verified.invalid) return fail('indel-unsupported');
+    side.alignment = verified.alignment;
+    if (side.binding.length > 0
+      && occLength(side.occ) !== side.binding.length
+      && !side.alignment) {
       return fail('indel-unsupported');
+    }
+    const target = occurrenceTargetSequence(side.occ, tpl, circular);
+    const currentAlignment = side.alignment || (target != null
+      ? alignPrimerBinding(side.binding, target)
+      : null);
+    side.thermodynamics = evaluatePrimerDuplexThermodynamics({
+      alignment: currentAlignment,
+    });
+    // P6a — PCR viability follows the current alignment, never a saved scalar
+    // Tm. Zero continuous 3′ pairing refuses standard PCR while the oligo stays
+    // a valid record that can still be inspected and saved elsewhere.
+    if (side.thermodynamics.pcr.status === 'refused') {
+      const reason = side.thermodynamics.pcr.reasons.find((item) => [
+        'no-three-prime-anchor',
+        'short-three-prime-anchor',
+        'noncanonical-three-prime-anchor',
+        'invalid-three-prime-anchor-evidence',
+      ].includes(item)) || 'short-three-prime-anchor';
+      return fail(reason, { primerId: side.occ.primerId });
     }
   }
 
-  const fs = forward.occ.start;
+  const fs = occStart(forward.occ);
   const lenF = occLength(forward.occ);
-  const re = reverse.occ.end;
+  const re = occEnd(reverse.occ);
   const lenR = occLength(reverse.occ);
+  if (!Number.isSafeInteger(fs) || !Number.isSafeInteger(re)) return fail('no-product');
 
   // Distance travelled along the top strand from the forward 5' end to the
   // reverse landing's far edge. On a ring, zero means the whole molecule.
@@ -272,12 +407,31 @@ export function resolvePcrProduct({
     ...alignmentWarnings(reverse, n, circular),
   );
 
-  const hasGappedBinding = [forward, reverse].some((side) => side.alignment?.hasGap);
-  if (hasGappedBinding) {
+  // A scalar full-duplex Tm is honest only for a perfectly complementary
+  // landing. Any real substitution, insertion or internal deletion (editDistance
+  // > 0) makes a perfect-kernel scalar describe a duplex that does not form; an exact
+  // terminal-trimmed landing (editDistance 0) may still use it. Mismatch/bulge
+  // thermodynamics are P6, not modeled here.
+  const thermalSides = [forward, reverse];
+  const unknownFullDuplex = thermalSides.filter(
+    (side) => side.thermodynamics.fullDuplex.status !== 'calculated',
+  );
+  if (unknownFullDuplex.some(
+    (side) => side.thermodynamics.fullDuplex.reason === 'imperfect-duplex',
+  )) {
     warnings.push(warn('gapped-tm-unknown', { tm: null }));
-  } else {
-    const tmF = calcTm(forward.binding);
-    const tmR = calcTm(reverse.binding);
+  }
+  if (unknownFullDuplex.some(
+    (side) => side.thermodynamics.fullDuplex.reason !== 'imperfect-duplex',
+  )) {
+    const reason = unknownFullDuplex.find(
+      (side) => side.thermodynamics.fullDuplex.reason !== 'imperfect-duplex',
+    ).thermodynamics.fullDuplex.reason;
+    warnings.push(warn('duplex-tm-unknown', { tm: null, reason }));
+  }
+  if (unknownFullDuplex.length === 0) {
+    const tmF = forward.thermodynamics.fullDuplex.tmC;
+    const tmR = reverse.thermodynamics.fullDuplex.tmC;
     if (Number.isFinite(tmF) && Number.isFinite(tmR) && Math.abs(tmF - tmR) > 3) {
       warnings.push(warn('delta-tm', { deltaTm: Math.round(Math.abs(tmF - tmR) * 10) / 10 }));
     }

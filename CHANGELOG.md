@@ -4,12 +4,16 @@ This file records product-level milestones, not individual fixes or sprint repor
 
 ## Unreleased
 
+- Library SequenceView: physically honest full-oligo primer landing with fixed 3′, real free 5′ tail, structured duplex thermodynamics, single annealing policy, primer inspector and disclosure (P16, accepted).
+- Collision-aware restriction-site labels with vertical lanes, background leaders, per-cut click zones and Horizontal as default (P17, accepted).
+- Annotation integrity work in progress: one coherent current document for Library and Container editors, opaque stable annotation ids with cascade delete, run-keyed Annotator jobs, reverse-strand CDS auto-annotation (not yet accepted).
+
 ## 0.8.8-alpha — August 2026
 
 - Added a canonical project primer pool with live sequence reuse and PCR-driven selection.
-- Added indel, substitution and amino-acid mutagenesis with physically complete oligos and KLD circularization.
+- Added the amino-acid substitution mutagenesis workflow (variant piece + reaction + derived primers) on top of the existing indel/substitution/KLD engine.
 - Fixed primer save/reopen so persisted 5′ tails survive reload.
-- Bundled a local SnapGene catalog of 2822 plasmids for search and library import.
+- Added library import from the bundled SnapGene catalog (2822 plasmids, data bundled since April) and primer/qualifier parsing in the Python SnapGene parser.
 - Extended `.bodge` full-project ingestion, donor-container import and v2 topology normalization.
 - Rebuilt library search around explicit entity scopes, provider intent and field filters.
 - Added visual search modes, filter chips, keyboard/IME-safe combobox behavior and separate tree/global query state.

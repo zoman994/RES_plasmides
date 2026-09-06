@@ -244,7 +244,7 @@ describe('K1 — normalizeJunction + schema v2→v3 migration (DEC-JUNC-08)', ()
   });
 
   it('SCHEMA_VERSION_CURRENT is 7 (A1=4, T1=5, T2=6, T3=7); v2→v3 still normalizes junctions through the chain', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(12); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
+    expect(SCHEMA_VERSION_CURRENT).toBe(13); // P10: canonical assembly primer sites
     const v2 = {
       containers: [], operations: [], positions: {}, cascadeIndex: 0, toasts: [],
       junctions: [{ id: 'j1', fromContainerId: 'a', toContainerId: 'b', kind: 'overlap' }],

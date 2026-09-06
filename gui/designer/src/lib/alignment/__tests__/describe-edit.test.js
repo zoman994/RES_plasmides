@@ -147,3 +147,24 @@ describe('formatCorrection / mergeCorrection — origin rotation', () => {
     expect(acc).toEqual([{ kind: 'origin', position: 100 }]);
   });
 });
+
+describe('formatCorrection / mergeCorrection — topology transition', () => {
+  it('formats topology provenance as a real transition, never anonymous «правка»', () => {
+    expect(formatCorrection({ kind: 'topology', from: 'circular', to: 'linear' }))
+      .toBe('топология · кольцевая → линейная');
+  });
+
+  it('coalesces repeated topology flips and removes a cancelled transition', () => {
+    let acc = mergeCorrection([], { kind: 'topology', from: 'circular', to: 'linear' });
+    acc = mergeCorrection(acc, { kind: 'insert', pos: 2, char: 'A' });
+    acc = mergeCorrection(acc, { kind: 'topology', from: 'linear', to: 'circular' });
+    expect(acc).toEqual([{ kind: 'insert', pos: 2, text: 'A' }]);
+
+    acc = mergeCorrection(acc, { kind: 'topology', from: 'circular', to: 'linear' });
+    acc = mergeCorrection(acc, { kind: 'topology', from: 'linear', to: 'linear' });
+    expect(acc).toEqual([
+      { kind: 'insert', pos: 2, text: 'A' },
+      { kind: 'topology', from: 'circular', to: 'linear' },
+    ]);
+  });
+});

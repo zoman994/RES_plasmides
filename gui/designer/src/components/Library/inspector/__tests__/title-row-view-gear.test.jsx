@@ -2,7 +2,18 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import LibraryInspectorTitleRow from '../LibraryInspectorTitleRow';
 
-afterEach(cleanup);
+const saveActionCapture = vi.hoisted(() => ({ props: null }));
+vi.mock('../LibrarySaveActions', () => ({
+  default: (props) => {
+    saveActionCapture.props = props;
+    return null;
+  },
+}));
+
+afterEach(() => {
+  cleanup();
+  saveActionCapture.props = null;
+});
 
 const base = {
   item: { name: 'pPICZ_CBHI' },
@@ -37,5 +48,24 @@ describe('LibraryInspectorTitleRow — ⚙ «Вид» всегда в шапке
   it('на вкладке Annotations — gear виден (не прыгает между вкладками)', () => {
     render(<LibraryInspectorTitleRow {...base} activeTab="annotations" onToggleSeqSettings={() => {}} />);
     expect(screen.getByTestId('importer-sequence-view-settings-trigger')).toBeTruthy();
+  });
+
+  it('forwards the transient topology into the version-save action', () => {
+    render(
+      <LibraryInspectorTitleRow
+        {...base}
+        activeTab="overview"
+        onToggleSeqSettings={() => {}}
+        saveFlow={{
+          visible: true,
+          libraryEntryId: 'p1',
+          hasChanges: true,
+          editedSequence: 'ATGC',
+          editedAnnotations: [],
+          editedTopology: 'linear',
+        }}
+      />,
+    );
+    expect(saveActionCapture.props.editedTopology).toBe('linear');
   });
 });

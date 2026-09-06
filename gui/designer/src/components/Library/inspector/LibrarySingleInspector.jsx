@@ -17,15 +17,10 @@ import LinearFeatureBar from './tabs/LinearFeatureBar';
 // Sequence and scrolls.
 import AnnotationsTab from './tabs/AnnotationsTab';
 import { getRegions } from '../../../annotation-model';
+import { buildCurrentDocument } from '../../../lib/library-current-document';
 import { extractFeatureSequences } from '../../../lib/feature-extract';
 import { buildLibraryEntry } from '../lib/build-library-entry';
-import { findDominatedRegions } from '../../../lib/plasmid-mini-map-geometry';
-import {
-  applyAnnotationEdit,
-  mergeAnnotations,
-  generateAnnotationId,
-  mergeStripWithPredicted,
-} from '../../../lib/annotation-edit.js';
+import { mergeStripWithPredicted } from '../../../lib/annotation-edit.js';
 import { useStore } from '../../../store';
 import { useSequenceNavConsumer } from './hooks/useSequenceNavConsumer';
 import { selectAnnotator } from '../../../store/uiSlice.js';
@@ -39,7 +34,7 @@ import FeatureEditorModal from './FeatureEditorModal';
 import LibraryInspectorTitleRow from './LibraryInspectorTitleRow';
 import { useIdlePrewarm } from './hooks/useIdlePrewarm';
 import { useAnnotationUndoRedo } from './hooks/useAnnotationUndoRedo';
-import { useFeatureEditorFlow } from './hooks/useFeatureEditorFlow';
+import { useCurrentAnnotationController } from './hooks/useCurrentAnnotationController';
 import { useLibrarySaveFlow } from './hooks/useLibrarySaveFlow';
 // 17.06.2026 (Игорь «убрать рид-онли/эдитэйбл, по умолчанию редактируемой,
 // форма сохранения как в выравнивании»): the Library sequence is now
@@ -80,6 +75,9 @@ export default function SingleInspector({
   item,
   flags,
   edits,
+  // Canonical document generation from LibraryWorkspace (displayedDocEpoch over
+  // entry/buffer generations) — never a length / editLog / hash.
+  docEpoch = 0,
   activeTab,
   onActiveTabChange,
   onUpdateFlags, // eslint-disable-line no-unused-vars -- reserved for future Annotator hand-off
@@ -96,6 +94,13 @@ export default function SingleInspector({
   onUpdateTags,
   onUpdateTopology,
 }) {
+  // Build the displayed molecule exactly once per render. Everything that
+  // interprets coordinates below (panes, validators and editors) reads this
+  // same projection rather than rebuilding saved/edit combinations locally.
+  const currentDocument = buildCurrentDocument(item, edits, docEpoch);
+  const length = currentDocument?.length ?? 0;
+  const topology = currentDocument?.topology ?? 'linear';
+  const displayAnnotations = currentDocument?.annotations ?? [];
   // Annotator state for the navigation-strip ghost overlay. Single
   // shallow-equality subscription instead of five separate ones — five
   // calls each compared with `Object.is` against their previous result
@@ -191,7 +196,7 @@ export default function SingleInspector({
   // there is no saved identity to verify against, so the hash is deliberately
   // null and every targeted source site fails closed rather than showing a
   // position that may already have moved.
-  const viewerEntryId = item?._libraryEntryId || item?.id || null;
+  const viewerEntryId = currentDocument?.entryId || null;
   const viewerDocumentHash = edits?.editedSequence != null
     ? null
     : (item?.resourceHash || item?.payload?.resourceHash || null);
@@ -265,14 +270,32 @@ export default function SingleInspector({
   // Redo stack populated only when an undo happens; any fresh edit
   // clears the redo branch (standard editor behavior).
   // Annotation undo/redo stack — see hooks/useAnnotationUndoRedo.
-  const currentAnnotationsForUndo = Array.isArray(edits?.editedAnnotations)
-    ? edits.editedAnnotations
-    : (item?.annotations || []);
   const { pushSnapshot, undo: undoAnnotation, redo: redoAnnotation } = useAnnotationUndoRedo({
     itemKey,
-    currentAnnotations: currentAnnotationsForUndo,
-    currentSequence: edits?.editedSequence ?? item?.sequence,
+    currentAnnotations: displayAnnotations,
+    currentSequence: currentDocument?.sequence,
+    currentTopology: topology,
+    currentEditLog: Array.isArray(edits?.editLog) ? edits.editLog : [],
     onUpdateEdits,
+  });
+  const {
+    currentDocumentRef,
+    onAnnotationEditFromView,
+    applyAnnotationBatch,
+    featureUnderEdit,
+    openFeatureEditor,
+    closeFeatureEditor,
+    onFeatureSave,
+    onFeatureMerge,
+    onFeatureDelete,
+    duplicateCount,
+    onRemoveDuplicates,
+  } = useCurrentAnnotationController({
+    currentDocument,
+    onUpdateEdits,
+    pushSnapshot,
+    canWrite: typeof onUpdateEdits === 'function',
+    warnScope: 'SingleInspector',
   });
 
   // HOOK-06 — keep these callbacks identity-stable across renders.
@@ -288,33 +311,22 @@ export default function SingleInspector({
   // read from refs inside the callback, and depend only on
   // `onUpdateEdits` + the stable `pushSnapshot`. Callback identity is
   // now stable for the lifetime of `onUpdateEdits`.
-  const itemRef = useRef(item);
   const editsRef = useRef(edits);
-  useEffect(() => { itemRef.current = item; }, [item]);
   useEffect(() => { editsRef.current = edits; }, [edits]);
 
-  const onAnnotationEditFromView = useCallback((edit) => {
-    if (!edit || !onUpdateEdits) return;
-    try {
-      const curItem = itemRef.current;
-      const curEdits = editsRef.current;
-      const seqLength = (curItem?.sequence || '').length;
-      const baseAnnotations = Array.isArray(curEdits?.editedAnnotations)
-        ? curEdits.editedAnnotations
-        : (curItem?.annotations || []);
-      const result = applyAnnotationEdit(baseAnnotations, edit, seqLength);
-      const next = Array.isArray(result) ? result : result?.next;
-      if (Array.isArray(next) && next !== baseAnnotations) {
-        pushSnapshot(baseAnnotations);
-        onUpdateEdits({ editedAnnotations: next });
-      }
-    } catch (err) {
-      // Validation errors surface via popup error states; if one
-      // makes it here, log to console but don't crash the viewer.
-      // eslint-disable-next-line no-console
-      console.warn('[SingleInspector] annotation edit failed:', err.message);
-    }
-  }, [onUpdateEdits, pushSnapshot]);
+  const onUpdateTopologyFromOverview = useCallback((nextTopology) => {
+    if (typeof onUpdateTopology !== 'function') return;
+    const curDoc = currentDocumentRef.current;
+    if (!curDoc || nextTopology === curDoc.topology) return;
+    const curLog = editsRef.current?.editLog;
+    pushSnapshot(
+      curDoc.annotations || [],
+      curDoc.sequence || '',
+      curDoc.topology || 'linear',
+      Array.isArray(curLog) ? curLog : [],
+    );
+    onUpdateTopology(nextTopology);
+  }, [onUpdateTopology, pushSnapshot]);
 
   // 17.06.2026 — nucleotide edit → TRANSIENT working buffer (NOT autosaved,
   // NO branch-confirm). Mirrors the aligner: apply the op to {editedSequence
@@ -324,17 +336,20 @@ export default function SingleInspector({
   // biolog clicks «Сохранить версию». Caret follows the edit.
   const onSequenceEditFromView = useCallback((op) => {
     if (!op || typeof onUpdateEdits !== 'function') return;
-    const curItem = itemRef.current;
+    const curDoc = currentDocumentRef.current;
     const curEdits = editsRef.current;
-    const baseSeq = (curEdits?.editedSequence != null) ? curEdits.editedSequence : (curItem?.sequence || '');
-    const baseAnns = Array.isArray(curEdits?.editedAnnotations)
-      ? curEdits.editedAnnotations
-      : (curItem?.annotations || []);
+    const baseSeq = curDoc?.sequence || '';
+    const baseAnns = curDoc?.annotations || [];
     const res = applySequenceEditToEntry({ payload: { sequence: baseSeq, annotations: baseAnns } }, op);
     if (!res.ok) return;
     // Undo snapshot BEFORE the edit (annotations + sequence), so Ctrl+Z
     // restores both through the unified stack.
-    pushSnapshot(baseAnns, baseSeq);
+    pushSnapshot(
+      baseAnns,
+      baseSeq,
+      curDoc?.topology || 'linear',
+      Array.isArray(curEdits?.editLog) ? curEdits.editLog : [],
+    );
     const nextLog = mergeCorrection(
       Array.isArray(curEdits?.editLog) ? curEdits.editLog : [],
       enrichEditDescriptor(op, baseSeq),
@@ -357,16 +372,19 @@ export default function SingleInspector({
   // transient buffer + version-save path as a nucleotide edit. Source untouched.
   const onApplyOrigin = useCallback((pos1) => {
     if (typeof onUpdateEdits !== 'function') return;
-    const curItem = itemRef.current;
+    const curDoc = currentDocumentRef.current;
     const curEdits = editsRef.current;
-    const baseSeq = (curEdits?.editedSequence != null) ? curEdits.editedSequence : (curItem?.sequence || '');
-    const baseAnns = Array.isArray(curEdits?.editedAnnotations)
-      ? curEdits.editedAnnotations
-      : (curItem?.annotations || []);
+    const baseSeq = curDoc?.sequence || '';
+    const baseAnns = curDoc?.annotations || [];
     const len = baseSeq.length;
     if (!len || !(pos1 > 1 && pos1 <= len)) return;
     const out = rotateOriginToPosition(baseSeq, baseAnns, pos1, { topology: 'circular' });
-    pushSnapshot(baseAnns, baseSeq);
+    pushSnapshot(
+      baseAnns,
+      baseSeq,
+      curDoc?.topology || 'linear',
+      Array.isArray(curEdits?.editLog) ? curEdits.editLog : [],
+    );
     const nextLog = mergeCorrection(
       Array.isArray(curEdits?.editLog) ? curEdits.editLog : [],
       { kind: 'origin', position: pos1 },
@@ -375,37 +393,6 @@ export default function SingleInspector({
     setCursorPos(0);
     setCursorAnchor(0);
   }, [onUpdateEdits, pushSnapshot, setCursorPos, setCursorAnchor]);
-
-  // Apply a non-edit operation (split / merge / delete) directly
-  // against `editedAnnotations` and push the BEFORE state onto the
-  // undo stack so Ctrl+Z works the same way it does for inline
-  // edits. Same ref-pattern as above — stable identity.
-  const applyOpToAnnotations = useCallback((nextAnnotations) => {
-    if (!onUpdateEdits) return;
-    const curItem = itemRef.current;
-    const curEdits = editsRef.current;
-    const baseAnnotations = Array.isArray(curEdits?.editedAnnotations)
-      ? curEdits.editedAnnotations
-      : (curItem?.annotations || []);
-    if (!Array.isArray(nextAnnotations) || nextAnnotations === baseAnnotations) return;
-    pushSnapshot(baseAnnotations);
-    onUpdateEdits({ editedAnnotations: nextAnnotations });
-  }, [onUpdateEdits, pushSnapshot]);
-
-  // FeatureEditorModal flow — see hooks/useFeatureEditorFlow.
-  const {
-    featureUnderEdit,
-    openFeatureEditor,
-    closeFeatureEditor,
-    onFeatureSave,
-    onFeatureMerge,
-    onFeatureDelete,
-  } = useFeatureEditorFlow({
-    item,
-    edits,
-    applyOp: applyOpToAnnotations,
-    dispatchEdit: onAnnotationEditFromView,
-  });
 
   // Bug-rush #22 — SequenceView settings popover state hoisted from
   // SequenceTab to SingleInspector so the ⚙ trigger can live next
@@ -425,70 +412,22 @@ export default function SingleInspector({
   // on success.
   const closeAnnotator = useStore((s) => s.closeAnnotator);
   const onApplyAnnotatorResults = useCallback((acceptedRegions) => {
-    if (!Array.isArray(acceptedRegions) || acceptedRegions.length === 0) {
-      closeAnnotator?.();
-      return;
-    }
-    if (!onUpdateEdits) { closeAnnotator?.(); return; }
-    try {
-      const seqLength = (item?.sequence || '').length;
-      const baseAnnotations = Array.isArray(edits?.editedAnnotations)
-        ? edits.editedAnnotations
-        : (item?.annotations || []);
-      const result = applyAnnotationEdit(
-        baseAnnotations,
-        { kind: 'create-batch', payload: acceptedRegions },
-        seqLength,
-      );
-      const next = result?.next;
-      if (Array.isArray(next)) {
-        // Snapshot the pre-batch state so Ctrl+Z can undo an annotator batch
-        // (was the остаток of «Ctrl+Z этап 2» — annotator-batch had no snapshot).
-        pushSnapshot(baseAnnotations);
-        onUpdateEdits({ editedAnnotations: next });
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[SingleInspector] annotator apply failed:', err.message);
-    }
+    applyAnnotationBatch(acceptedRegions);
     closeAnnotator?.();
-  }, [onUpdateEdits, item, edits, closeAnnotator, pushSnapshot]);
-
-  // «Убрать дубли» (Игорь 17.06) — remove redundant overlapping annotations
-  // from the DATA (same rule the map uses to hide them): a generic feature
-  // covered ~identically by a higher-priority one (e.g. bla(M) marker under the
-  // AmpR CDS). Annotation-only edit → autosaved in place (not versioned),
-  // Ctrl+Z-undoable via the snapshot. No-op when nothing is dominated.
-  const dominatedAnnotationIds = useMemo(() => {
-    const base = Array.isArray(edits?.editedAnnotations)
-      ? edits.editedAnnotations
-      : (item?.annotations || []);
-    return new Set(findDominatedRegions(getRegions(base)).map((r) => r.id));
-  }, [edits?.editedAnnotations, item?.annotations]);
-  const onRemoveDuplicates = useCallback(() => {
-    if (!onUpdateEdits || dominatedAnnotationIds.size === 0) return;
-    const base = Array.isArray(edits?.editedAnnotations)
-      ? edits.editedAnnotations
-      : (item?.annotations || []);
-    const next = base.filter((a) => !dominatedAnnotationIds.has(a.id));
-    if (next.length !== base.length) {
-      pushSnapshot(base);
-      onUpdateEdits({ editedAnnotations: next });
-    }
-  }, [onUpdateEdits, item, edits, dominatedAnnotationIds, pushSnapshot]);
+  }, [applyAnnotationBatch, closeAnnotator]);
 
   if (!item) return null;
-  const length = item.length || item.sequence?.length || 0;
-  const topology = item.topology || 'linear';
-  const regionCount = getRegions(item.annotations || []).length;
   // C14 (audit) — Library entries never carry commits[], so the History tab was
   // always hidden + its branch unreachable (commit history lives in the container
   // editor). Removed here; the tab stays in ContainerEditorSkeleton where it works.
-  // Use edited annotations if present (live edit), otherwise fall back to file's.
-  const displayAnnotations = Array.isArray(edits?.editedAnnotations)
-    ? edits.editedAnnotations
-    : (item.annotations || []);
-  const displayItem = { ...item, annotations: displayAnnotations };
+  const regionCount = getRegions(displayAnnotations).length;
+  const displayItem = {
+    ...item,
+    sequence: currentDocument.sequence,
+    annotations: displayAnnotations,
+    topology: currentDocument.topology,
+    length: currentDocument.length,
+  };
 
   // FEAT-EXTRACT — «Извлечь в библиотеку»: splice the region out of its genomic
   // context (introns removed, strand-aware) → mature cDNA → a fresh loose Library
@@ -496,8 +435,9 @@ export default function SingleInspector({
   // for a follow-up (depends on per-CDS genetic-code = FEAT-TRANSL-TABLE).
   const onExtractFeature = useCallback(({ region }) => {
     if (!region) return;
-    const seq = edits?.editedSequence ?? item?.sequence ?? '';
-    const r = extractFeatureSequences(seq, region, displayAnnotations);
+    const curDoc = currentDocumentRef.current;
+    const seq = curDoc?.sequence || '';
+    const r = extractFeatureSequences(seq, region, curDoc?.annotations || []);
     if (!r || !r.cdna) return;
     const entry = buildLibraryEntry(
       {
@@ -509,7 +449,7 @@ export default function SingleInspector({
       null,
     );
     useStore.getState().addLibraryEntry(entry);
-  }, [edits, item, displayAnnotations]);
+  }, [item]);
 
   // When the user is on the Annotations tab, also project the
   // Annotator's predicted regions onto the navigation strip so the
@@ -684,7 +624,7 @@ export default function SingleInspector({
             <OverviewTab
               item={displayItem}
               onUpdateTags={onUpdateTags}
-              onUpdateTopology={onUpdateTopology}
+              onUpdateTopology={onUpdateTopology ? onUpdateTopologyFromOverview : undefined}
               onNavigateToFeature={onNavigateToFeature}
               selectedRegionId={selectedRegionId}
               onApplyOrigin={onApplyOrigin}
@@ -701,9 +641,9 @@ export default function SingleInspector({
             <SequenceTab
               entryId={item.id}
               navHits={navHits}
-              sequence={edits?.editedSequence ?? item.sequence}
+              sequence={currentDocument.sequence}
               annotations={displayAnnotations}
-              topology={(edits?.editedTopology ?? item.topology) || 'linear'}
+              topology={currentDocument.topology}
               name={item.name || item._fileName}
               fileKey={item._fileName}
               onUpdateEdits={onUpdateEdits}
@@ -752,14 +692,16 @@ export default function SingleInspector({
               minHeight: 0,
             }}>
             <AnnotationsTab
-              sequence={edits?.editedSequence ?? item.sequence ?? ''}
+              sequence={currentDocument.sequence}
               annotations={displayAnnotations}
+              topology={currentDocument.topology}
+              docEpoch={currentDocument.docEpoch}
               fileName={item._fileName}
               active={activeTab === 'annotations'}
               onApplyAnnotatorResults={onApplyAnnotatorResults}
               onAnnotationEdit={onAnnotationEditFromView}
               onOpenFeatureEditor={openFeatureEditor}
-              duplicateCount={dominatedAnnotationIds.size}
+              duplicateCount={duplicateCount}
               onRemoveDuplicates={onRemoveDuplicates}
               // 2026-05-06 — biolog: «навигация по колбасе аннотатора
               // не даёт навигацию в аннотаторе». Wire the same
@@ -806,6 +748,7 @@ export default function SingleInspector({
       <FeatureEditorModal
         feature={featureUnderEdit}
         seqLength={length}
+        topology={topology}
         neighbours={displayAnnotations}
         onSave={onFeatureSave}
         onMerge={onFeatureMerge}

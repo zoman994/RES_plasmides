@@ -23,13 +23,17 @@
  * purely a controlled view + dispatch surface.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from '../../store';
 import { useSequenceSelection } from '../../hooks/useSequenceSelection';
 import { selectAnnotator } from '../../store/uiSlice.js';
 import { STRINGS } from '../../lib/strings';
 import { getPluginById } from '../../lib/annotator-plugins';
 import { runAnnotatorPipeline } from '../../lib/annotator-pipeline.js';
+import {
+  documentSignature,
+  runContextSignature,
+} from '../../lib/annotator-run-identity.js';
 
 // Sprint M-X.3 follow-up (05.05.2026, Stage A) — biolog: «Дальше
 // сразу открыватся аннотатор … и на этой карте показывают гост
@@ -46,6 +50,10 @@ import { useResizableSplit } from '../../hooks/useResizableSplit';
 import ResizeHandle from '../common/ResizeHandle';
 
 const S = STRINGS.importer.annotator;
+const loadDefaultGeneParserModules = () => Promise.all([
+  import('../../lib/splice/cnn-scorer'),
+  import('../../lib/splice/annotate-genes'),
+]);
 
 export default function Annotator({
   sequence,
@@ -89,8 +97,11 @@ export default function Annotator({
   // ANN-0L C2 — pass-through document context.
   entryId = null,
   documentHash = null,
+  docEpoch = null,
+  topology = 'linear',
   onWritePrimer,
   onDeletePrimer,
+  loadGeneParserModules = loadDefaultGeneParserModules,
 }) {
   const annotator = useStore(selectAnnotator);
   // Drag-to-resize the preview | levels-panel split (Игорь — разделители двигаются).
@@ -104,6 +115,11 @@ export default function Annotator({
   const setThreshold = useStore((s) => s.setAnnotatorThreshold);
   const setRunning = useStore((s) => s.setAnnotatorRunning);
   const setResult = useStore((s) => s.setAnnotatorResult);
+  // ANN-INTEGRITY seam BG-033 — begin a keyed job for every live async run and
+  // tag its callbacks, so a reply that returns after the document or scope
+  // changed is dropped rather than written into the new document's results.
+  const beginJob = useStore((s) => s.beginAnnotatorJob);
+  const syncContext = useStore((s) => s.syncAnnotatorContext);
   const acceptRegion = useStore((s) => s.acceptRegion);
   const rejectRegion = useStore((s) => s.rejectRegion);
   const acceptManyRegions = useStore((s) => s.acceptManyRegions);
@@ -163,32 +179,69 @@ export default function Annotator({
   const analysisRegion = activeSelection
     || (scope?.kind === 'region' && scope.region ? scope.region : null);
 
+  const contextForRegion = (effectiveRegion = region) => ({
+    entryId: entryId ?? embeddedSequenceId,
+    docEpoch: docEpoch ?? documentHash ?? '?',
+    topology,
+    scope: effectiveRegion
+      ? { kind: 'region', region: { ...effectiveRegion } }
+      : { kind: 'full' },
+  });
+  const baseDocContext = contextForRegion(region);
+  const baseDocumentSignature = documentSignature(baseDocContext);
+  const baseRunContextSignature = runContextSignature(baseDocContext);
+
+  // Canonical document changes invalidate all results, verdicts and keyed
+  // spinners immediately. Scope-only changes are superseded per plugin job.
+  useLayoutEffect(() => {
+    syncContext(baseDocContext);
+    // Context is represented by the deterministic signature; the object itself
+    // is intentionally recreated so an unrelated render cannot retrigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseDocumentSignature, syncContext]);
+
   // Stage A — fire-once-per-sequenceId ref so re-renders (threshold
   // tweaks, tab toggles, etc.) don't re-trigger the L1 plugin.
   const autoRunFiredFor = useRef(null);
   useEffect(() => {
     if (!annotator.open) return;
     if (!sequence) return;
-    // V133 — key the auto-run on the sequence CONTENT, not scope.sequenceId.
-    // Embedded mode reuses a sticky sequenceId, so a NEW plasmid with the
-    // same id used to leave the previous L1 result mapped onto it until a
-    // manual «Run again». Track content; a change (we already fired for a
-    // DIFFERENT one) clears the stale L1/L2/L3 results + verdicts and re-runs.
-    const contentKey = sequence;
-    if (autoRunFiredFor.current === contentKey) return;
+    // V133 — key the auto-run on document + sequence CONTENT + base scope,
+    // not scope.sequenceId. A document/content change clears everything;
+    // a scope-only change supersedes L1 and preserves independent levels.
+    const previousAutoRun = autoRunFiredFor.current;
+    if (previousAutoRun?.contextSignature === baseRunContextSignature
+        && previousAutoRun.sequence === sequence) return;
     const results = annotator.results || {};
     const running = annotator.running || {};
-    if (running[LEVEL_1_PLUGIN_ID]) return;        // race-guard
+    const runningKey = running[LEVEL_1_PLUGIN_ID];
+    const runningContext = runningKey ? annotator.runContexts?.[runningKey] : null;
+    const sameDocumentAndContent = previousAutoRun?.documentSignature === baseDocumentSignature
+      && previousAutoRun.sequence === sequence;
+    // Re-render churn must not duplicate one L1 job. A job from an older base
+    // scope/document/content does not block the replacement job; store keys
+    // make its cleanup/result callbacks harmless.
+    if (runningKey === true) return; // legacy unkeyed busy flag: fail closed
+    if (runningKey
+      && runContextSignature(runningContext) === baseRunContextSignature
+      && sameDocumentAndContent) return;
     const plugin = getPluginById(LEVEL_1_PLUGIN_ID);
     if (!plugin) return;                           // registry not populated yet
-    const contentChanged = autoRunFiredFor.current !== null;
+    const documentOrContentChanged = previousAutoRun !== null && !sameDocumentAndContent;
     // First fire for THIS content with results already present (restored /
     // pre-seeded) → keep them, don't re-run. A content CHANGE makes the
     // existing results stale → fall through to clear + re-run.
-    if (!contentChanged && results[LEVEL_1_PLUGIN_ID]) return;
-    autoRunFiredFor.current = contentKey;
-    if (contentChanged) resetAnnotatorScope();     // drop stale L1/L2/L3 + verdicts
-    setRunning(LEVEL_1_PLUGIN_ID, true);
+    if (previousAutoRun === null && results[LEVEL_1_PLUGIN_ID]) return;
+    // Keep the sequence value itself rather than allocating a second giant
+    // `${signature}|${sequence}` string for multi-megabase documents.
+    autoRunFiredFor.current = {
+      documentSignature: baseDocumentSignature,
+      contextSignature: baseRunContextSignature,
+      sequence,
+    };
+    if (documentOrContentChanged) resetAnnotatorScope(); // real document/content reset
+    // Begin a keyed job for this document; the reply is tagged with it below.
+    const runKey = beginJob(baseDocContext, [LEVEL_1_PLUGIN_ID]);
     // Cancellation flag so a settled L1 promise doesn't write into a
     // stale store after the Annotator unmounts (or the user opens a
     // different plasmid before L1 completes). Without this guard,
@@ -210,13 +263,15 @@ export default function Annotator({
       if (cancelled) return;
       Promise.resolve()
         .then(() => plugin.run(sequence || '', region, { threshold: annotator.threshold }))
-        .then((res) => { if (!cancelled && res) setResult(LEVEL_1_PLUGIN_ID, res); })
+        .then((res) => { if (!cancelled && res) setResult(LEVEL_1_PLUGIN_ID, res, runKey); })
         .catch((err) => {
           if (cancelled) return;
           // eslint-disable-next-line no-console
           console.warn('[Annotator] L1 auto-run failed:', err?.message || err);
         })
-        .finally(() => { if (!cancelled) setRunning(LEVEL_1_PLUGIN_ID, false); });
+        .finally(() => {
+          if (!cancelled) setRunning(LEVEL_1_PLUGIN_ID, false, runKey);
+        });
     };
     rafId = requestAnimationFrame(() => {
       if (cancelled) return;
@@ -225,10 +280,11 @@ export default function Annotator({
     return () => {
       cancelled = true;
       if (rafId) cancelAnimationFrame(rafId);
+      setRunning(LEVEL_1_PLUGIN_ID, false, runKey);
     };
     // Deps: open + sequence CONTENT. autoRunFiredFor guards re-render churn.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [annotator.open, sequence]);
+  }, [annotator.open, sequence, baseRunContextSignature]);
 
   // Stage B-2 — per-level Run dispatcher. LevelPanel emits
   // `onRunLevel('L2' | 'L3' | …)` from its level-section Run
@@ -240,13 +296,17 @@ export default function Annotator({
   const handleRunLevel = async (levelId, regionOverride) => {
     const ids = LEVELS[levelId];
     if (!Array.isArray(ids) || ids.length === 0) return;
+    const runnableIds = ids.filter((id) => !!getPluginById(id));
+    if (runnableIds.length === 0) return;
     const enabled = {};
-    for (const id of ids) enabled[id] = true;
-    for (const id of ids) setRunning(id, true);
+    for (const id of runnableIds) enabled[id] = true;
     // Sprint M-X.3 follow-up — regionOverride lets the «BLAST this
     // region» context-menu entry run a sub-region without touching
     // annotator.scope (which would re-trigger L1 auto-run).
     const effectiveRegion = regionOverride || region;
+    // Freeze the ACTUAL region sent to the pipeline before starting the job.
+    // Every plugin in this batch shares one key; unrelated levels keep theirs.
+    const runKey = beginJob(contextForRegion(effectiveRegion), runnableIds);
     const { results, errors } = await runAnnotatorPipeline(
       sequence || '',
       effectiveRegion,
@@ -254,15 +314,15 @@ export default function Annotator({
       {
         threshold: annotator.threshold,
         existingConfident: annotations || [],
-        onPluginStart: (id) => setRunning(id, true),
+        onPluginStart: (id) => setRunning(id, true, runKey),
         onPluginEnd: (id, res) => {
-          setRunning(id, false);
-          if (res) setResult(id, res);
+          if (res) setResult(id, res, runKey);
+          else setRunning(id, false, runKey);
         },
       },
     );
-    for (const id of Object.keys(results)) setResult(id, results[id]);
-    for (const id of Object.keys(errors)) setRunning(id, false);
+    for (const id of Object.keys(results)) setResult(id, results[id], runKey);
+    for (const id of Object.keys(errors)) setRunning(id, false, runKey);
   };
 
   // Selection → BLAST handler. Wires the SequenceView context-menu
@@ -272,7 +332,7 @@ export default function Annotator({
   const handleBlastSelection = (regionRange) => {
     if (!regionRange || !Number.isFinite(regionRange.start) || !Number.isFinite(regionRange.end)) return;
     if (regionRange.end <= regionRange.start) return;
-    handleRunLevel('L3', { region: regionRange });
+    handleRunLevel('L3', regionRange);
   };
 
   // Visible save confirmation. Biolog: «после сейв кнопка должна
@@ -296,9 +356,17 @@ export default function Annotator({
   // as annotations, and surfaces any CRYPTIC splice sites (unexpected splicing).
   const [spliceResult, setSpliceResult] = useState(null);
   const [spliceBusy, setSpliceBusy] = useState(false);
+  const spliceRunKeyRef = useRef(null);
   // Organism preset for the gene parser (intron length distribution differs by
   // kingdom). Simple groups, not species. Игорь: «грибы / человек и тд».
   const [spliceOrganism, setSpliceOrganism] = useState('fungi');
+  useEffect(() => {
+    const activeKey = annotator.activeRunKeys?.['gene-parser'];
+    if (spliceRunKeyRef.current && spliceRunKeyRef.current === activeKey) return;
+    spliceRunKeyRef.current = null;
+    setSpliceBusy(false);
+    setSpliceResult(null);
+  }, [annotator.currentDocumentSignature, annotator.activeRunKeys]);
   const handleLocateRegion = (region) => {
     if (!region || !Number.isFinite(region.start)) return;
     setInnerScroll({ pos: region.start, tick: Date.now(), instant: false });
@@ -319,18 +387,49 @@ export default function Annotator({
     const t = setTimeout(() => setJustSavedAt(0), 2000);
     return () => clearTimeout(t);
   }, [justSavedAt]);
+
+  // Only results whose plugin still owns the tagged run in the CURRENT frozen
+  // document context may reach the UI or Save. This is deliberately derived at
+  // render time: a context switch hides stale results in the same commit.
+  const freshResults = {};
+  const freshRegionIds = new Set();
+  for (const [pluginId, pluginResult] of Object.entries(annotator.results || {})) {
+    const runKey = annotator.resultRunKeys?.[pluginId];
+    const runContext = runKey ? annotator.runContexts?.[runKey] : null;
+    if (!runKey || annotator.activeRunKeys?.[pluginId] !== runKey) continue;
+    if (documentSignature(runContext) !== annotator.currentDocumentSignature) continue;
+    freshResults[pluginId] = pluginResult;
+    for (const candidate of pluginResult?.regions || []) {
+      const id = candidate.id
+        || `${candidate.start}:${candidate.end}:${candidate.type || ''}:${candidate.name || ''}`;
+      freshRegionIds.add(id);
+    }
+  }
+  const onlyFreshVerdicts = (source) => Object.fromEntries(
+    Object.entries(source || {}).filter(([id]) => freshRegionIds.has(id)),
+  );
+  const freshAcceptedRegionIds = onlyFreshVerdicts(annotator.acceptedRegionIds);
+  const freshRejectedRegionIds = onlyFreshVerdicts(annotator.rejectedRegionIds);
+  const freshPendingEdits = onlyFreshVerdicts(annotator.pendingEdits);
+  const freshRunning = {};
+  for (const [pluginId, runKey] of Object.entries(annotator.running || {})) {
+    const runContext = annotator.runContexts?.[runKey];
+    if (annotator.activeRunKeys?.[pluginId] !== runKey) continue;
+    if (documentSignature(runContext) !== annotator.currentDocumentSignature) continue;
+    freshRunning[pluginId] = runKey;
+  }
+
   const handleSave = () => {
-    const accepted = annotator.acceptedRegionIds || {};
-    const pending = annotator.pendingEdits || {};
     const out = [];
-    for (const res of Object.values(annotator.results || {})) {
+    for (const res of Object.values(freshResults)) {
       for (const region of res.regions || []) {
         const id = region.id || `${region.start}:${region.end}:${region.type || ''}:${region.name || ''}`;
-        if (accepted[id]) {
-          out.push({ ...region, ...(pending[id] || {}) });
+        if (freshAcceptedRegionIds[id]) {
+          out.push({ ...region, ...(freshPendingEdits[id] || {}) });
         }
       }
     }
+    if (out.length === 0) return;
     onApplyAnnotatorResults?.(out);
     setJustSavedAt(Date.now());
   };
@@ -341,7 +440,9 @@ export default function Annotator({
   // plasmid run marks far too much. The CNN needs ≥100 bp of flanking context
   // per site, hence a minimum selection length.
   const MIN_CNN_LEN = 220;
-  const applySplice = (out, mode, fellBack = false) => {
+  const applySplice = (out, mode, fellBack = false, runKey) => {
+    const activeKey = useStore.getState().annotator?.activeRunKeys?.['gene-parser'];
+    if (!runKey || activeKey !== runKey) return;
     out.mode = mode;
     out.fellBack = fellBack;
     setSpliceResult(out);
@@ -350,39 +451,47 @@ export default function Annotator({
     // auto-applying. The user accepts the whole structure there → Save applies
     // it (gene + introns together, ids preserved by the V150 fix).
     if (out.regions && out.regions.length) {
-      setResult('gene-parser', { pluginId: 'gene-parser', pluginName: 'Структура гена', regions: out.regions });
+      setResult('gene-parser', { pluginId: 'gene-parser', pluginName: 'Структура гена', regions: out.regions }, runKey);
     } else {
-      setResult('gene-parser', null);
+      setResult('gene-parser', null, runKey);
     }
   };
   const handleDetectIntrons = () => {
     const region = analysisRegion;
+    const runKey = beginJob(contextForRegion(region), ['gene-parser']);
+    spliceRunKeyRef.current = runKey;
     // Require a selection — see MIN_CNN_LEN comment. No whole-plasmid runs.
     if (!region) {
       setSpliceResult({ regions: [], cryptic: [], intronCount: 0, mode: 'gene', needsSelection: true });
-      setResult('gene-parser', null);
+      setResult('gene-parser', null, runKey);
       return;
     }
     const sub = (sequence || '').slice(region.start, region.end);
     if (sub.length < MIN_CNN_LEN) {
       setSpliceResult({ regions: [], cryptic: [], intronCount: 0, mode: 'gene', tooShort: true });
-      setResult('gene-parser', null);
+      setResult('gene-parser', null, runKey);
       return;
     }
     // Frame-aware gene parser (neural splice scorer) on the selected gene.
     setSpliceBusy(true);
-    Promise.all([
-      import('../../lib/splice/cnn-scorer'),
-      import('../../lib/splice/annotate-genes'),
-    ])
+    loadGeneParserModules()
       .then(([{ scoreSpliceSitesCNN }, { buildGeneAnnotations }]) =>
-        applySplice(buildGeneAnnotations(sub, { offset: region.start, organism: spliceOrganism, scorer: scoreSpliceSitesCNN }), 'gene'))
-      .finally(() => setSpliceBusy(false));
+        applySplice(buildGeneAnnotations(sub, { offset: region.start, organism: spliceOrganism, scorer: scoreSpliceSitesCNN }), 'gene', false, runKey))
+      .finally(() => {
+        const activeKey = useStore.getState().annotator?.activeRunKeys?.['gene-parser'];
+        if (spliceRunKeyRef.current !== runKey || activeKey !== runKey) return;
+        setSpliceBusy(false);
+        setRunning('gene-parser', false, runKey);
+      });
   };
 
-  const acceptedCount = Object.keys(annotator.acceptedRegionIds || {}).length;
-  const rejectedCount = Object.keys(annotator.rejectedRegionIds || {}).length;
-  const editedCount = Object.keys(annotator.pendingEdits || {}).length;
+  const acceptedCount = Object.keys(freshAcceptedRegionIds).length;
+  const rejectedCount = Object.keys(freshRejectedRegionIds).length;
+  const editedCount = Object.keys(freshPendingEdits).length;
+  const displayedScope = annotator.executedScope
+    || annotator.runContexts?.[annotator.activeRunKey]?.scope
+    || baseDocContext.scope;
+  const displayedRegion = displayedScope?.kind === 'region' ? displayedScope.region : null;
 
   // Embedded mode renders inline regardless of the annotator.open
   // visibility flag (the parent tab is the visibility gate). Modal
@@ -424,8 +533,8 @@ export default function Annotator({
         )}
         <div style={{ fontWeight: 500, fontSize: 14 }}>{S.title}</div>
         <div style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)' }} data-testid="annotator-scope-info">
-          {analysisRegion
-            ? S.scopeRegion(analysisRegion.start + 1, analysisRegion.end)
+          {displayedRegion
+            ? S.scopeRegion(displayedRegion.start + 1, displayedRegion.end)
             : S.scopeFull}
         </div>
         {/* Intron-analysis controls (organism + «Интроны» + result message)
@@ -514,7 +623,7 @@ export default function Annotator({
           <PreviewTab
             sequence={sequence || ''}
             annotations={annotations || []}
-            topology={scope?.topology || 'linear'}
+            topology={topology}
             name="annotator-preview"
             selection={sel}
             onAnnotationEdit={onAnnotationEdit}
@@ -532,11 +641,11 @@ export default function Annotator({
         <ResizeHandle axis="x" dragging={splitDragging} testid="annotator-split-handle" {...splitProps} />
         <LevelPanel
           width={panelW}
-          results={annotator.results}
-          running={annotator.running}
-          acceptedRegionIds={annotator.acceptedRegionIds}
-          rejectedRegionIds={annotator.rejectedRegionIds}
-          pendingEdits={annotator.pendingEdits}
+          results={freshResults}
+          running={freshRunning}
+          acceptedRegionIds={freshAcceptedRegionIds}
+          rejectedRegionIds={freshRejectedRegionIds}
+          pendingEdits={freshPendingEdits}
           threshold={annotator.threshold}
           existingAnnotations={annotations}
           showDuplicates={!!annotator.showDuplicates}

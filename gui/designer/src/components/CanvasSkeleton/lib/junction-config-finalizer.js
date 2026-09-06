@@ -32,6 +32,11 @@
 import { draftFromZone } from './zone-pieces-to-dag';
 import { deriveAutoPrimers, deriveSelfClosurePrimers } from './primer-derive';
 import { allBoundaries, seedJunction, DEFAULT_JUNCTION_METHOD } from './junction-derive';
+import { computeAssemblySequence, segmentBoundaries } from './assembly-model';
+import { documentIdentityOf } from '../../../lib/primer-live-workflow';
+import {
+  attachKnownPrimerSite, repairKnownAutoPrimer, sameAutoPrimerSource,
+} from '../../../lib/primer-known-placement';
 
 /**
  * TD-JUNC-FINALIZER-DERIVE-GATE — true when a zone was added/removed, or any
@@ -68,6 +73,97 @@ function manualCoverageKey(p) {
   else if (s.kind === 'boundary') seg = side === 'fwd' ? s.leftSegmentId : s.rightSegmentId;
   else seg = s.pieceId; // defensive (a manual auto-group primer)
   return seg ? `${seg}:${side}` : null;
+}
+
+function deriveForZone(zone, state, zonePieces) {
+  if (zonePieces.length === 1 && zone.topology?.circular) {
+    try { return deriveSelfClosurePrimers(zonePieces[0], state, zone.assemblyMethod); } catch { return []; }
+  }
+  if (zonePieces.length < 2) return [];
+  try {
+    return deriveAutoPrimers({
+      id: `zgrp-${zone.id}`,
+      kind: DEFAULT_JUNCTION_METHOD,
+      inputPieces: zonePieces.map((piece) => piece.id),
+      zoneId: zone.id,
+      circular: !!zone.topology?.circular,
+    }, state);
+  } catch {
+    return [];
+  }
+}
+
+function placementContext(zone, state) {
+  try {
+    const draft = draftFromZone(state, zone);
+    const { sequence } = computeAssemblySequence(draft);
+    const topology = draft.topology?.circular ? 'circular' : 'linear';
+    const documentHash = documentIdentityOf({ sequence, topology });
+    if (!sequence || !documentHash) return null;
+    return { sequence, topology, documentHash, boundaries: segmentBoundaries(draft).boundaries };
+  } catch {
+    return null;
+  }
+}
+
+function placementFor(primer, zone, context) {
+  if (!context || !primer?.source?.pieceId) return null;
+  const matches = context.boundaries.filter(
+    (boundary) => boundary?.segmentId === primer.source.pieceId,
+  );
+  if (matches.length !== 1) return null;
+  const boundary = matches[0];
+  const targetLength = String(primer.bindingSequence || '').replace(/[^A-Za-z]/g, '').length;
+  const pieceLength = boundary.endOnAssembly - boundary.startOnAssembly;
+  if (!targetLength || targetLength > pieceLength) return null;
+  const reverse = primer.direction === 'reverse';
+  const start = reverse ? boundary.endOnAssembly - targetLength : boundary.startOnAssembly;
+  return {
+    entryId: zone.id,
+    documentHash: context.documentHash,
+    topology: context.topology,
+    template: context.sequence,
+    start,
+    end: start + targetLength,
+  };
+}
+
+function attachDerivedSites(derived, zone, context) {
+  return derived.map((primer) => {
+    const placement = placementFor(primer, zone, context);
+    return placement ? (attachKnownPrimerSite(primer, placement) || primer) : primer;
+  });
+}
+
+function repairManualSites(records, expected, zone, context) {
+  return records.map((primer) => {
+    const candidates = expected.filter((candidate) => sameAutoPrimerSource(primer, candidate));
+    if (candidates.length !== 1) return primer;
+    const placement = placementFor(candidates[0], zone, context);
+    return placement ? repairKnownAutoPrimer(primer, candidates[0], placement) : primer;
+  });
+}
+
+/** Pure v12→v13 normalizer: repairs only uniquely re-derived, provable records. */
+export function canonicalizeAssemblyPrimerRecords(state) {
+  if (!state || !Array.isArray(state.zones)) return state;
+  const map = state.assemblyDraftPrimers || {};
+  const nextMap = { ...map };
+  let changed = false;
+  for (const zone of state.zones) {
+    const zonePieces = (state.pieces || [])
+      .filter((piece) => piece.zoneId === zone.id)
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const records = Array.isArray(map[zone.id]) ? map[zone.id] : [];
+    if (!records.length) continue;
+    const expected = deriveForZone(zone, state, zonePieces);
+    const repaired = repairManualSites(records, expected, zone, placementContext(zone, state));
+    if (repaired.some((primer, index) => primer !== records[index])) {
+      nextMap[zone.id] = repaired;
+      changed = true;
+    }
+  }
+  return changed ? { ...state, assemblyDraftPrimers: nextMap } : state;
 }
 
 export function applyJunctionConfig(next, prev) {
@@ -123,15 +219,17 @@ export function applyJunctionConfig(next, prev) {
     const existing = map[zone.id] || [];
     // Level 1 — primer-level manual flag (WRITE / lock / edit) is preserved
     // verbatim; listed FIRST so realise's mapPrimersForSegment prefers them.
-    const manual = existing.filter((p) => p && p.autoMode === 'manual');
+    const rawManual = existing.filter((p) => p && p.autoMode === 'manual');
+    const context = placementContext(zone, stateForDerive);
+    const expected = deriveForZone(zone, stateForDerive, zonePieces);
+    const manual = repairManualSites(rawManual, expected, zone, context);
     if (zonePieces.length < 2) {
       // M-CIRCULARIZE — a single-fragment CIRCULAR zone self-closes → derive its
       // 2 self-closure primers (whole-fragment amp + re-circularization tails).
       // Linear single fragment → none (just keep manual). Without this, picking
       // a plasmid fragment and circularizing it produced no primers.
-      let derivedSelf = [];
-      if (zonePieces.length === 1 && zone.topology && zone.topology.circular) {
-        try { derivedSelf = deriveSelfClosurePrimers(zonePieces[0], stateForDerive, zone.assemblyMethod); } catch { derivedSelf = []; }
+      let derivedSelf = attachDerivedSites(expected, zone, context);
+      if (derivedSelf.length > 0) {
         const cov = new Set(manual.map(manualCoverageKey).filter(Boolean));
         if (cov.size > 0) derivedSelf = derivedSelf.filter((d) => !cov.has(`${d.source.pieceId}:${d.source.side}`));
       }
@@ -141,20 +239,7 @@ export function applyJunctionConfig(next, prev) {
       }
       continue;
     }
-    let derived = [];
-    try {
-      derived = deriveAutoPrimers({
-        id: `zgrp-${zone.id}`,
-        kind: DEFAULT_JUNCTION_METHOD,
-        inputPieces: zonePieces.map((p) => p.id),
-        zoneId: zone.id,
-        // G/TOP-3 — tell the engine to wrap the terminal pieces' tails so the
-        // closure junction gets its homology/overhang (the ring can close).
-        circular: !!(zone.topology && zone.topology.circular),
-      }, stateForDerive);
-    } catch {
-      derived = [];
-    }
+    let derived = attachDerivedSites(expected, zone, context);
     // Dedup — a manual primer owns its (piece, side); drop the auto duplicate
     // so exactly one primer per side reaches realise + the panel.
     const covered = new Set(manual.map(manualCoverageKey).filter(Boolean));

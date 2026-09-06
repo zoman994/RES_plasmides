@@ -45,6 +45,7 @@ function pressHotkey(combo) {
     metaKey: combo.meta || false,
     altKey: combo.alt || false,
     shiftKey: combo.shift || false,
+    repeat: combo.repeat || false,
     bubbles: true,
     cancelable: true,
   });
@@ -116,6 +117,41 @@ describe('K4-fixup — hotkey scenario F (round-trip via registry)', () => {
       await flushAsync();
     });
     expect(useStore.getState().modals.settings).toBe(false);
+  });
+
+  it('a held Escape closes one modal without also popping the screen underneath', async () => {
+    useStore.setState((state) => {
+      state.canvas.activeFullscreen = 'underConstruction';
+      state.canvas.navStack = [
+        { fullscreen: 'start', payload: null },
+        { fullscreen: 'underConstruction', payload: { milestone: 'M-H', name: 'Library' } },
+      ];
+    });
+    render(<App />);
+    await act(async () => {
+      pressHotkey({ key: ',', ctrl: true });
+      await flushAsync();
+    });
+    expect(useStore.getState().modals.settings).toBe(true);
+
+    await act(async () => {
+      pressHotkey({ key: 'Escape' });
+      await flushAsync();
+    });
+    expect(useStore.getState().modals.settings).toBe(false);
+    expect(useStore.getState().canvas.activeFullscreen).toBe('underConstruction');
+
+    await act(async () => {
+      pressHotkey({ key: 'Escape', repeat: true });
+      await flushAsync();
+    });
+    expect(useStore.getState().canvas.activeFullscreen).toBe('underConstruction');
+
+    await act(async () => {
+      pressHotkey({ key: 'Escape' });
+      await flushAsync();
+    });
+    expect(useStore.getState().canvas.activeFullscreen).toBe('start');
   });
 
   it('Cmd/Ctrl+W closes the project (only when one is open)', async () => {

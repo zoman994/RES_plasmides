@@ -20,15 +20,33 @@ const SEQ = "ATGCAAAGGGCCCTAACGTTAAA" + "G".repeat(60);
 const fwd = {
   name: "p_fwd", bindingSequence: "ATGCAAAGGGCCC", direction: "forward", tmBinding: 60,
 };
+const rev = {
+  name: "p_rev", bindingSequence: "GGGCCCTTTGCAT", direction: "reverse", tmBinding: 58,
+};
 const base = {
   fullSeq: SEQ, lineStart: 0, lineLen: SEQ.length, labelChars: 8, primerStyle: "filled",
 };
 
 describe("PrimerTrack redesign — letters / clickable / selected", () => {
-  it("renders the binding bases as letters (grid-aligned)", () => {
-    render(<PrimerTrack {...base} primers={[fwd]} charPx={7.2} />);
+  it("interactive compact view hides letters until this occurrence is expanded", () => {
+    const { rerender } = render(
+      <PrimerTrack {...base} primers={[fwd]} charPx={7.2} onPrimerClick={() => {}} />,
+    );
+    const primer = screen.getByTestId('sequence-view-primer');
+    expect(primer.getAttribute('data-expanded')).toBe('false');
+    expect(screen.queryByTestId("sequence-view-primer-bases")).toBeNull();
+    rerender(
+      <PrimerTrack
+        {...base}
+        primers={[fwd]}
+        charPx={7.2}
+        onPrimerClick={() => {}}
+        expandedPrimerKey={primer.dataset.primerKey}
+      />,
+    );
     const bases = screen.getByTestId("sequence-view-primer-bases");
     expect(bases.textContent).toBe("ATGCAAAGGGCCC"); // top-strand footprint
+    expect(bases.getAttribute("fill")).toBe("var(--primer-feature-body-text)");
   });
 
   it("hides letters at tiny zoom (charPx < 5) — no clutter", () => {
@@ -45,6 +63,8 @@ describe("PrimerTrack redesign — letters / clickable / selected", () => {
     const g = screen.getByTestId("sequence-view-primer");
     expect(g.getAttribute("data-selected")).toBe("false");
     expect(g.getAttribute("data-primer-name")).toBe("p_fwd"); // attrs preserved
+    expect(g.getAttribute("role")).toBeNull();
+    expect(g.getAttribute("tabindex")).toBeNull();
   });
 
   it("clickable when onPrimerClick is provided → fires (key, hit)", () => {
@@ -52,34 +72,53 @@ describe("PrimerTrack redesign — letters / clickable / selected", () => {
     render(<PrimerTrack {...base} primers={[fwd]} charPx={7.2} onPrimerClick={onClick} />);
     const g = screen.getByTestId("sequence-view-primer");
     expect(g.style.cursor).toBe("pointer");
-    fireEvent.click(g);
-    expect(onClick).toHaveBeenCalledTimes(1);
-    const [key, hit] = onClick.mock.calls[0];
+    expect(g.getAttribute("role")).toBe("button");
+    expect(g.getAttribute("tabindex")).toBe("0");
+    expect(g.getAttribute("aria-label")).toMatch(/p_fwd.*прям/i);
+    fireEvent.click(g, { ctrlKey: true });
+    fireEvent.keyDown(g, { key: "Enter", metaKey: true });
+    fireEvent.keyDown(g, { key: " " });
+    expect(onClick).toHaveBeenCalledTimes(3);
+    const [key, hit, intent] = onClick.mock.calls[0];
     expect(typeof key).toBe("string");
     expect(hit.start).toBe(0);
     expect(hit.end).toBe(13);
     expect(key).toBe(primerHitKey(hit));
+    expect(intent).toEqual({ additive: true, source: 'pointer' });
+    expect(onClick.mock.calls[1][2]).toEqual({ additive: true, source: 'keyboard' });
   });
 
-  it("selected primer → data-selected=true + a selection ring", () => {
+  it.each([
+    ['forward', fwd, 'p_fwd|forward|0', 'var(--viz-primer-fwd)'],
+    ['reverse', rev, 'p_rev|reverse|0', 'var(--viz-primer-rev)'],
+  ])("selected %s primer keeps its direction color and uses short amber brackets", (
+    direction, primer, selectedKey, directionColor,
+  ) => {
     render(
       <PrimerTrack
         {...base}
-        primers={[fwd]}
+        primerStyle="outline"
+        primers={[primer]}
         charPx={7.2}
         onPrimerClick={() => {}}
-        selectedPrimerKeys={["p_fwd|forward|0"]}
+        selectedPrimerKeys={[selectedKey]}
+        expandedPrimerKey={selectedKey}
       />,
     );
     const g = screen.getByTestId("sequence-view-primer");
     expect(g.getAttribute("data-selected")).toBe("true");
-    // Redesign 18.05.2026: body is now an arrow <path data-primer-arrow>;
-    // selection adds a ring <rect>. Assert both (new shape contract).
-    expect(g.querySelector("rect")).toBeTruthy(); // selection ring
-    expect(g.querySelector("[data-primer-arrow]")).toBeTruthy();
+    const shape = g.querySelector("[data-primer-arrow]");
+    expect(shape).toBeTruthy();
+    expect(shape.getAttribute('data-primer-arrow')).toBe(direction);
+    expect(shape.getAttribute('fill')).toBe('none');
+    expect(shape.getAttribute('stroke')).toBe(directionColor);
+    const brackets = g.querySelectorAll('[data-primer-selection-bracket]');
+    expect(brackets).toHaveLength(2);
+    expect([...brackets].every((node) => node.getAttribute('stroke') === 'var(--accent-500)'))
+      .toBe(true);
   });
 
-  it("selected primer shows a prominent halo + ring (явно выделяется)", () => {
+  it("selected primer has no translucent bounding halo or box ring", () => {
     render(
       <PrimerTrack
         {...base}
@@ -90,9 +129,39 @@ describe("PrimerTrack redesign — letters / clickable / selected", () => {
       />,
     );
     const g = screen.getByTestId("sequence-view-primer");
-    expect(g.querySelector("[data-primer-selection-halo]")).toBeTruthy();
-    expect(g.querySelectorAll("rect").length).toBeGreaterThanOrEqual(2); // halo + ring
+    expect(g.querySelector("[data-primer-selection-halo]")).toBeNull();
+    expect(g.querySelector("[data-primer-selection-box]")).toBeNull();
   });
+
+  it.each(['filled', 'outline'])(
+    'selection changes only the amber brackets, not the expanded %s glyph body',
+    (primerStyle) => {
+      const key = 'p_fwd|forward|0';
+      const props = {
+        ...base,
+        primerStyle,
+        primers: [fwd],
+        charPx: 7.2,
+        onPrimerClick: () => {},
+        expandedPrimerKey: key,
+      };
+      const { rerender } = render(<PrimerTrack {...props} />);
+      const shapeSnapshot = () => [...screen.getByTestId('sequence-view-primer')
+        .querySelectorAll('[data-primer-arrow], [data-testid="sequence-view-primer-run"]')]
+        .map((node) => ({
+          fill: node.getAttribute('fill'),
+          fillOpacity: node.getAttribute('fill-opacity'),
+          opacity: node.getAttribute('opacity'),
+          stroke: node.getAttribute('stroke'),
+        }));
+      const unselected = shapeSnapshot();
+
+      rerender(<PrimerTrack {...props} selectedPrimerKeys={[key]} />);
+      expect(shapeSnapshot()).toEqual(unselected);
+      expect(screen.getByTestId('sequence-view-primer')
+        .querySelectorAll('[data-primer-selection-bracket]')).toHaveLength(2);
+    },
+  );
 
   it("double-click fires onPrimerDoubleClick(hit) (consumer-gated)", () => {
     const onDbl = vi.fn();
@@ -102,7 +171,8 @@ describe("PrimerTrack redesign — letters / clickable / selected", () => {
     const g = screen.getByTestId("sequence-view-primer");
     expect(g.style.cursor).toBe("pointer"); // interactable via dbl alone
     fireEvent.doubleClick(g);
-    expect(onDbl).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(g, { key: "Enter" });
+    expect(onDbl).toHaveBeenCalledTimes(2);
     expect(onDbl.mock.calls[0][0].start).toBe(0);
     expect(onDbl.mock.calls[0][0].name).toBe("p_fwd");
   });
@@ -120,6 +190,7 @@ describe("PrimerTrack redesign — letters / clickable / selected", () => {
         primers={[fwd]}
         charPx={7.2}
         onPrimerClick={onClick}
+        expandedPrimerKey="p_fwd|forward|0"
       />,
     );
     const g = screen.getByTestId("sequence-view-primer");
@@ -158,12 +229,6 @@ describe("PrimerTrack redesign — letters / clickable / selected", () => {
 
   it("directionFilter renders only that strand's primers", () => {
     // RC("GGGCCCTTTGCAT") === "ATGCAAAGGGCCC" → reverse hit at 0..13.
-    const rev = {
-      name: "p_rev",
-      bindingSequence: "GGGCCCTTTGCAT",
-      direction: "reverse",
-      tmBinding: 58,
-    };
     // forward-only: the reverse primer is filtered out
     const fwdOnly = render(
       <PrimerTrack {...base} primers={[fwd, rev]} charPx={7.2} directionFilter="forward" />,
@@ -248,10 +313,10 @@ describe("PrimerTrack — wrapped binding: single 3′-head, blunt wrap edge", (
     expect(pointed(d)).toBe(true);
   });
 
-  // hit-target + selection-halo must NOT extend by HEAD past a blunt wrap
+  // hit-target must NOT extend by HEAD past a blunt wrap
   // edge (Игорь 24.05.2026) — the HEAD overhang belongs only to the side that
   // actually has the point.
-  it("forward wrap-edge fragment: hit-target/halo clipped at the blunt right край (no HEAD overhang)", () => {
+  it("forward wrap-edge fragment: hit-target clipped at the blunt right край (no HEAD overhang)", () => {
     render(
       <PrimerTrack {...wrapLine(0, fwd)} onPrimerClick={() => {}} selectedPrimerKeys={["p_fwd|forward|0"]} />,
     );
@@ -260,9 +325,6 @@ describe("PrimerTrack — wrapped binding: single 3′-head, blunt wrap edge", (
     const hit = g.querySelector("[data-primer-hit]");
     const hitRight = Number(hit.getAttribute("x")) + Number(hit.getAttribute("width"));
     expect(hitRight).toBeCloseTo(W + 2, 3); // +2 pad only, NOT +HEAD
-    const halo = g.querySelector("[data-primer-selection-halo]");
-    const haloRight = Number(halo.getAttribute("x")) + Number(halo.getAttribute("width"));
-    expect(haloRight).toBeCloseTo(W + 4, 3);
   });
 
   it("forward 3′ fragment: hit-target keeps the HEAD overhang on the right (unchanged)", () => {
@@ -276,7 +338,7 @@ describe("PrimerTrack — wrapped binding: single 3′-head, blunt wrap edge", (
     expect(hitRight).toBeCloseTo(W + HEAD + 2, 3);
   });
 
-  it("reverse wrap-edge fragment: hit-target/halo clipped at the blunt left край (no HEAD overhang)", () => {
+  it("reverse wrap-edge fragment: hit-target clipped at the blunt left край (no HEAD overhang)", () => {
     // line 1 [8,16) — does NOT hold the reverse 3′-end (start 0) → blunt left
     render(
       <PrimerTrack {...wrapLine(8, REV)} onPrimerClick={() => {}} selectedPrimerKeys={["p_rev|reverse|0"]} />,
@@ -284,8 +346,6 @@ describe("PrimerTrack — wrapped binding: single 3′-head, blunt wrap edge", (
     const g = screen.getByTestId("sequence-view-primer");
     const hit = g.querySelector("[data-primer-hit]");
     expect(Number(hit.getAttribute("x"))).toBeCloseTo(-2, 3); // -headExt-2, headExt=0
-    const halo = g.querySelector("[data-primer-selection-halo]");
-    expect(Number(halo.getAttribute("x"))).toBeCloseTo(-4, 3);
   });
 
   it("reverse 3′ fragment: hit-target keeps the HEAD overhang on the left (unchanged)", () => {

@@ -191,3 +191,34 @@ export function flattenSites(scanResult, filter) {
   }
   return out;
 }
+
+/**
+ * P4 context adapter — flatten scanAllSites' grouped result into ONE row per
+ * raw recognition occurrence, preserving the recognition geometry the primer
+ * landing context needs (enzyme, motif/site, recognition start, site length and
+ * strand). Unlike `flattenSites`, this keeps the true recognition-window start
+ * (NOT shifted by the top-strand cut offset) so the unified inspector can draw
+ * the site over its real columns and place the cut tick itself.
+ *
+ * Filtering is delegated to the SAME shared `filterReSites` so the primer
+ * context honours the active enzyme allow-list and cut-count filter exactly like
+ * the map/linear tracks. `flattenSites` is untouched.
+ */
+export function flattenRawOccurrences(scanResult, filter) {
+  if (!Array.isArray(scanResult)) return [];
+  const opts = typeof filter === "string" ? { mode: filter } : (filter || {});
+  const rows = filterReSites(scanResult, opts);
+  const out = [];
+  for (const re of rows) {
+    for (const pos of re.positions) {
+      out.push({
+        enzyme: re.enzyme,
+        site: re.site,
+        start: pos.position,
+        length: re.siteLength ?? (re.site ? re.site.length : 0),
+        strand: pos.strand === "-" ? -1 : 1,
+      });
+    }
+  }
+  return out;
+}

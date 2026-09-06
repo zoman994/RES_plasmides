@@ -21,6 +21,16 @@ function resetAnnotator() {
   });
 }
 
+function setTaggedResult(pluginId, result, entryId = 'p1') {
+  const key = useStore.getState().beginAnnotatorJob({
+    entryId,
+    docEpoch: 1,
+    topology: 'linear',
+    scope: { kind: 'full' },
+  }, [pluginId]);
+  useStore.getState().setAnnotatorResult(pluginId, result, key);
+}
+
 describe('K6 annotator slice', () => {
   beforeEach(() => {
     _setFallbackForTests(true);
@@ -41,7 +51,7 @@ describe('K6 annotator slice', () => {
 
   it('closeAnnotator preserves results and pendingEdits (re-open in same session)', () => {
     useStore.getState().openAnnotator({ kind: 'full', sequenceId: 'p1' });
-    useStore.getState().setAnnotatorResult('orf-scan', { pluginId: 'orf-scan', regions: [] });
+    setTaggedResult('orf-scan', { pluginId: 'orf-scan', regions: [] });
     useStore.getState().acceptRegion('r1');
     useStore.getState().closeAnnotator();
     expect(selectAnnotator(useStore.getState()).open).toBe(false);
@@ -92,7 +102,7 @@ describe('K6 annotator slice', () => {
     useStore.getState().togglePlugin('blast-ncbi');
     useStore.getState().setAnnotatorThreshold(0.85);
     useStore.getState().acceptRegion('r1');
-    useStore.getState().setAnnotatorResult('orf-scan', { pluginId: 'orf-scan', regions: [] });
+    setTaggedResult('orf-scan', { pluginId: 'orf-scan', regions: [] });
     useStore.getState().resetAnnotatorScope();
     const a = selectAnnotator(useStore.getState());
     expect(a.acceptedRegionIds).toEqual({});
@@ -101,15 +111,151 @@ describe('K6 annotator slice', () => {
     expect(a.threshold).toBe(0.85);
   });
 
-  it('openAnnotator on a different sequenceId resets transient state', () => {
+  it('a canonical entry context change resets transient state', () => {
+    useStore.getState().syncAnnotatorContext({
+      entryId: 'p1', docEpoch: 1, topology: 'linear', scope: { kind: 'full' },
+    });
     useStore.getState().openAnnotator({ kind: 'full', sequenceId: 'p1' });
     useStore.getState().acceptRegion('r1');
-    useStore.getState().setAnnotatorResult('orf-scan', { pluginId: 'orf-scan', regions: [] });
-    // Switch plasmid → reset.
+    setTaggedResult('orf-scan', { pluginId: 'orf-scan', regions: [] });
+    // A UI sequenceId is only routing metadata; canonical context owns reset.
+    useStore.getState().syncAnnotatorContext({
+      entryId: 'p2', docEpoch: 1, topology: 'linear', scope: { kind: 'full' },
+    });
     useStore.getState().openAnnotator({ kind: 'full', sequenceId: 'p2' });
     const a = selectAnnotator(useStore.getState());
     expect(a.acceptedRegionIds).toEqual({});
     expect(a.results).toEqual({});
+  });
+
+  it('keys same-context jobs monotonically and stale callbacks cannot write or clear the newer run', () => {
+    const context = {
+      entryId: 'p1',
+      docEpoch: 7,
+      topology: 'circular',
+      scope: { kind: 'full' },
+    };
+
+    const staleKey = useStore.getState().beginAnnotatorJob(context, ['orf-scan']);
+    useStore.getState().setAnnotatorRunning('orf-scan', true, staleKey);
+    const freshKey = useStore.getState().beginAnnotatorJob(context, ['orf-scan']);
+    useStore.getState().setAnnotatorRunning('orf-scan', true, freshKey);
+
+    expect(staleKey).not.toBe(freshKey);
+    expect(staleKey).toContain('|7|circular|full|1');
+    expect(freshKey).toContain('|7|circular|full|2');
+
+    useStore.getState().setAnnotatorResult(
+      'orf-scan',
+      { pluginId: 'orf-scan', regions: [{ id: 'stale' }] },
+      staleKey,
+    );
+    useStore.getState().setAnnotatorRunning('orf-scan', false, staleKey);
+    useStore.getState().setAnnotatorResult(
+      'orf-scan',
+      { pluginId: 'orf-scan', regions: [{ id: 'untagged' }] },
+    );
+
+    let annotator = selectAnnotator(useStore.getState());
+    expect(annotator.results['orf-scan']).toBeUndefined();
+    expect(annotator.running['orf-scan']).toBe(freshKey);
+
+    useStore.getState().setAnnotatorResult(
+      'orf-scan',
+      { pluginId: 'orf-scan', regions: [{ id: 'fresh' }] },
+      freshKey,
+    );
+    annotator = selectAnnotator(useStore.getState());
+    expect(annotator.results['orf-scan'].regions[0].id).toBe('fresh');
+    expect(annotator.running['orf-scan']).toBeUndefined();
+  });
+
+  it('shares one key across a multi-plugin job and completes running independently', () => {
+    const context = {
+      entryId: 'p1', docEpoch: 8, topology: 'circular', scope: { kind: 'full' },
+    };
+    const key = useStore.getState().beginAnnotatorJob(context, ['orf-scan', 'sigma70-promoter']);
+    let annotator = selectAnnotator(useStore.getState());
+    expect(annotator.activeRunKeys['orf-scan']).toBe(key);
+    expect(annotator.activeRunKeys['sigma70-promoter']).toBe(key);
+    expect(annotator.running['orf-scan']).toBe(key);
+    expect(annotator.running['sigma70-promoter']).toBe(key);
+
+    useStore.getState().setAnnotatorResult(
+      'orf-scan', { pluginId: 'orf-scan', regions: [{ id: 'orf' }] }, key,
+    );
+    annotator = selectAnnotator(useStore.getState());
+    expect(annotator.running['orf-scan']).toBeUndefined();
+    expect(annotator.running['sigma70-promoter']).toBe(key);
+    useStore.getState().setAnnotatorResult(
+      'sigma70-promoter', { pluginId: 'sigma70-promoter', regions: [{ id: 'sigma' }] }, key,
+    );
+    annotator = selectAnnotator(useStore.getState());
+    expect(Object.keys(annotator.results).sort()).toEqual(['orf-scan', 'sigma70-promoter']);
+    expect(annotator.running).toEqual({});
+  });
+
+  it('full to region and region A to B supersede only the targeted plugin', () => {
+    const doc = { entryId: 'p1', docEpoch: 9, topology: 'circular' };
+    const l1Key = useStore.getState().beginAnnotatorJob(
+      { ...doc, scope: { kind: 'full' } }, ['common-features-homology'],
+    );
+    useStore.getState().setAnnotatorResult(
+      'common-features-homology',
+      { pluginId: 'common-features-homology', regions: [{ id: 'l1-full' }] },
+      l1Key,
+    );
+    useStore.getState().acceptRegion('l1-full');
+
+    const l3AKey = useStore.getState().beginAnnotatorJob({
+      ...doc, scope: { kind: 'region', region: { start: 10, end: 40 } },
+    }, ['blast-ncbi']);
+    let annotator = selectAnnotator(useStore.getState());
+    expect(annotator.results['common-features-homology'].regions[0].id).toBe('l1-full');
+    expect(annotator.acceptedRegionIds['l1-full']).toBe(true);
+    useStore.getState().setAnnotatorResult(
+      'blast-ncbi', { pluginId: 'blast-ncbi', regions: [{ id: 'l3-a' }] }, l3AKey,
+    );
+    useStore.getState().acceptRegion('l3-a');
+
+    const l3BKey = useStore.getState().beginAnnotatorJob({
+      ...doc, scope: { kind: 'region', region: { start: 50, end: 80 } },
+    }, ['blast-ncbi']);
+    annotator = selectAnnotator(useStore.getState());
+    expect(annotator.results['common-features-homology'].regions[0].id).toBe('l1-full');
+    expect(annotator.acceptedRegionIds['l1-full']).toBe(true);
+    expect(annotator.results['blast-ncbi']).toBeUndefined();
+    expect(annotator.acceptedRegionIds['l3-a']).toBeUndefined();
+    expect(annotator.running['blast-ncbi']).toBe(l3BKey);
+  });
+
+  it('docEpoch and topology changes invalidate every plugin and verdict', () => {
+    const seed = (docEpoch, topology) => {
+      const key = useStore.getState().beginAnnotatorJob({
+        entryId: 'p1', docEpoch, topology, scope: { kind: 'full' },
+      }, ['orf-scan', 'blast-ncbi']);
+      useStore.getState().setAnnotatorResult(
+        'orf-scan', { pluginId: 'orf-scan', regions: [{ id: `orf-${docEpoch}-${topology}` }] }, key,
+      );
+      useStore.getState().acceptRegion(`orf-${docEpoch}-${topology}`);
+    };
+    seed(1, 'circular');
+    useStore.getState().syncAnnotatorContext({
+      entryId: 'p1', docEpoch: 2, topology: 'circular', scope: { kind: 'region', region: { start: 1, end: 9 } },
+    });
+    let annotator = selectAnnotator(useStore.getState());
+    expect(annotator.results).toEqual({});
+    expect(annotator.acceptedRegionIds).toEqual({});
+    expect(annotator.running).toEqual({});
+
+    seed(2, 'circular');
+    useStore.getState().syncAnnotatorContext({
+      entryId: 'p1', docEpoch: 2, topology: 'linear', scope: { kind: 'full' },
+    });
+    annotator = selectAnnotator(useStore.getState());
+    expect(annotator.results).toEqual({});
+    expect(annotator.acceptedRegionIds).toEqual({});
+    expect(annotator.running).toEqual({});
   });
 
   // ─── Sprint M-X.3 follow-up (05.05.2026, Stage C) — Annotator

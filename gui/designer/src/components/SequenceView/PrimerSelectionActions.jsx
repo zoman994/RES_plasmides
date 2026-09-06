@@ -107,7 +107,11 @@ export default function PrimerSelectionActions({
   if (!hasLab && !resolved && selectionWarnings.length === 0) return null;
 
   return (
-    <div data-testid="primer-selection-actions" style={wrap}>
+    <div
+      data-testid="primer-selection-actions"
+      data-primer-disclosure-keepopen="true"
+      style={wrap}
+    >
       {hasLab && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={headRow}>

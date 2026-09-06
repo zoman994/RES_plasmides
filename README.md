@@ -52,13 +52,13 @@ The CLI is versioned independently in `pyproject.toml` and is not the primary GU
 ```powershell
 py -m pip install -e .
 pvcs --help
-pytest
+py -m pytest
 ```
 
 ## Repository map
 
 - `gui/designer/` — React 19 application, tests and browser-side biological logic.
-- `gui/api/` — small local FastAPI helper, mainly for file parsing.
+- `gui/api/` — local FastAPI helper; the app calls only `POST /api/import` for SnapGene `.dna` files, the other routes are legacy CLI surfaces.
 - `src/pvcs/` — Python CLI and reusable backend modules.
 - `tests/` — Python tests.
 - `docs/` — current architecture, design, guides and active specifications.

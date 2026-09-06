@@ -34,6 +34,13 @@ import {
   toUiSegments,
   fromUiSegment,
 } from './annotation-location';
+import {
+  createAnnotationIdAllocator,
+  ingestAnnotations,
+  makeAnnotationId,
+  reparent,
+} from './annotation-identity';
+import { mergeCompatibleAnnotationMetadata } from './annotation-metadata';
 
 /**
  * Build the `{ length, topology }` document descriptor the location gate needs.
@@ -130,21 +137,23 @@ export function validateAnnotationCoords(start, end, seqLength) {
  * surface produces); detail / point editing is out of scope for
  * Sprint M-X.2.
  */
-export function createAnnotation({
-  id,
-  name = '',
-  type = 'misc_feature',
-  start,
-  end,
-  location,
-  level = 'region',
-  strand = 1,
-  regionId,
-  predicted,
-  source,
-  confidence,
-  signals,
-}, seqLength, docOrTopology) {
+export function createAnnotation(
+  payload = {},
+  seqLength,
+  docOrTopology,
+  idFactory = makeAnnotationId,
+) {
+  const {
+    id,
+    name = '',
+    type = 'misc_feature',
+    start,
+    end,
+    location,
+    level = 'region',
+    strand = 1,
+    regionId,
+  } = payload;
   // ANN-0A — a supplied canonical location is authoritative and must NOT be
   // gated behind the scalar validator, which cannot express a compound or
   // origin-crossing range. Only a scalar-only payload goes through the legacy
@@ -168,15 +177,20 @@ export function createAnnotation({
     );
   }
   const ann = {
+    // Annotation data is an open, lossless record: qualifiers, description,
+    // provenance and format-specific fields must survive create/promotion.
+    // Canonical identity/geometry fields below deliberately override payload
+    // projections; everything else is retained verbatim.
+    ...payload,
     location: normalized.location,
     // Preserve an explicit id when given — cross-referencing annotations (a
     // gene + its introns linked by regionId) must keep their ids across the
     // create/create-batch apply, or the regionId link breaks and the intron
-    // becomes an orphan (no exon-block render, no AA splice). Fall back to the
-    // deterministic backfill id only when none is supplied.
-    id: id != null
-      ? id
-      : generateAnnotationId({ start: normalized.start, end: normalized.end, type, name }),
+    // becomes an orphan (no exon-block render, no AA splice).
+    // ANN-INTEGRITY seam 4 — a NEW annotation gets an OPAQUE, collision-safe id
+    // (crypto.randomUUID via makeId). A coordinate-derived id is not opaque, and
+    // two features sharing coords/type/name would collapse into one identity.
+    id: id != null ? id : idFactory(),
     name,
     type,
     // Scalar fields are the projection of the canonical location, never an
@@ -186,16 +200,16 @@ export function createAnnotation({
     strand: strand === -1 ? -1 : 1,
     level,
   };
+  // A canonical location owns the geometry. Never carry a second, potentially
+  // stale bare display-shape beside it.
+  delete ann.segments;
+  // `regionId` is the sole model parent key; legacy `parentId` belongs only to
+  // the ingress adapter.
+  delete ann.parentId;
   // Link a detail annotation (e.g. a manually-marked intron) to its parent
   // region so the AA track can splice it (getIntronsForRegion link path).
   if (regionId != null) ann.regionId = regionId;
-  // Forward predictor metadata so accepted Annotator hits keep their
-  // origin trail when applied as confident regions. Skip noise — drop
-  // empty arrays / nullish values so the annotation stays clean.
-  if (predicted) ann.predicted = true;
-  if (source) ann.source = source;
-  if (Number.isFinite(confidence)) ann.confidence = confidence;
-  if (Array.isArray(signals) && signals.length > 0) ann.signals = signals;
+  else delete ann.regionId;
   return ann;
 }
 
@@ -227,7 +241,18 @@ function matchesAnnotationId(a, id) {
 
 export function deleteAnnotation(annotations, annotationId) {
   if (!Array.isArray(annotations)) return [];
-  const next = annotations.filter((a) => !matchesAnnotationId(a, annotationId));
+  const target = annotations.find((a) => matchesAnnotationId(a, annotationId));
+  if (!target) return annotations;
+  // ANN-INTEGRITY seam 4 — deleting a parent region CASCADES to its children:
+  // any detail/point whose `regionId` links to the removed region is removed
+  // too, so a delete never leaves a link pointing at a region that is gone.
+  const targetId = target.id || generateAnnotationId(target);
+  const cascade = target.level === 'region';
+  const next = annotations.filter((a) => {
+    if (matchesAnnotationId(a, annotationId)) return false;
+    if (cascade && a && a.regionId != null && a.regionId === targetId) return false;
+    return true;
+  });
   return next.length === annotations.length ? annotations : next;
 }
 
@@ -243,65 +268,69 @@ export function deleteAnnotation(annotations, annotationId) {
 export function updateAnnotation(annotations, annotationId, patch, seqLength, doc) {
   if (!Array.isArray(annotations)) return [];
   let found = false;
-  // Track an id shift on the edited annotation so detail/point children that
-  // link to it via `regionId` can be re-pointed (V180 — otherwise editing a
-  // gene's coords/name/type silently orphaned its introns/domains).
-  let idShift = null;
   const next = annotations.map((a) => {
     if (!matchesAnnotationId(a, annotationId)) return a;
     found = true;
-    const isCompound = getSegments(a).length > 1;
-    const touchesCoords = patch.start !== undefined || patch.end !== undefined;
+    const wasCompound = getSegments(a).length > 1;
+    const effectivePatch = { ...(patch || {}) };
+    // A form serializer commonly emits `location: undefined` for a field the
+    // user did not touch. Undefined is absence, not permission to erase the
+    // canonical JOIN/ORDER before the metadata merge.
+    if (effectivePatch.location === undefined) delete effectivePatch.location;
+    const touchesCoords = effectivePatch.start !== undefined || effectivePatch.end !== undefined;
+    const hasLocationPatch = Object.prototype.hasOwnProperty.call(effectivePatch, 'location');
     // ANN-0A — a compound / origin-crossing feature has no single scalar range.
     // Accepting a scalar coordinate patch here would silently flatten it into
     // one span and change the biology. Refuse instead; metadata edits (name,
     // colour, type, qualifiers) still pass through and keep every segment.
-    if (isCompound && touchesCoords && patch.location === undefined) {
+    if (wasCompound && touchesCoords && !hasLocationPatch) {
       throw new Error(
         'updateAnnotation: cannot apply a scalar coordinate edit to a compound (multi-segment) annotation — edit its segments instead',
       );
     }
-    const merged = { ...a, ...patch };
-    if (isCompound && !touchesCoords) {
-      // Keep the projection coherent with the untouched canonical location.
-      const span = locationSpan(merged);
-      merged.start = span.start;
-      merged.end = span.end;
+    let merged = { ...a, ...effectivePatch };
+    const editDoc = docOf(seqLength, doc);
+    if (hasLocationPatch) {
+      // The segment editor owns canonical geometry. Old/stale scalar values
+      // (including scalars echoed in the same UI patch) are projections, never
+      // competing inputs. Remove them before the coherence gate, which derives
+      // a fresh projection while preserving join/order traversal semantics.
+      const locationOnly = { ...merged };
+      delete locationOnly.start;
+      delete locationOnly.end;
+      merged = normalizeLocation(locationOnly, editDoc);
+    } else if (wasCompound) {
+      // Metadata-only edit: an already canonical location is valid by
+      // construction. Preserve it verbatim and only refresh its scalar
+      // compatibility projection; re-normalizing here would require topology
+      // that old callers did not carry and could flatten/throw on origin wrap.
+      if (a.location != null) {
+        merged.location = a.location;
+        const span = locationSpan({ location: a.location });
+        merged.start = span.start;
+        merged.end = span.end;
+      } else {
+        // Legacy compound bare segments still need the canonical ingress gate.
+        merged = normalizeLocation(merged, editDoc);
+      }
     } else {
       const v = validateAnnotationCoords(merged.start, merged.end, seqLength);
       if (!v.valid) throw new Error(`updateAnnotation: ${v.error}`);
-      if (touchesCoords || merged.location === undefined) {
-        merged.location = normalizeLocation(
-          { start: merged.start, end: merged.end },
-          doc ?? seqLength,
-        ).location;
-      }
+      if (touchesCoords) delete merged.location;
+      merged = normalizeLocation(merged, editDoc);
     }
+    if (merged.location != null) delete merged.segments;
     if (merged.strand !== -1) merged.strand = 1;
-    const prevId = a.id || generateAnnotationId(a); // effective id BEFORE the edit
-    // Regenerate id when the identifying fields shifted, OR when
-    // the annotation came in without one (now we stamp the
-    // deterministic backfill so subsequent edits round-trip cleanly).
-    if (
-      !a.id
-      || patch.start !== undefined
-      || patch.end !== undefined
-      || patch.type !== undefined
-      || patch.name !== undefined
-    ) {
-      merged.id = generateAnnotationId(merged);
-    }
-    if (merged.id !== prevId) idShift = { from: prevId, to: merged.id };
+    // ANN-INTEGRITY seam 4 — identity is STABLE. Freeze the effective pre-edit
+    // id (an opaque stored id, or the deterministic backfill id a legacy no-id
+    // annotation was already known by) and never regenerate it from the new
+    // coords / name / type. Consumers keying on id — React keys, the Annotator
+    // accept/reject sets, primer source sites and child `regionId` links — keep
+    // their reference across a rename / move / type edit, so nothing is orphaned.
+    merged.id = a.id || generateAnnotationId(a);
     return merged;
   });
   if (!found) return annotations;
-  // Cascade the id shift onto children: any annotation whose `regionId` pointed
-  // at the old id is re-linked to the new id. A no-op when nothing changed or
-  // the edited annotation has no children (only regions are parents).
-  if (idShift && idShift.from !== idShift.to) {
-    return next.map((a) =>
-      (a && a.regionId === idShift.from ? { ...a, regionId: idShift.to } : a));
-  }
   return next;
 }
 
@@ -319,15 +348,25 @@ export function updateAnnotation(annotations, annotationId, patch, seqLength, do
  * applied — biolog 04.05.2026: dedup is type-based, strand differences
  * are intentional (e.g. lacZα reverse-strand CDS is its own region).
  */
-export function createBatchAnnotations(annotations, candidates, seqLength) {
+export function createBatchAnnotations(
+  annotations,
+  candidates,
+  seqLength,
+  docOrTopology,
+) {
   const arr = Array.isArray(annotations) ? annotations.slice() : [];
+  const incoming = Array.isArray(candidates) ? candidates : [];
+  const allocateId = createAnnotationIdAllocator(
+    [...arr, ...incoming],
+    docOrTopology?.idFactory,
+  );
+  const existingCount = arr.length;
   let skipped = 0;
-  const accepted = [];
-  for (const cand of (candidates || [])) {
+  for (const cand of incoming) {
     if (!cand) continue;
     let ann;
     try {
-      ann = createAnnotation(cand, seqLength);
+      ann = createAnnotation(cand, seqLength, docOrTopology, allocateId);
     } catch {
       // Bad coords → silent skip (treated as a "duplicate" for the
       // purposes of the footer counter).
@@ -343,10 +382,14 @@ export function createBatchAnnotations(annotations, candidates, seqLength) {
       skipped += 1;
       continue;
     }
-    accepted.push(ann);
     arr.push(ann);
   }
-  return { next: arr, skipped, accepted };
+  // Normalize the complete edit payload in ONE pass. That is essential for a
+  // cross-level collision where a later region is renamed and a still-later
+  // child links to its original explicit id: only the batch has enough context
+  // to carry that unambiguous parent link to the renamed region.
+  const next = ingestAnnotations(arr);
+  return { next, skipped, accepted: next.slice(existingCount) };
 }
 
 /**
@@ -360,21 +403,38 @@ export function createBatchAnnotations(annotations, candidates, seqLength) {
  * `seqLength` is required for create / update / create-batch (so coord
  * validation can fire) and ignored by delete.
  */
-export function applyAnnotationEdit(annotations, edit, seqLength) {
+export function applyAnnotationEdit(annotations, edit, seqLength, docOrTopology) {
   if (!edit || typeof edit !== 'object') {
     throw new Error('applyAnnotationEdit: edit must be an object');
   }
   switch (edit.kind) {
     case 'create': {
-      const ann = createAnnotation(edit.payload || {}, seqLength);
-      return [...(annotations || []), ann];
+      const base = Array.isArray(annotations) ? annotations : [];
+      const payload = edit.payload || {};
+      const allocateId = createAnnotationIdAllocator(
+        [...base, payload],
+        docOrTopology?.idFactory,
+      );
+      const ann = createAnnotation(payload, seqLength, docOrTopology, allocateId);
+      return ingestAnnotations([...base, ann]);
     }
     case 'delete':
       return deleteAnnotation(annotations, edit.id);
     case 'update':
-      return updateAnnotation(annotations, edit.id, edit.patch || {}, seqLength);
+      return updateAnnotation(
+        annotations,
+        edit.id,
+        edit.patch || {},
+        seqLength,
+        docOrTopology,
+      );
     case 'create-batch':
-      return createBatchAnnotations(annotations, edit.payload || [], seqLength);
+      return createBatchAnnotations(
+        annotations,
+        edit.payload || [],
+        seqLength,
+        docOrTopology,
+      );
     default:
       throw new Error(`applyAnnotationEdit: unknown kind '${edit.kind}'`);
   }
@@ -442,6 +502,10 @@ export function splitAnnotation(annotations, annotationId, n, seqLength, docOrTo
   }
   const chunk = Math.floor(total / n);
   const children = [];
+  const allocateId = createAnnotationIdAllocator(
+    annotations,
+    docOrTopology?.idFactory,
+  );
   for (let i = 0; i < n; i++) {
     const cs = (parent.start || 0) + i * chunk;
     const ce = i === n - 1 ? (parent.end || 0) : cs + chunk;
@@ -455,13 +519,28 @@ export function splitAnnotation(annotations, annotationId, n, seqLength, docOrTo
       start: cs,
       end: ce,
       name,
+      level: 'region',
     }, doc);
-    child.id = generateAnnotationId(child);
+    child.id = allocateId();
     children.push(child);
   }
   const next = [...annotations];
   next.splice(idx, 1, ...children);
-  return next;
+  // Children fully contained by exactly one sibling follow that sibling. A
+  // child crossing the split boundary (or otherwise matching zero/multiple
+  // siblings) is detached fail-safe: never guess, never leave a dangling link.
+  const parentId = parent.id || generateAnnotationId(parent);
+  return next.map((a) => {
+    if (!a || a.regionId !== parentId) return a;
+    const childSegments = getSegments(a);
+    const owners = children.filter((candidate) => childSegments.length > 0
+      && childSegments.every(
+        (segment) => segment.start >= candidate.start && segment.end <= candidate.end,
+      ));
+    if (owners.length === 1) return { ...a, regionId: owners[0].id };
+    const { regionId, ...detached } = a; // eslint-disable-line no-unused-vars
+    return detached;
+  });
 }
 
 /**
@@ -496,23 +575,32 @@ export function mergeAnnotations(annotations, idA, idB, docOrTopology) {
   const lenA = (a.end || 0) - (a.start || 0);
   const lenB = (b.end || 0) - (b.start || 0);
   const dominant = lenA >= lenB ? a : b;
+  const other = dominant === a ? b : a;
   const start = Math.min(a.start || 0, b.start || 0);
   const end = Math.max(a.end || 0, b.end || 0);
   // Build a NEW location for the union — inheriting the dominant feature's
   // location would keep the merged result claiming only the dominant's span.
   const merged = normalizeLocation({
-    ...dominant,
+    ...mergeCompatibleAnnotationMetadata(dominant, other),
     location: makeLocation(LOCATION_KINDS.SINGLE, [{ start, end }]),
     start,
     end,
   }, docOf(undefined, docOrTopology));
-  merged.id = generateAnnotationId(merged);
+  const allocateId = createAnnotationIdAllocator(
+    list,
+    docOrTopology?.idFactory,
+  );
+  merged.id = allocateId();
   const aId = a.id || generateAnnotationId(a);
   const bId = b.id || generateAnnotationId(b);
-  return list
+  const withoutSources = list
     .filter((x) => {
       const xid = x.id || generateAnnotationId(x);
       return xid !== aId && xid !== bId;
     })
     .concat(merged);
+  // ANN-INTEGRITY seam 4 — the two source regions become ONE, so their children
+  // legitimately belong to the merged region: re-point every regionId link
+  // instead of orphaning the sub-features.
+  return reparent(reparent(withoutSources, aId, merged.id), bId, merged.id);
 }

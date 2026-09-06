@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { formatCorrection } from '../../../../lib/alignment/describe-edit';
+import { isSequenceDivergent } from '../../../../lib/library-current-document';
 
 const EMPTY = [];
 
@@ -28,19 +29,28 @@ export function useLibrarySaveFlow({ item, edits, onUpdateEdits }) {
     () => (Array.isArray(edits?.editedAnnotations) ? edits.editedAnnotations : (item?.annotations || [])),
     [edits?.editedAnnotations, item?.annotations],
   );
-  const sequenceChanged = edits?.editedSequence != null && edits.editedSequence !== (item?.sequence || '');
-  const changesSummary = useMemo(() => editLog.map(formatCorrection), [editLog]);
+  const savedTopology = item?.topology || 'linear';
+  const editedTopology = edits?.editedTopology != null ? edits.editedTopology : savedTopology;
+  const topologyChanged = editedTopology !== savedTopology;
+  const provenanceLog = useMemo(() => {
+    if (!topologyChanged || editLog.some((entry) => entry?.kind === 'topology')) return editLog;
+    return [...editLog, { kind: 'topology', from: savedTopology, to: editedTopology }];
+  }, [editLog, editedTopology, savedTopology, topologyChanged]);
+  const changesSummary = useMemo(() => provenanceLog.map(formatCorrection), [provenanceLog]);
   const changeText = useMemo(() => changesSummary.join('; '), [changesSummary]);
-  // Versioning is for the MOLECULE only (Игорь): annotation-only edits are
-  // metadata — they autosave in place (LibraryWorkspace write-through) and do
-  // NOT light up «Сохранить версию». So `hasChanges` tracks sequence edits
-  // only (editLog is populated solely by nucleotide edits).
-  const hasChanges = sequenceChanged || editLog.length > 0;
+  // Versioning is for molecule divergence (sequence or topology). Annotation-only
+  // edits remain metadata and autosave in place through LibraryWorkspace.
+  const hasChanges = isSequenceDivergent(item, edits);
   const parentName = item?.name || '';
 
   const clearPending = useCallback(() => {
     if (typeof onUpdateEdits === 'function') {
-      onUpdateEdits({ editedAnnotations: undefined, editedSequence: undefined, editLog: undefined });
+      onUpdateEdits({
+        editedAnnotations: undefined,
+        editedSequence: undefined,
+        editedTopology: undefined,
+        editLog: undefined,
+      });
     }
   }, [onUpdateEdits]);
 
@@ -52,6 +62,7 @@ export function useLibrarySaveFlow({ item, edits, onUpdateEdits }) {
     hasChanges,
     editedSequence,
     editedAnnotations,
+    editedTopology,
     changesSummary,
     changeText,
     parentName,

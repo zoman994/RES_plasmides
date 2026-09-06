@@ -183,7 +183,11 @@ export default function App() {
     useStore.getState().openProjectInfo();
   }, []);
 
-  const handleEscape = useCallback(() => {
+  const handleEscape = useCallback((event) => {
+    // One physical press can emit repeated keydown events. The first event may
+    // close a portal modal; later repeats then target the restored opener and
+    // must not also pop the workspace underneath it.
+    if (event?.repeat) return;
     const s = useStore.getState();
     if (s.modals?.projectInfo) {
       s.closeProjectInfo();
@@ -392,4 +396,3 @@ export default function App() {
     </div>
   );
 }
-

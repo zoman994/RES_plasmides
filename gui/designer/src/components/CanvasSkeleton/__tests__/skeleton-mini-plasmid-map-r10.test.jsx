@@ -270,6 +270,9 @@ describe('V75 — MiniPlasmidMap PCR primers + flank overlay', () => {
     expect(pr.length).toBe(2);
     const dirs = Array.from(pr).map((e) => e.getAttribute('data-direction')).sort();
     expect(dirs).toEqual(['forward', 'reverse']);
+    const reverse = dom.querySelector('[data-testid="mini-plasmid-primer"][data-direction="reverse"]');
+    expect(reverse.querySelector('line').getAttribute('stroke')).toBe('var(--viz-primer-rev)');
+    expect(reverse.querySelector('circle').getAttribute('fill')).toBe('var(--viz-primer-rev)');
   });
 
   it('linear — renders flank band + primer markers', () => {
@@ -278,6 +281,8 @@ describe('V75 — MiniPlasmidMap PCR primers + flank overlay', () => {
     );
     expect(dom.querySelector('[data-testid="mini-plasmid-flank"]')).toBeTruthy();
     expect(dom.querySelectorAll('[data-testid="mini-plasmid-primer"]').length).toBe(2);
+    const reverse = dom.querySelector('[data-testid="mini-plasmid-primer"][data-direction="reverse"]');
+    expect(reverse.querySelector('polygon').getAttribute('fill')).toBe('var(--viz-primer-rev)');
   });
 
   it('no primers/flank props → no overlay (back-compat, default off)', () => {

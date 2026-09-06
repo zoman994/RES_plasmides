@@ -19,7 +19,7 @@
  * to simulate what SequenceView's onAnnotationEdit would trigger.
  */
 import 'fake-indexeddb/auto';
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import {
   render,
   screen,
@@ -39,13 +39,27 @@ import ContainerEditorSkeleton from '../editor/ContainerEditorSkeleton';
 import EditorWindowShell from '../editor/EditorWindowShell';
 import { useStore } from '../../../store';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 // Bootstrap global store on first import so useStore actions
 // (openAnnotator/closeAnnotator/showToast) exist.
 import { bootstrapStore } from '../../../store';
 beforeEach(() => {
   try { bootstrapStore(); } catch { /* idempotent — safe to call multiple times */ }
+  // This suite exercises the editor shell, not primer persistence. Keep the
+  // inspector on its already-hydrated branch so a render cannot leave a Dexie
+  // hydration promise alive after cleanup.
+  useStore.setState({ primersById: {}, _primersHydrated: true });
+  // Embedded Annotator may legitimately auto-run its common-features plugin.
+  // Give that production path a deterministic local database instead of
+  // letting happy-dom resolve relative fetches against localhost:3000.
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: true,
+    json: async () => ({ features: [] }),
+  })));
 });
 
 // 12.05.2026 — fixture теперь 2 placeholders. Тесты editor'а fill
@@ -406,6 +420,29 @@ describe('RC-C1 — circular product map tab', () => {
   it('linear container → no «Карта» tab', () => {
     renderEditorFor('c-placeholder-1', { fillTopology: 'linear' });
     expect(screen.queryByTestId('importer-tab-map')).toBeNull();
+  });
+});
+
+describe('B1-ui — shared dedupe reaches the Container Annotations tab', () => {
+  it('pending dominated annotations surface the dedupe bar; removal cascades through core', () => {
+    renderEditorFor('c-placeholder-1');
+    act(() => {
+      __harnessActions.setPendingEdits('c-placeholder-1', {
+        editedAnnotations: [
+          { id: 'cds', name: 'AmpR', type: 'CDS', start: 0, end: 40, strand: 1, level: 'region' },
+          { id: 'dup', name: 'bla', type: 'misc_feature', start: 0, end: 40, strand: 1, level: 'region' },
+          { id: 'dup-child', name: 'sub', type: 'domain', start: 10, end: 20, strand: 1, level: 'detail', regionId: 'dup' },
+        ],
+      });
+    });
+    fireEvent.click(screen.getByTestId('importer-annotator-toggle'));
+    expect(screen.getByTestId('annotations-dedupe-bar')).toBeTruthy();
+    act(() => { fireEvent.click(screen.getByTestId('annotations-dedupe-btn')); });
+    const ann = __harnessState.pendingEditsByContainer['c-placeholder-1'].editedAnnotations;
+    // dominated region + its child cascade out; survivor stays.
+    expect(ann.find((a) => a.id === 'dup')).toBeUndefined();
+    expect(ann.find((a) => a.id === 'dup-child')).toBeUndefined();
+    expect(ann.find((a) => a.id === 'cds')).toBeTruthy();
   });
 });
 

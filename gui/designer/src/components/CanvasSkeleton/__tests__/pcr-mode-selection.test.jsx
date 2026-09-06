@@ -64,6 +64,7 @@ import {
 } from '../store/skeleton-context';
 import { bootstrapStore } from '../../../store';
 import { runHotkeyResolver, _clearHandlersForTests } from '../../../lib/hotkeys';
+import { alignPrimerBinding } from '../../../lib/primer-binding-alignment';
 
 afterEach(() => { cleanup(); _clearHandlersForTests(); });
 beforeEach(() => { try { bootstrapStore(); } catch { /* idempotent */ } });
@@ -237,15 +238,15 @@ describe('V71 — PCR primer-writing wired into the shared viewer', () => {
 describe('PRIMER-LIVE-1 — occurrence PCR shows the pair it will execute', () => {
   //             0         1         2         3
   //             0123456789012345678901234567890123456789
-  const TPLSEQ = 'GGGGAAAACCTTTTGGGGAACCCCTTTTGGAATTCCGGAA';
+  const TPLSEQ = 'GGGGAAAACCTTTTGGGCGCGCGCTTTTGGAATTCCTTTT';
   const snapshots = {
     forward: {
-      id: 'f', name: 'fwd', sequence: 'GAATTCAAAACCTT', bindingSequence: 'AAAACCTT',
-      tail: 'GAATTC', direction: 'forward', occurrenceKey: 'f#1', start: 4, end: 12,
+      id: 'f', name: 'fwd', sequence: 'GAATTCAAAACCTTTTGG', bindingSequence: 'AAAACCTTTTGG',
+      tail: 'GAATTC', direction: 'forward', occurrenceKey: 'f#1', start: 4, end: 16,
     },
     reverse: {
-      id: 'r', name: 'rev', sequence: 'TTCCAAAA', bindingSequence: 'TTCCAAAA',
-      tail: '', direction: 'reverse', occurrenceKey: 'r#1', start: 24, end: 32,
+      id: 'r', name: 'rev', sequence: 'GGAATTCCAAAA', bindingSequence: 'GGAATTCCAAAA',
+      tail: '', direction: 'reverse', occurrenceKey: 'r#1', start: 24, end: 36,
     },
   };
   const stateWith = () => ({
@@ -258,7 +259,7 @@ describe('PRIMER-LIVE-1 — occurrence PCR shows the pair it will execute', () =
         templateId: 'c-1',
         occurrenceKeys: ['f#1', 'r#1'],
         primerSnapshots: snapshots,
-        productSequence: 'GAATTCAAAACCTTTTGGGGAACCCCTTTTGGAA',
+        productSequence: 'GAATTCAAAACCTTTTGGGCGCGCGCTTTTGGAATTCC',
       },
     }],
     junctions: [],
@@ -268,17 +269,17 @@ describe('PRIMER-LIVE-1 — occurrence PCR shows the pair it will execute', () =
     const { pairs, status } = selectPcrPrimers(stateWith(), 'op-1');
     expect(status).toBe('ready');
     expect(pairs).toHaveLength(1);
-    expect(pairs[0].forward).toBe('GAATTCAAAACCTT');
-    expect(pairs[0].reverse).toBe('TTCCAAAA');
-    expect(pairs[0].fwdBinding).toBe('AAAACCTT');
+    expect(pairs[0].forward).toBe('GAATTCAAAACCTTTTGG');
+    expect(pairs[0].reverse).toBe('GGAATTCCAAAA');
+    expect(pairs[0].fwdBinding).toBe('AAAACCTTTTGG');
     expect(pairs[0].source).toBe('occurrences');
   });
 
   it('spans come from the chosen landings, never a first-match search', () => {
     const spans = selectPcrSpans(stateWith(), 'op-1');
-    expect(spans.primers[0]).toMatchObject({ start: 4, end: 12, direction: 'forward' });
-    expect(spans.primers[1]).toMatchObject({ start: 24, end: 32, direction: 'reverse' });
-    expect(spans.product.sequence).toBe('GAATTCAAAACCTTTTGGGGAACCCCTTTTGGAA');
+    expect(spans.primers[0]).toMatchObject({ start: 4, end: 16, direction: 'forward' });
+    expect(spans.primers[1]).toMatchObject({ start: 24, end: 36, direction: 'reverse' });
+    expect(spans.product.sequence).toBe('GAATTCAAAACCTTTTGGGCGCGCGCTTTTGGAATTCC');
   });
 
   it('the displayed pair IS the executed pair', () => {
@@ -290,5 +291,49 @@ describe('PRIMER-LIVE-1 — occurrence PCR shows the pair it will execute', () =
     );
     expect(out.error).toBeUndefined();
     expect(out.outputs[0].sequence.startsWith(pairs[0].forward)).toBe(true);
+  });
+
+  it.each([
+    ['D', 'ACGTACCTAGCTTGA'],
+    ['I', 'ACGTAGACCTAGCTTGA'],
+  ])('replays an internal %s from snapshot evidence without inventing scalar Tm', (opCode, binding) => {
+    const anchor = 'ACGTGACCTAGCTTGA';
+    const reverseBinding = 'GGAATTCCAAAA';
+    const reverseTop = 'TTTTGGAATTCC';
+    const template = `TT${anchor}${'C'.repeat(8)}${reverseTop}GG`;
+    const state = {
+      containers: [{ id: 'c-aligned', sequence: template, circular: false }],
+      operations: [{
+        id: 'op-aligned', kind: 'pcr', inputs: ['c-aligned'],
+        params: {
+          occurrenceKeys: ['f#aligned', 'r#aligned'],
+          primerSnapshots: {
+            forward: {
+              id: 'f', name: 'fwd', sequence: binding, bindingSequence: binding,
+              bindingModel: 'aligned-v1', tail: '', direction: 'forward',
+              occurrenceKey: 'f#aligned', start: 2, end: 18,
+              segments: [{ start: 2, end: 18 }],
+              alignment: alignPrimerBinding(binding, anchor),
+            },
+            reverse: {
+              id: 'r', name: 'rev', sequence: reverseBinding,
+              bindingSequence: reverseBinding, bindingModel: 'aligned-v1', tail: '',
+              direction: 'reverse', occurrenceKey: 'r#aligned', start: 26, end: 38,
+              segments: [{ start: 26, end: 38 }],
+              alignment: alignPrimerBinding(reverseBinding, reverseBinding),
+            },
+          },
+        },
+      }],
+      junctions: [],
+    };
+    const spans = selectPcrSpans(state, 'op-aligned');
+    expect(spans).toBeTruthy();
+    expect(spans.product.forward.alignment.counts[opCode]).toBe(1);
+    expect(spans.warnings).toContainEqual(expect.objectContaining({
+      code: 'gapped-tm-unknown', tm: null,
+    }));
+    expect(spans.warnings.filter((warning) => warning.code === 'low-tm'
+      || warning.code === 'delta-tm')).toEqual([]);
   });
 });

@@ -14,6 +14,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import PrimerTrack from "../tracks/PrimerTrack";
 import RestrictionTrack from "../tracks/RestrictionTrack";
+import { readFileSync } from "node:fs";
 
 afterEach(cleanup);
 
@@ -62,7 +63,7 @@ describe("PrimerTrack — K5", () => {
     const arrow = prim.querySelector("[data-primer-arrow]");
     expect(arrow.tagName.toLowerCase()).toBe("path");
     expect(arrow.getAttribute("data-primer-arrow")).toBe("forward");
-    expect(arrow.getAttribute("fill")).toBe("#3b82f6");
+    expect(arrow.getAttribute("fill")).toBe("var(--viz-primer-fwd)");
   });
 
   it("3) 'outline' renders outline-only arrow and includes binding seq", () => {
@@ -81,8 +82,38 @@ describe("PrimerTrack — K5", () => {
     expect(root.dataset.primerStyle).toBe("outline");
     const arrow = root.querySelector("[data-primer-arrow]");
     expect(arrow.getAttribute("fill")).toBe("none");
-    expect(arrow.getAttribute("stroke")).toBe("#3b82f6");
+    expect(arrow.getAttribute("stroke")).toBe("var(--viz-primer-fwd)");
     expect(root.textContent).toContain("ATGCAAAGGGCCC");
+  });
+
+  it("4) reverse direction uses the violet semantic token, independent of primer name", () => {
+    render(
+      <PrimerTrack
+        primers={[{
+          name: "unrelated_name",
+          bindingSequence: "GGGCCCTTTGCAT",
+          direction: "reverse",
+        }]}
+        fullSeq={SEQ}
+        lineStart={0}
+        lineLen={SEQ.length}
+        charPx={7.2}
+        labelChars={8}
+        primerStyle="filled"
+        directionFilter="reverse"
+      />,
+    );
+    const arrow = screen.getByTestId("sequence-view-primer-arrowhead");
+    expect(arrow.getAttribute("fill")).toBe("var(--viz-primer-rev)");
+    expect(arrow.getAttribute("stroke")).toBe("var(--viz-primer-rev)");
+  });
+
+  it("5) central theme tokens keep reverse violet and distinct from red mismatch status", () => {
+    const css = readFileSync('./src/index.css', 'utf8');
+    const values = [...css.matchAll(/--viz-primer-rev:\s*([^;]+);/g)].map((match) => match[1].trim());
+    expect(values).toEqual(['#7c3aed', '#a78bfa']);
+    expect(values).not.toContain('#dc2626');
+    expect(values).not.toContain('#f87171');
   });
 });
 

@@ -5,6 +5,7 @@
  */
 import { computeAssemblySequence, segmentBoundaries } from '../lib/assembly-model';
 import { draftFromZone } from '../lib/zone-pieces-to-dag';
+import { shiftAnnotations } from '../lib/segment-annotation-transfer';
 
 /**
  * T6 K10 — single dual-resolution chokepoint for the assembly
@@ -98,9 +99,7 @@ export function selectAssemblyDraftAnnotations(state, draftId) {
   const out = [];
   d.segments.forEach((s, i) => {
     const off = boundaries[i] ? boundaries[i].startOnAssembly : 0;
-    for (const a of s.annotations || []) {
-      out.push({ ...a, start: a.start + off, end: a.end + off });
-    }
+    out.push(...shiftAnnotations(s.annotations || [], off));
   });
   return out;
 }

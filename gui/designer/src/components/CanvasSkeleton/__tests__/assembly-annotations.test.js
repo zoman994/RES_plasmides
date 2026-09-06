@@ -124,4 +124,24 @@ describe('collectAssemblyAnnotations', () => {
     expect(new Set(ids).size).toBe(ids.length); // all unique
     expect(anns.filter((a) => a.name === 'gene')).toHaveLength(2);
   });
+
+  it('uses stored segment identity and offsets every canonical compound segment', () => {
+    const segment = {
+      ...sourced('s1', 'c1', 0, 8, false),
+      annotations: [{
+        id: 'stable-segment-ann', name: 'compound', level: 'region', strand: 1,
+        start: 0, end: 7,
+        location: { kind: 'join', segments: [{ start: 0, end: 2 }, { start: 5, end: 7 }] },
+      }],
+    };
+    const draft = draftOf([sourced('prefix', 'c2', 0, 4, false), segment]);
+    const { boundaries } = segmentBoundaries(draft);
+    const [annotation] = collectAssemblyAnnotations(draft, boundaries, [C1, C2])
+      .filter((a) => a.name === 'compound');
+    expect(annotation.id).toBe('stable-segment-ann');
+    expect(annotation.location).toEqual({
+      kind: 'join', segments: [{ start: 4, end: 6 }, { start: 9, end: 11 }],
+    });
+    expect({ start: annotation.start, end: annotation.end }).toEqual({ start: 4, end: 11 });
+  });
 });

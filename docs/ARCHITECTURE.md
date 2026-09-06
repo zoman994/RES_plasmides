@@ -28,7 +28,7 @@ The browser application is the primary product. The FastAPI process is not a rem
 ### Application shell
 
 - `gui/designer/src/App.jsx` performs bootstrap, file-level commands and global application wiring.
-- `components/AppShell/` owns the persistent shell and workspace routing.
+- `App.jsx` renders the persistent `Sidebar` and selects StartScreen, a fullscreen overlay or `components/AppShell/`; `AppShell` is a thin `WorkspaceRouter` over `workspace.active`.
 - `store/workspaceSlice.js` identifies the active workspace and its navigation context.
 - Full-screen or modal surfaces are exceptional; normal tools should be workspaces or panels.
 
@@ -95,7 +95,13 @@ Permanent rules:
 - version algorithm/model/database inputs when results are persisted or cached;
 - require deterministic validation before save/export when a preview was approximate.
 
-Heavy work uses persistent workers with cancellation, stale-result dropping and bounded concurrency. The preferred optimization order is indexing/caching, incremental work, compact transfer formats and only then WASM/Rust for measured hot kernels.
+Heavy work is meant to use persistent workers with cancellation, stale-result dropping and
+bounded concurrency. Today only DNA sequence search honours this contract end to end;
+the Annotator predictor runs in a worker without cancellation, and restriction scanning,
+alignment, splice prediction, primer-binding scans and `.bodge` zip still run on the UI
+thread (BACKLOG «Heavy compute off the UI thread»). The preferred optimization order is
+indexing/caching, incremental work, compact transfer formats and only then WASM/Rust for
+measured hot kernels.
 
 ## 5. Search architecture
 
@@ -115,7 +121,10 @@ Current user and technical contracts are documented in `docs/guides/USER_GUIDE_S
 
 ### IndexedDB
 
-Dexie stores application state locally. Schema upgrades are explicit and forward-only. Hydration must be idempotent and tolerate missing optional records. Multi-tab protection prevents concurrent writers from silently corrupting the same local state.
+Dexie stores application state locally. Schema upgrades are explicit and forward-only.
+Hydration must be idempotent and tolerate missing optional records. A Web Locks-based
+project lock exists but is acquired only on the `.bodge` open path; UI activation and
+autosave do not take it (BG-083), so multi-tab protection is a target, not a guarantee.
 
 ### `.bodge`
 

@@ -12,6 +12,10 @@
  *   { left: {enzyme,delta,type,seq}|null, right: {…}|null }
  */
 import { reverseComplement } from '../../../sequence-utils';
+import {
+  projectAnnotationsGeometry,
+  reflectAnnotationsCanonical,
+} from './segment-annotation-transfer';
 
 export function segmentOverhangs(segment, reEnzymes) {
   if (!segment || segment.acquisitionMethod !== 'restriction') return null;
@@ -381,18 +385,7 @@ export function reflectAnnotations(annotations, len) {
   if (!Array.isArray(annotations) || L === 0) {
     return Array.isArray(annotations) ? annotations : [];
   }
-  return annotations.map((a) => {
-    const s = Number(a.start);
-    const e = Number(a.end);
-    if (!Number.isFinite(s) || !Number.isFinite(e)) return a;
-    // Segment annotations are 1-based inclusive (same contract as
-    // transferAnnotations) — the RC of [s,e] on a length-L molecule is
-    // [L-e+1, L-s+1], NOT [L-e, L-s] (that 0-based formula shifted every
-    // reversed-fragment feature 1 bp; Игорь 29.06 RE-cloning audit).
-    return {
-      ...a, start: L - e + 1, end: L - s + 1, strand: -(Number(a.strand) || 1),
-    };
-  });
+  return reflectAnnotationsCanonical(annotations, L);
 }
 
 /**
@@ -422,22 +415,65 @@ export function reflectAnnotations(annotations, len) {
  * Pure. @param segment a segment {sequence, acquisitionMethod, acquisitionParams,
  *   reverseComplement} in its CURRENT orientation; @returns the flipped top strand.
  */
-export function reverseComplementSegment(segment, reEnzymes) {
+function reverseComplementPlan(segment, reEnzymes) {
   const T = (segment && typeof segment.sequence === 'string') ? segment.sequence : '';
   const oh = segmentOverhangs(segment, reEnzymes);
-  if (!oh || !T) return reverseComplement(T);
+  const plain = () => ({
+    sequence: reverseComplement(T),
+    sourceStart: 0,
+    sourceEnd: T.length,
+    outputOffset: 0,
+  });
+  if (!oh || !T) return plain();
   const palindromic = (s) => { const u = String(s || '').toUpperCase(); return !!u && u === reverseComplement(u); };
   // A sticky end we cannot safely reconstruct (non-palindromic overhang) → bail out
   // to the plain RC. Blunt / native (null) ends need no reconstruction.
   const unsafe = (end) => !!end && end.type !== 'blunt' && !!end.seq && !palindromic(end.seq);
-  if (unsafe(oh.left) || unsafe(oh.right)) return reverseComplement(T);
+  if (unsafe(oh.left) || unsafe(oh.right)) return plain();
   const dL = oh.left ? (Number(oh.left.delta) || 0) : 0;
   const dR = oh.right ? (Number(oh.right.delta) || 0) : 0;
   const len = T.length;
-  const mid = T.slice(Math.max(0, dL), len + Math.min(0, dR));
+  const sourceStart = Math.min(len, Math.max(0, dL));
+  const sourceEnd = Math.max(
+    sourceStart,
+    Math.min(len, len + Math.min(0, dR)),
+  );
+  const mid = T.slice(sourceStart, sourceEnd);
   const leftExtra = (dL < 0 && oh.left) ? (oh.left.seq || '') : '';
   const rightExtra = (dR > 0 && oh.right) ? (oh.right.seq || '') : '';
-  return reverseComplement(leftExtra + mid + rightExtra);
+  return {
+    sequence: reverseComplement(leftExtra + mid + rightExtra),
+    sourceStart,
+    sourceEnd,
+    // `rightExtra` is prepended by the final reverse-complement. Source bases
+    // therefore begin after exactly this many reconstructed output bases.
+    outputOffset: rightExtra.length,
+  };
+}
+
+/**
+ * Flip a segment's top strand and its canonical annotations with one shared
+ * overhang-aware transform. Bases trimmed between top/bottom cuts clip feature
+ * geometry; reconstructed sticky-end extras remain deliberately unannotated.
+ */
+export function reverseComplementSegmentWithAnnotations(segment, reEnzymes) {
+  const plan = reverseComplementPlan(segment, reEnzymes);
+  const annotations = plan.sourceEnd > plan.sourceStart
+    ? projectAnnotationsGeometry(
+      segment?.annotations || [],
+      [{
+        start: plan.sourceStart,
+        end: plan.sourceEnd,
+        offset: plan.outputOffset,
+        rc: true,
+      }],
+    )
+    : [];
+  return { sequence: plan.sequence, length: plan.sequence.length, annotations };
+}
+
+export function reverseComplementSegment(segment, reEnzymes) {
+  return reverseComplementPlan(segment, reEnzymes).sequence;
 }
 
 /** Short human label for an overhang end: «5′ AATT» / «3′ TGCA» / «тупой». */

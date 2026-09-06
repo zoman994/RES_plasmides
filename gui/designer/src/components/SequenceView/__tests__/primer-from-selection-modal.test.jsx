@@ -6,14 +6,15 @@ import {
   describe, it, expect, afterEach, vi,
 } from "vitest";
 import {
-  render, screen, cleanup, fireEvent,
+  render, screen, cleanup, fireEvent, within,
 } from "@testing-library/react";
 import { useState } from "react";
 import PrimerFromSelectionModal from "../popups/PrimerFromSelectionModal";
 import SequenceView from "../index";
-import { runHotkeyResolver } from "../../../lib/hotkeys";
+import { registerHandler, runHotkeyResolver } from "../../../lib/hotkeys";
 import { evaluatePrimerWarnings } from "../../../lib/primer-live-workflow";
 import { tf } from "../../../i18n";
+import { calcTm } from "../../../tm-calculator";
 
 afterEach(cleanup);
 
@@ -24,6 +25,49 @@ describe("PrimerFromSelectionModal", () => {
     render(<PrimerFromSelectionModal draft={draft} onCreate={() => {}} onClose={() => {}} />);
     expect(screen.getByTestId("primer-modal-seq").value).toBe("ATGCAAAGGGCC");
     expect(screen.getByTestId("primer-modal-name").value).toBe("");
+  });
+
+  it("has a named dialog and an explicitly named close control", () => {
+    render(
+      <PrimerFromSelectionModal
+        draft={{ ...draft, name: "test primer" }}
+        onCreate={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByRole("dialog", { name: "Праймер: test primer" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Закрыть" })).toBeTruthy();
+  });
+
+  it("preserves an explicitly empty aligned binding instead of inventing it from sequence", () => {
+    const onCreate = vi.fn();
+    const sequence = "ACGTTGCAACGTTGCA";
+    render(
+      <PrimerFromSelectionModal
+        draft={{
+          primerId: "p-empty", name: "empty", direction: "forward",
+          tail: "", binding: "", sequence, bindingModel: "aligned-v1",
+        }}
+        anchorSites={[{
+          id: "s-empty",
+          target: { entryId: "e1", resourceHash: "h1", topology: "linear" },
+          location: { kind: "single", segments: [{ start: 0, end: sequence.length }] },
+          strand: 1,
+          annealedSequence: sequence,
+          tail: "",
+        }]}
+        template={sequence}
+        topology="linear"
+        entryId="e1"
+        documentHash="h1"
+        onCreate={onCreate}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("primer-modal-seq").value).toBe("");
+    fireEvent.click(screen.getByTestId("primer-modal-create"));
+    expect(onCreate).not.toHaveBeenCalled();
   });
 
   it("pre-fills the name when opened from an existing primer (double-click)", () => {
@@ -125,7 +169,7 @@ describe("PrimerFromSelectionModal", () => {
     const onCreate = vi.fn();
     render(<PrimerFromSelectionModal draft={draft} onCreate={onCreate} onClose={() => {}} />);
     fireEvent.change(screen.getByTestId("primer-modal-name"), { target: { value: "  myP  " } });
-    fireEvent.change(screen.getByTestId("primer-modal-seq"), { target: { value: "atgc aaa\nggg" } });
+    fireEvent.change(screen.getByTestId("primer-modal-seq"), { target: { value: "atgcaaaggg" } });
     fireEvent.click(screen.getByTestId("primer-modal-create"));
     // K13 added tail/binding to the payload; use objectContaining to
     // pin only the contract this test cares about.
@@ -133,6 +177,49 @@ describe("PrimerFromSelectionModal", () => {
       name: "myP", sequence: "ATGCAAAGGG", direction: "forward",
       bindingModel: "aligned-v1",
     }));
+  });
+
+  it.each([
+    ["primer-modal-tail", "atgcnryswkmbdhv", "ATGCNRYSWKMBDHV", "ATGCJ"],
+    ["primer-modal-seq", "atgcnryswkmbdhv", "ATGCNRYSWKMBDHV", "ATGC\n"],
+  ])("accepts only an entire valid DNA-IUPAC value in %s", (testId, valid, canonical, invalid) => {
+    render(<PrimerFromSelectionModal draft={draft} onCreate={() => {}} onClose={() => {}} />);
+    const field = screen.getByTestId(testId);
+
+    fireEvent.change(field, { target: { value: valid } });
+    expect(field.value).toBe(canonical);
+    fireEvent.change(field, { target: { value: invalid } });
+    expect(field.value).toBe(canonical);
+  });
+
+  it("refuses RC when a legacy binding contains a non-IUPAC letter", () => {
+    render(
+      <PrimerFromSelectionModal
+        draft={{ ...draft, binding: "ATGCJ", sequence: "ATGCJ" }}
+        onCreate={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const binding = screen.getByTestId("primer-modal-seq");
+    fireEvent.click(screen.getByTestId("primer-modal-rc"));
+    expect(binding.value).toBe("ATGCJ");
+    expect(screen.getByTestId("primer-modal-rc").textContent).toMatch(/Forward/);
+  });
+
+  it.each([
+    [{ tail: "ATG Z", binding: draft.sequence, sequence: `ATG Z${draft.sequence}` }],
+    [{ tail: "", binding: "ATGCJ", sequence: "ATGCJ" }],
+  ])("refuses Save for an invalid legacy/programmatic oligo", (invalidDraft) => {
+    const onCreate = vi.fn();
+    render(
+      <PrimerFromSelectionModal
+        draft={{ ...draft, ...invalidDraft }}
+        onCreate={onCreate}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("primer-modal-create"));
+    expect(onCreate).not.toHaveBeenCalled();
   });
 
   it("closes on Esc and on backdrop click", () => {
@@ -152,10 +239,9 @@ describe("PrimerFromSelectionModal", () => {
   });
 
   // Regression — Игорь 18.05.2026 «отвалились хоткеи»: the backdrop
-  // stopPropagation must NOT rely on / break a window keydown listener.
-  // Esc closes via the in-component handler; a non-Esc key is still
+  // Esc is owned by the dialog's local capture listener; a non-Esc key is still
   // contained (does not leak to a host/window bubble handler).
-  it("Esc closes without a window listener; stopPropagation still contains keys", () => {
+  it("Esc closes locally; stopPropagation still contains keys", () => {
     const onClose = vi.fn();
     const hostKeyDown = vi.fn();
     render(
@@ -168,6 +254,136 @@ describe("PrimerFromSelectionModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(screen.getByTestId("primer-modal-name"), { key: "A", code: "KeyA" });
     expect(hostKeyDown).not.toHaveBeenCalled(); // still isolated from host
+  });
+
+  it("blocks the real capture-phase global Escape and closes even when focus stayed on the opener", () => {
+    const globalEscape = vi.fn();
+    const unregister = registerHandler("escape", globalEscape);
+    const onGlobalKeyDown = (event) => runHotkeyResolver(event, {
+      context: { currentProjectId: "p1", activeFullscreen: "assembly", modals: {} },
+    });
+    window.addEventListener("keydown", onGlobalKeyDown, true);
+    try {
+      function Host() {
+        const [open, setOpen] = useState(false);
+        return (
+          <>
+            <button type="button" data-testid="primer-editor-opener" onClick={() => setOpen(true)}>
+              Edit primer
+            </button>
+            {open && (
+              <PrimerFromSelectionModal
+                draft={draft}
+                onCreate={() => {}}
+                onClose={() => setOpen(false)}
+              />
+            )}
+          </>
+        );
+      }
+      render(<Host />);
+      const opener = screen.getByTestId("primer-editor-opener");
+      opener.focus();
+      fireEvent.click(opener);
+      expect(screen.getByTestId("primer-modal-name")).toBeTruthy();
+      // A browser can retain focus on the assembly-side opener while the portal
+      // mounts. Escape must still belong to the open dialog, not App.popFullscreen.
+      opener.focus();
+      fireEvent.keyDown(opener, { key: "Escape", code: "Escape" });
+      expect(screen.queryByTestId("primer-from-selection-modal")).toBeNull();
+      expect(globalEscape).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(opener);
+      fireEvent.keyUp(document.activeElement, { key: "Escape", code: "Escape" });
+      expect(screen.queryByTestId("primer-from-selection-modal")).toBeNull();
+      expect(globalEscape).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(opener);
+    } finally {
+      window.removeEventListener("keydown", onGlobalKeyDown, true);
+      unregister();
+    }
+  });
+
+  it("renders landing context through the same SequenceLine tracks as both full viewers", () => {
+    const template = "TTTTGAATTCACGTTGCAACGTTGCAGGGG";
+    const binding = template.slice(10, 26);
+    render(
+      <PrimerFromSelectionModal
+        draft={{
+          primerId: "preview-primer", name: "preview", direction: "forward",
+          tail: "", binding, sequence: binding, bindingModel: "aligned-v1",
+        }}
+        anchorSites={[{
+          id: "preview-site",
+          target: { entryId: "entry", resourceHash: "hash", topology: "linear" },
+          location: { kind: "single", segments: [{ start: 10, end: 26 }] },
+          strand: 1,
+          annealedSequence: binding,
+          tail: "",
+        }]}
+        template={template}
+        topology="linear"
+        entryId="entry"
+        documentHash="hash"
+        features={[{
+          id: "feature", name: "shared feature", type: "CDS", color: "#C8D570",
+          start: 8, end: 28, strand: 1,
+        }]}
+        templateReSites={[{ enzyme: "EcoRI", position: 5 }]}
+        viewSettings={{
+          showBottomStrand: true, primerStyle: "filled", reOrientation: "horizontal",
+        }}
+        onCreate={() => {}}
+        onClose={() => {}}
+      />,
+    );
+
+    const preview = screen.getByTestId("primer-binding-preview");
+    const templatePreview = screen.getByTestId("primer-binding-template-preview");
+    expect(within(templatePreview).getByTestId("sequence-view-line")).toBeTruthy();
+    expect(within(templatePreview).getByTestId("sequence-view-restriction")).toBeTruthy();
+    expect(within(templatePreview).getByTestId("sequence-view-primer")).toBeTruthy();
+    expect(within(templatePreview).getAllByTestId("sequence-view-strands")).toHaveLength(2);
+    expect(within(templatePreview).getByTestId("sequence-view-annotation").dataset.regionId)
+      .toBe("feature");
+    expect(within(templatePreview).getAllByTestId("sequence-view-aa").length).toBeGreaterThan(0);
+    expect(within(preview).queryByTestId("primer-binding-preview-template-site-lane"))
+      .toBeNull();
+    expect(within(preview).queryByTestId("primer-binding-preview-annotation-lane"))
+      .toBeNull();
+  });
+
+  it("uses the shared restriction track for a site introduced into the PCR product", () => {
+    const template = "TTTTACGTTGCAACGTTGCAGGGG";
+    const binding = template.slice(4, 20);
+    render(
+      <PrimerFromSelectionModal
+        draft={{
+          primerId: "tail-site-primer", name: "tail site", direction: "forward",
+          tail: "", binding, sequence: binding, bindingModel: "aligned-v1",
+        }}
+        anchorSites={[{
+          id: "tail-site",
+          target: { entryId: "entry", resourceHash: "hash", topology: "linear" },
+          location: { kind: "single", segments: [{ start: 4, end: 20 }] },
+          strand: 1,
+          annealedSequence: binding,
+          tail: "",
+        }]}
+        template={template}
+        topology="linear"
+        entryId="entry"
+        documentHash="hash"
+        onCreate={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByTestId("primer-modal-tail"), {
+      target: { value: "GAATTC" },
+    });
+    const product = screen.getByTestId("primer-binding-product-preview");
+    expect(within(product).getByTestId("sequence-view-restriction")).toBeTruthy();
+    expect(within(product).getAllByTestId("sequence-view-re-site")
+      .some((site) => site.dataset.enzyme === "EcoRI")).toBe(true);
   });
 
   // Regression — Игорь 18.05.2026: «модалка появляется в центре
@@ -256,7 +472,11 @@ describe("PrimerFromSelectionModal", () => {
  * the dialog component.
  */
 describe("PRIMER-LIVE-1B — «E» / double-click edits the primer it was opened from", () => {
-  const HOST_SEQ = "ATGGCC".repeat(20) + "TTAGCATCGATTGCACTAGT" + "ATGGCC".repeat(20);
+  // Keep the 120-nt prefix but end it in A: the helper tail's terminal C is
+  // deliberately non-complementary here. Ending the old fixture in C silently
+  // made that base a real 5′ extension under full-oligo projection.
+  const HOST_SEQ = `${"ATGGCC".repeat(19)}ATGGCA`
+    + "TTAGCATCGATTGCACTAGT" + "ATGGCC".repeat(20);
   const HOST_FRAGMENT = {
     id: "frag-1", name: "pUC19-ish", type: "CDS", sequence: HOST_SEQ, strand: 1, annotations: [],
   };
@@ -434,15 +654,15 @@ describe("PRIMER-LIVE-1B — the dialog shows a substitution while it is typed",
     expect(screen.queryByTestId("primer-modal-mismatch")).toBeNull();
   });
 
-  it("names the position as soon as one base is changed, numbered from 1", () => {
+  it("shows the changed base in the shared primer track without a prose warning row", () => {
     renderAnchored();
     const mutated = "ACGTTGCATCGTTGCA"; // 0-based index 8 A→T
     fireEvent.change(screen.getByTestId("primer-modal-seq"), { target: { value: mutated } });
-    const warn = screen.getByTestId("primer-modal-mismatch");
-    // The resolver counts from 0; the viewer numbers bases from 1, and this
-    // text is read against the viewer. The shift belongs to the string only.
-    expect(warn.textContent).toMatch(/\b9\b/);
-    expect(warn.textContent).not.toMatch(/\b8\b/);
+    const glyph = within(screen.getByTestId("primer-binding-template-preview"))
+      .getByTestId("sequence-view-primer-base-mismatch");
+    expect(glyph.dataset.primerAlignmentOp).toBe("X");
+    expect(glyph.dataset.primerTemplateCoordinate).toBe("8");
+    expect(screen.queryByTestId("primer-modal-mismatch")).toBeNull();
   });
 
   it("keeps the stored positions 0-based — only the text is shifted", () => {
@@ -464,7 +684,8 @@ describe("PRIMER-LIVE-1B — the dialog shows a substitution while it is typed",
     const { onCreate } = renderAnchored();
     const mutated = "ACGTTGCATCGTTGCA";
     fireEvent.change(screen.getByTestId("primer-modal-seq"), { target: { value: mutated } });
-    expect(screen.getByTestId("primer-modal-mismatch")).toBeTruthy();
+    expect(within(screen.getByTestId("primer-binding-template-preview"))
+      .getByTestId("sequence-view-primer-base-mismatch")).toBeTruthy();
     const createBtn = screen.getByTestId("primer-modal-create");
     expect(createBtn.disabled).toBeFalsy();
     fireEvent.click(createBtn);
@@ -539,20 +760,20 @@ describe("PRIMER-LIVE-1B — substitution on a real anchored primer, real host",
     return { onWritePrimer };
   }
 
-  it("opens clean, then warns at the template position of the changed base", () => {
+  it("opens clean, then marks the changed template base in the shared track", () => {
     renderHost();
     expect(screen.queryByTestId("primer-modal-mismatch")).toBeNull();
-    const mutated = `A${BINDING.slice(1)}`; // index 0 T→A → template position 120
+    const mutated = `${BINDING[0]}A${BINDING.slice(2)}`; // internal index 1 T→A
     fireEvent.change(screen.getByTestId("primer-modal-seq"), { target: { value: mutated } });
-    const warn = screen.getByTestId("primer-modal-mismatch");
-    // Template index 120 → base 121 as the viewer numbers it.
-    expect(warn.textContent).toMatch(/\b121\b/);
-    expect(warn.textContent).not.toMatch(/\b120\b/);
+    const glyph = within(screen.getByTestId("primer-binding-template-preview"))
+      .getByTestId("sequence-view-primer-base-mismatch");
+    expect(glyph.dataset.primerTemplateCoordinate).toBe("121");
+    expect(screen.queryByTestId("primer-modal-mismatch")).toBeNull();
   });
 
   it("submits the substitution as an edit of the same record, still anchored", () => {
     const { onWritePrimer } = renderHost();
-    const mutated = `A${BINDING.slice(1)}`;
+    const mutated = `${BINDING[0]}A${BINDING.slice(2)}`;
     fireEvent.change(screen.getByTestId("primer-modal-seq"), { target: { value: mutated } });
     fireEvent.click(screen.getByTestId("primer-modal-create"));
     const payload = onWritePrimer.mock.calls[0][0];
@@ -585,7 +806,7 @@ describe("PRIMER-LIVE-1B — substitution on a real anchored primer, real host",
 describe("PRIMER-LIVE-1B correction — the dialog opens on the record, not the drawing", () => {
   const HOST_SEQ = "ATGGCC".repeat(20) + "TTAGCATCGATTGCACTAGT" + "ATGGCC".repeat(20);
   const ANNEALED = "TTAGCATCGATT";          // what the template actually reads at [120,132)
-  const EDITED = "ATAGCATCGATT";            // same length, index 0 T->A -> template pos 120
+  const EDITED = "TTAGAATCGATT";            // same length, internal index 4 C->A
   const TAIL = "GAATTC";
 
   // Saved state after a deliberate substitution: the record carries the edited
@@ -649,8 +870,9 @@ describe("PRIMER-LIVE-1B correction — the dialog opens on the record, not the 
 
   it("shows the mismatch immediately on reopen, before anything is typed", () => {
     renderHost();
-    const warn = screen.getByTestId("primer-modal-mismatch");
-    expect(warn.textContent).toMatch(/\b121\b/); // template index 120, numbered from 1
+    const glyph = within(screen.getByTestId("primer-binding-template-preview"))
+      .getByTestId("sequence-view-primer-base-mismatch");
+    expect(glyph.dataset.primerTemplateCoordinate).toBe("124");
   });
 
   it("submitting without retyping keeps the substitution and the record identity", () => {
@@ -659,8 +881,11 @@ describe("PRIMER-LIVE-1B correction — the dialog opens on the record, not the 
     const payload = onWritePrimer.mock.calls[0][0];
     expect(payload).toMatchObject({
       primerId: "prm-1",
-      binding: EDITED,
-      tail: TAIL,
+      // The helper tail ends in C, and the current template has a matching C
+      // immediately upstream. Full-sequence alignment therefore promotes that
+      // base into the duplex when the record is canonicalised on save.
+      binding: `C${EDITED}`,
+      tail: TAIL.slice(0, -1),
       sequence: `${TAIL}${EDITED}`,
       direction: "forward",
       modifications: ["5Phos"],
@@ -817,8 +1042,10 @@ describe("SEQ-VIS-1 — legacy split in the edit dialog", () => {
   it("still reports a substitution that sits behind the overhang", () => {
     const mut = `${ANCHOR.slice(0, 30)}A`; // last base of the landing
     openLegacy({ binding: `${POLY_A}${mut}`, sequence: `${POLY_A}${mut}` });
-    // template index 40, numbered from 1 for the reader
-    expect(screen.getByTestId("primer-modal-mismatch").textContent).toMatch(/\b41\b/);
+    const glyph = within(screen.getByTestId("primer-binding-template-preview"))
+      .getByTestId("sequence-view-primer-base-mismatch");
+    expect(glyph.dataset.primerAlignmentOp).toBe("X");
+    expect(screen.queryByTestId("primer-modal-mismatch")).toBeNull();
   });
 
   it("Save canonicalises tail / binding / sequence without moving the anchor", () => {
@@ -833,6 +1060,38 @@ describe("SEQ-VIS-1 — legacy split in the edit dialog", () => {
       direction: "forward",
       bindingModel: "aligned-v1",
     });
+  });
+
+  it("opens and saves the same biology when the helper boundary cuts through the unpaired prefix", () => {
+    const onCreate = vi.fn();
+    render(
+      <PrimerFromSelectionModal
+        draft={{
+          primerId: "p1", direction: "forward", start: 10, end: 41,
+          name: "split-helper", tail: POLY_A.slice(0, 4),
+          binding: `${POLY_A.slice(4)}${ANCHOR}`,
+          sequence: `${POLY_A}${ANCHOR}`,
+        }}
+        anchorSites={SITES}
+        template={TPL}
+        topology="linear"
+        entryId="E1"
+        documentHash="sha256:seqvis-v1"
+        onCreate={onCreate}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId("primer-modal-blocked")).toBeNull();
+    const save = screen.getByTestId("primer-modal-create");
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      tail: POLY_A,
+      binding: ANCHOR,
+      sequence: `${POLY_A}${ANCHOR}`,
+      bindingModel: "aligned-v1",
+    }));
   });
 });
 
@@ -868,6 +1127,38 @@ describe("SEQ-VIS-1 correction — unreadable anchored edits are blocked", () =>
     return onCreate;
   };
 
+  it("P6a correction fail-closes stale unprojectable Tm while keeping Save active", () => {
+    const onCreate = vi.fn();
+    const staleSites = [{
+      ...SITES[0],
+      target: { ...SITES[0].target, resourceHash: "stale-hash" },
+    }];
+    render(
+      <PrimerFromSelectionModal
+        draft={{
+          primerId: "p1", direction: "forward", start: 0, end: ANCHOR.length,
+          name: "stale", tail: "", binding: ANCHOR, sequence: ANCHOR, tm: 63.2,
+        }}
+        anchorSites={staleSites}
+        template={ANCHOR}
+        topology="linear"
+        entryId="e1"
+        documentHash="h1"
+        onCreate={onCreate}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("primer-modal-tm-full").textContent)
+      .toMatch(/Tm полного дуплекса: —.*не рассчитывается/);
+    expect(screen.getByTestId("primer-modal-tm-pcr").textContent)
+      .toMatch(/непригоден для стандартной PCR/i);
+    const save = screen.getByTestId("primer-modal-create");
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ tm: null }));
+  });
+
   it("shows tail/binding conflict and preserves the contradictory record on unchanged Save", () => {
     const onCreate = renderBlocked({
       tail: "GAATTC", binding: ANCHOR, sequence: `TTTTTT${ANCHOR}`,
@@ -880,18 +1171,19 @@ describe("SEQ-VIS-1 correction — unreadable anchored edits are blocked", () =>
     expect(onCreate).not.toHaveBeenCalled();
   });
 
-  it("shows unsupported indel and blocks unchanged Save", () => {
+  it("accepts a shorter legacy sequence as a biological terminal trim", () => {
     const short = ANCHOR.slice(2);
     const onCreate = renderBlocked({ binding: short, sequence: short });
-    expect(screen.getByTestId("primer-modal-blocked").textContent)
-      .toBe(tf("pcr.product.blocked.indel-unsupported"));
+    expect(screen.queryByTestId("primer-modal-blocked")).toBeNull();
     const save = screen.getByTestId("primer-modal-create");
-    expect(save.disabled).toBe(true);
+    expect(save.disabled).toBe(false);
     fireEvent.click(save);
-    expect(onCreate).not.toHaveBeenCalled();
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      tail: "", binding: short, sequence: short, bindingModel: "aligned-v1",
+    }));
   });
 
-  it("moves a readable legacy record into aligned editing and saves a live deletion", () => {
+  it("moves a readable legacy record into aligned editing and saves a terminal trim", () => {
     const onCreate = renderBlocked({});
     const binding = screen.getByTestId("primer-modal-seq");
     const save = screen.getByTestId("primer-modal-create");
@@ -899,24 +1191,29 @@ describe("SEQ-VIS-1 correction — unreadable anchored edits are blocked", () =>
     expect(save.disabled).toBe(false);
     fireEvent.change(binding, { target: { value: ANCHOR.slice(1) } });
     expect(screen.queryByTestId("primer-modal-blocked")).toBeNull();
-    expect(screen.getByTestId("primer-modal-alignment-summary").textContent)
-      .toMatch(/посадка 16.*делеции −1/);
+    expect(within(screen.getByTestId("primer-binding-template-preview"))
+      .getByTestId("sequence-view-primer")).toBeTruthy();
+    expect(within(screen.getByTestId("primer-binding-template-preview"))
+      .queryByTestId("sequence-view-primer-deletion-bridge")).toBeNull();
+    expect(screen.getByTestId("primer-modal-tm-anchor").textContent).toMatch(/3′-якорь 15 нт/);
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
       binding: ANCHOR.slice(1), sequence: ANCHOR.slice(1),
       bindingModel: "aligned-v1",
+      tm: calcTm(ANCHOR.slice(1)),
     }));
   });
 
-  it("opens an already aligned-v1 deletion without a veto", () => {
+  it("opens an already aligned-v1 terminal trim without a veto", () => {
     const short = ANCHOR.slice(2);
     const onCreate = renderBlocked({
       bindingModel: "aligned-v1", binding: short, sequence: short,
     });
     expect(screen.queryByTestId("primer-modal-blocked")).toBeNull();
-    expect(screen.getByTestId("primer-modal-alignment-summary").textContent)
-      .toMatch(/посадка 16.*делеции −2/);
+    expect(within(screen.getByTestId("primer-binding-template-preview"))
+      .queryByTestId("sequence-view-primer-deletion-bridge")).toBeNull();
+    expect(screen.getByTestId("primer-modal-tm-anchor").textContent).toMatch(/3′-якорь 14 нт/);
     const save = screen.getByTestId("primer-modal-create");
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
@@ -932,8 +1229,10 @@ describe("SEQ-VIS-1 correction — unreadable anchored edits are blocked", () =>
       target: { value: inserted },
     });
     expect(screen.queryByTestId("primer-modal-blocked")).toBeNull();
-    expect(screen.getByTestId("primer-modal-alignment-summary").textContent)
-      .toMatch(/посадка 16.*вставки \+1.*делеции −0/);
+    const insertion = within(screen.getByTestId("primer-binding-template-preview"))
+      .getByTestId("sequence-view-primer-insertion");
+    expect(insertion.dataset.primerInsertionCount).toBe("1");
+    expect(screen.queryByText(/вставка в праймере/i)).toBeNull();
     const save = screen.getByTestId("primer-modal-create");
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
@@ -944,19 +1243,54 @@ describe("SEQ-VIS-1 correction — unreadable anchored edits are blocked", () =>
 
   it("keeps a same-length substitution as a non-blocking mismatch", () => {
     const onCreate = renderBlocked({});
-    const mutated = `T${ANCHOR.slice(1)}`;
+    const mutated = `${ANCHOR.slice(0, 4)}A${ANCHOR.slice(5)}`;
     fireEvent.change(screen.getByTestId("primer-modal-seq"), {
       target: { value: mutated },
     });
 
-    expect(screen.getByTestId("primer-modal-mismatch")).toBeTruthy();
+    expect(within(screen.getByTestId("primer-binding-template-preview"))
+      .getByTestId("sequence-view-primer-base-mismatch")).toBeTruthy();
+    expect(screen.queryByText(/X\/I\/D|разрыв/i)).toBeNull();
     expect(screen.queryByTestId("primer-modal-blocked")).toBeNull();
     const save = screen.getByTestId("primer-modal-create");
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
-      binding: mutated, sequence: mutated,
+      binding: mutated, sequence: mutated, tm: null,
     }));
+  });
+  it("P6a shows full-duplex Tm, diagnostic 3'-anchor Tm and PCR status independently", () => {
+    const onCreate = renderBlocked({ tm: 63.2 });
+
+    expect(screen.getByTestId("primer-modal-tm-full").textContent)
+      .toMatch(/Tm полного дуплекса.*°C/);
+    expect(screen.getByTestId("primer-modal-tm-anchor").textContent)
+      .toMatch(/3′-якорь 16 нт.*Tm 3′-якоря.*°C/);
+    expect(screen.getByTestId("primer-modal-tm-pcr").textContent)
+      .toMatch(/PCR.*подходит/);
+    expect(screen.queryByTestId("primer-modal-tm-conditions")).toBeNull();
+    expect(screen.queryByText(/SantaLucia|Na⁺ 50 mM|dNTP 0\.2 mM/i)).toBeNull();
+
+    const internal = `${ANCHOR.slice(0, 4)}A${ANCHOR.slice(5)}`;
+    fireEvent.change(screen.getByTestId("primer-modal-seq"), {
+      target: { value: internal },
+    });
+    expect(screen.queryByTestId("primer-modal-tm-full")).toBeNull();
+    expect(screen.getByTestId("primer-modal-tm-anchor").textContent)
+      .toMatch(/3′-якорь 11 нт.*°C/);
+    expect(screen.getByTestId("primer-modal-tm-pcr").textContent)
+      .toMatch(/предупреждение/);
+    expect(screen.getByTestId("primer-modal-create").disabled).toBe(false);
+    fireEvent.click(screen.getByTestId("primer-modal-create"));
+    expect(onCreate).toHaveBeenLastCalledWith(expect.objectContaining({ tm: null }));
+
+    const terminal = `${ANCHOR.slice(0, -1)}${ANCHOR.at(-1) === 'A' ? 'C' : 'A'}`;
+    fireEvent.change(screen.getByTestId("primer-modal-seq"), {
+      target: { value: terminal },
+    });
+    expect(screen.getByTestId("primer-modal-tm-pcr").textContent)
+      .toMatch(/непригоден/);
+    expect(screen.getByTestId("primer-modal-create").disabled).toBe(false);
   });
 });
 

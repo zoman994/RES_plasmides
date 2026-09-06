@@ -94,7 +94,11 @@ export function useSequenceSelection({
   const onCaretChange = useCallback((pos, opts) => {
     if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
     const isExtending = !!(opts && opts.extendSelection);
-    if (!isExtending) {
+    // A drag that starts on a circular wrap-context row keeps its anchor
+    // pending until the pointer really moves. Committing that anchor must not
+    // be mistaken for the synthetic trailing click of a previous drag.
+    const forceAnchor = !!(opts && opts.forceAnchor);
+    if (!isExtending && !forceAnchor) {
       const sinceExtend = Date.now() - lastExtendAtRef.current;
       if (sinceExtend < dragGraceMs) return;
     }

@@ -1,52 +1,36 @@
-/**
- * FeatureEditorModal — Sprint M-X.3 follow-up.
- *
- * Opens on double-click of a feature in the SequenceView (replaces
- * the previous «dblclick → open Annotator» wire). Surfaces the
- * single-feature edit toolkit per biolog «двойной клик на фичу не
- * должен кидать в аннотатор. Он должен кидать в отдельную модалку,
- * которая
- *   1) даёт возможность разбить фичу на N кусков и слить с
- *      соседними,
- *   2) выбрать тип фичи,
- *   3) переименование, разметка интронов (заглушка), изменение
- *      координат каждого куска».
- *
- * Form layout:
- *   ┌──────────────────────────────────┐
- *   │ Edit feature                  [✕]│
- *   ├──────────────────────────────────┤
- *   │ NAME       [_________________]   │
- *   │ TYPE       [CDS ▼]               │
- *   │ COORDS     Start [___] End [___] │
- *   │ STRAND     ◉ +   ○ −             │
- *   │ ─── Operations ───               │
- *   │ [Split into 2] [3] [4]           │
- *   │ Merge with:                      │
- *   │   ◉ ← Plefty                     │
- *   │   ○ Trighty →                    │
- *   │   [Apply merge]                  │
- *   │ INTRONS    (stub — coming soon)  │
- *   ├──────────────────────────────────┤
- *   │ [Delete]      [Cancel] [Save]    │
- *   └──────────────────────────────────┘
- *
- * Stateless about WHERE the feature lives — the parent
- * (SingleInspector) wires the four callbacks to the existing
- * `applyAnnotationEdit` dispatcher + a small split / merge helper.
- */
+/** Canonical feature/location editor shared by Library and Container. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { STRINGS } from '../../../lib/strings';
 import { PART_TYPE_GROUPS } from '../../AnnotationEditor';
 import { featureColorShaded } from '../../../feature-palette';
 import { shadeFromBaseByIndex } from '../../../lib/color-utils';
+import {
+  LOCATION_KINDS,
+  toUiSegments,
+  fromUiSegment,
+  getSegments,
+  makeLocation,
+  normalizeLocation,
+} from '../../../lib/annotation-location';
+import FeatureLocationEditor from './FeatureLocationEditor';
+import { Icon } from '../../icons/Icon';
 
 const S = STRINGS.importer;
+const FOCUSABLE_SELECTOR = [
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 export default function FeatureEditorModal({
   feature,
   seqLength = 0,
+  // The current document's topology — an origin crossing is minted only when it
+  // is 'circular'. Unknown/absent stays linear so a wrap is never invented.
+  topology = 'linear',
   neighbours = [],
   onSave,
   onMerge,
@@ -56,32 +40,36 @@ export default function FeatureEditorModal({
   // Form state — re-seeded each time `feature.id` changes.
   const [name, setName] = useState('');
   const [type, setType] = useState('CDS');
-  const [start, setStart] = useState('1'); // 1-based UI
-  const [end, setEnd] = useState('1');
+  const [uiSegments, setUiSegments] = useState([{ uiStart: '1', uiEnd: '1' }]);
+  const [locationKind, setLocationKind] = useState(LOCATION_KINDS.SINGLE);
+  const [locationError, setLocationError] = useState(null);
   const [strand, setStrand] = useState(1);
   const [mergePick, setMergePick] = useState(null);
-  // Sub-features (level: 'detail' annotations under this region).
-  // Owned by the modal; emitted on Save as `meta.subFeatures`.
-  // Each entry: { id?, name, type, start, end, strand, color? }.
-  // Biolog «оба фрагмента всё ещё одна фича просто условно
-  // субфичи (типо сигнальный пептид в белке)» — split adds a row
-  // here without touching the parent annotation.
   const [subFeatures, setSubFeatures] = useState([]);
-  // Sprint M-X.3 follow-up — modal got two tabs «Feature» /
-  // «Subfeatures». Top-level features (level: 'region') see both;
-  // sub-features (level: 'detail') see only the Feature tab so
-  // they can't be split into nested grandchildren.
   const [activeTab, setActiveTab] = useState('feature');
   const isSubFeature = feature?.level === 'detail';
+  const isCompoundFeature = feature ? getSegments(feature).length > 1 : false;
+  const compoundOperationsBlocked = isCompoundFeature || uiSegments.length > 1;
   const nameRef = useRef(null);
+  const modalRef = useRef(null);
+  const restoreFocusRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const featureKey = feature ? (feature.id || `${feature.start}:${feature.end}`) : null;
   useEffect(() => {
     if (!feature) return;
     setName(feature.name || '');
     setType(feature.type || 'CDS');
-    setStart(String((feature.start || 0) + 1));
-    setEnd(String(feature.end || 0));
+    // Seed ordered 1-based inclusive segment rows from the canonical location
+    // (or the scalar projection for a legacy feature).
+    const ui = toUiSegments(feature);
+    setUiSegments(ui.length
+      ? ui.map((s) => ({ uiStart: String(s.uiStart), uiEnd: String(s.uiEnd) }))
+      : [{ uiStart: '1', uiEnd: '1' }]);
+    setLocationKind(feature.location?.kind
+      || (ui.length > 1 ? LOCATION_KINDS.JOIN : LOCATION_KINDS.SINGLE));
+    setLocationError(null);
     setStrand(feature.strand === -1 ? -1 : 1);
     setMergePick(null);
     // Pre-seed sub-features from the parent's existing detail
@@ -98,28 +86,48 @@ export default function FeatureEditorModal({
       end: a.end || 0,
       strand: a.strand === -1 ? -1 : 1,
       color: a.color,
+      isCompound: getSegments(a).length > 1,
     })));
     setActiveTab('feature');
   }, [featureKey]); // eslint-disable-line react-hooks/exhaustive-deps -- featureKey is the gate
 
-  // Esc closes — bound only while the modal is open. Listener runs
-  // in CAPTURE phase + calls stopPropagation so the App-level
-  // global Escape hotkey (`navStack.length > 1 → popFullscreen`)
-  // can't also fire and dump biolog out of the Library workspace.
-  // Biolog «из модалки этих фичес на эскейп выбрасывает из
-  // библиотеки совсем».
   useEffect(() => {
     if (!feature) return undefined;
+    restoreFocusRef.current = document.activeElement;
     const onKey = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        onClose?.();
+        onCloseRef.current?.();
+        return;
+      }
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusable = Array.from(modalRef.current.querySelectorAll(FOCUSABLE_SELECTOR));
+        if (focusable.length === 0) {
+          e.preventDefault();
+          modalRef.current.focus();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey && (active === first || !modalRef.current.contains(active))) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && (active === last || !modalRef.current.contains(active))) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
     window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [feature, onClose]);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      const previous = restoreFocusRef.current;
+      restoreFocusRef.current = null;
+      if (previous?.isConnected) previous.focus();
+    };
+  }, [featureKey]);
 
   useEffect(() => {
     if (feature && nameRef.current) {
@@ -133,47 +141,60 @@ export default function FeatureEditorModal({
   // are dropped — biolog wants merge to refuse non-touching
   // candidates so accidental merges across gaps don't happen.
   const adjacent = useMemo(() => {
-    if (!feature) return [];
+    if (!feature || compoundOperationsBlocked) return [];
     return (neighbours || []).filter((n) => {
-      if (!n || n.id === feature.id) return false;
+      if (!n || n.id === feature.id || getSegments(n).length > 1) return false;
       return n.end === feature.start || n.start === feature.end;
     });
-  }, [feature, neighbours]);
+  }, [feature, neighbours, compoundOperationsBlocked]);
 
   if (!feature) return null;
 
+  const onChangeSegment = (idx, patch) => {
+    setLocationError(null);
+    setUiSegments((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+  };
+  const onAddSegment = () => {
+    setLocationError(null);
+    setUiSegments((prev) => {
+      const last = prev[prev.length - 1];
+      return [...prev, last ? { uiStart: last.uiEnd, uiEnd: last.uiEnd } : { uiStart: '1', uiEnd: '1' }];
+    });
+    setLocationKind((k) => (k === LOCATION_KINDS.ORDER ? k : LOCATION_KINDS.JOIN));
+  };
+  const onRemoveSegment = (idx) => {
+    setLocationError(null);
+    setUiSegments((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
+  };
+
   const handleSave = () => {
-    const startUi = Number(start);
-    const endStore = Number(end);
-    const startStore = Number.isFinite(startUi) ? Math.max(0, startUi - 1) : feature.start;
     const patch = {
       name: name.trim() || feature.name,
       type,
-      start: startStore,
-      end: Number.isFinite(endStore) ? Math.max(startStore + 1, Math.min(seqLength || endStore, endStore)) : feature.end,
       strand: strand === -1 ? -1 : 1,
     };
-    // Sub-features come back as { id?, name, type, start, end,
-    // strand, color? }. Numeric coords already in store-space (the
-    // row inputs convert from 1-based UI to 0-based store on
-    // change). Parent inspector handles the create/update/delete
-    // diff against the previous detail set.
+    let nextSegments;
+    let location;
+    try {
+      nextSegments = uiSegments.map((s) => fromUiSegment(Number(s.uiStart), Number(s.uiEnd)));
+      const kind = nextSegments.length > 1
+        ? (locationKind === LOCATION_KINDS.ORDER ? LOCATION_KINDS.ORDER : LOCATION_KINDS.JOIN)
+        : LOCATION_KINDS.SINGLE;
+      location = makeLocation(kind, nextSegments);
+      normalizeLocation({ location }, { length: seqLength, topology });
+    } catch (err) {
+      setLocationError(locationErrorMessage(err));
+      return;
+    }
+    if (!segmentsEqual(nextSegments, getSegments(feature))) patch.location = location;
+    setLocationError(null);
+    // Sub-features come back as { id?, name, type, start, end, strand, color? }.
+    // The parent reconciles them through the collision/cascade-safe core paths.
     onSave?.({ patch, subFeatures: subFeatures.map((sf) => ({ ...sf })) });
   };
 
-  /**
-   * Single «Split» button. First click splits the parent at its
-   * midpoint into two halves named «{parentName}-1» / «{parentName}-2».
-   * Subsequent clicks halve the LAST sub-feature so biolog can keep
-   * adding marker regions without a per-N button.
-   *
-   * Per biolog «сабфичи должны окрашиваться в схожий цвет но с
-   * другим тоном» each child gets a colour shaded from the parent's
-   * palette base — same hue family, walking lightness so siblings
-   * stay distinguishable. «И они должны наследовать имя родителя
-   * только с индексами 1 2 3....n» → name = `${parentName}-${i}`.
-   */
   const handleSplit = () => {
+    if (compoundOperationsBlocked) return;
     const parentName = (feature?.name && feature.name.trim())
       || feature?.type
       || 'feature';
@@ -230,11 +251,8 @@ export default function FeatureEditorModal({
     setSubFeatures((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  // «+ intron» — an intron is just a detail sub-feature of type 'intron' linked
-  // to this feature (saved via meta.subFeatures with regionId = feature.id), so
-  // the AA track splices it. Seeds a mid-third default; the biolog adjusts the
-  // exact coordinates in the sub-feature row that appears above.
   const handleAddIntron = () => {
+    if (compoundOperationsBlocked) return;
     const s = Math.max(0, Number(feature?.start) || 0);
     const e = Math.max(s + 1, Number(feature?.end) || s + 1);
     const len = e - s;
@@ -250,9 +268,8 @@ export default function FeatureEditorModal({
   };
 
   const handleMerge = () => {
-    if (!mergePick) return;
-    onMerge?.(mergePick);
-    onClose?.();
+    if (!mergePick || compoundOperationsBlocked) return;
+    if (onMerge?.(mergePick) !== false) onClose?.();
   };
 
   const handleDelete = () => {
@@ -263,7 +280,15 @@ export default function FeatureEditorModal({
   return (
     <div
       data-testid="feature-editor-backdrop"
-      onPointerDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      data-modal-open=""
+      data-block-global-hotkeys="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="feature-editor-title"
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        if (e.target === e.currentTarget) onClose?.();
+      }}
       style={{
         position: 'fixed', inset: 0, zIndex: 230,
         background: 'rgba(0, 0, 0, 0.45)',
@@ -272,8 +297,11 @@ export default function FeatureEditorModal({
       }}
     >
       <div
+        ref={modalRef}
         data-testid="feature-editor-modal"
+        tabIndex={-1}
         onPointerDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: 480,
           background: 'var(--surface-1, #fff)',
@@ -342,26 +370,14 @@ export default function FeatureEditorModal({
               </Field>
 
               <Field label={S.featureEditorCoordsLabel}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{S.featureEditorCoordsStart}</span>
-                  <input
-                    data-testid="feature-editor-start"
-                    type="number"
-                    value={start}
-                    onChange={(e) => setStart(e.target.value)}
-                    style={{ ...inputStyle(), width: 90 }}
-                    min={1}
-                  />
-                  <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{S.featureEditorCoordsEnd}</span>
-                  <input
-                    data-testid="feature-editor-end"
-                    type="number"
-                    value={end}
-                    onChange={(e) => setEnd(e.target.value)}
-                    style={{ ...inputStyle(), width: 90 }}
-                    min={1}
-                  />
-                </div>
+                <FeatureLocationEditor
+                  segments={uiSegments}
+                  onChangeSegment={onChangeSegment}
+                  onAddSegment={onAddSegment}
+                  onRemoveSegment={onRemoveSegment}
+                  allowCompound={!isSubFeature}
+                  error={locationError}
+                />
               </Field>
 
               <Field label={S.featureEditorStrandLabel}>
@@ -447,9 +463,21 @@ export default function FeatureEditorModal({
                     type="button"
                     data-testid="feature-editor-split"
                     onClick={handleSplit}
-                    style={{ ...secondaryBtnStyle(), alignSelf: 'flex-start' }}
+                    disabled={compoundOperationsBlocked}
+                    style={{
+                      ...secondaryBtnStyle(),
+                      alignSelf: 'flex-start',
+                      opacity: compoundOperationsBlocked ? 0.5 : 1,
+                      cursor: compoundOperationsBlocked ? 'not-allowed' : 'pointer',
+                    }}
                     title={S.featureEditorSplitHint}
                   >+ {S.featureEditorSplit}</button>
+                  {compoundOperationsBlocked && (
+                    <span
+                      data-testid="feature-editor-compound-ops-note"
+                      style={{ fontSize: 9, color: 'var(--text-tertiary)' }}
+                    >{S.featureEditorCompoundOpsDisabled}</span>
+                  )}
                 </div>
               </Field>
 
@@ -459,7 +487,13 @@ export default function FeatureEditorModal({
                     type="button"
                     data-testid="feature-editor-add-intron"
                     onClick={handleAddIntron}
-                    style={{ ...secondaryBtnStyle(), alignSelf: 'flex-start' }}
+                    disabled={compoundOperationsBlocked}
+                    style={{
+                      ...secondaryBtnStyle(),
+                      alignSelf: 'flex-start',
+                      opacity: compoundOperationsBlocked ? 0.5 : 1,
+                      cursor: compoundOperationsBlocked ? 'not-allowed' : 'pointer',
+                    }}
                   >
                     + intron
                   </button>
@@ -523,7 +557,9 @@ function Header({ isSubFeature, onClose }) {
       padding: '12px 16px',
       borderBottom: '0.5px solid var(--border-subtle, #e7e5e4)',
     }}>
-      <div style={{ fontSize: 14, fontWeight: 500 }}>{S.featureEditorTitle}</div>
+      <div id="feature-editor-title" style={{ fontSize: 14, fontWeight: 500 }}>
+        {S.featureEditorTitle}
+      </div>
       <span
         data-testid="feature-editor-level-badge"
         style={{
@@ -544,6 +580,7 @@ function Header({ isSubFeature, onClose }) {
       <span style={{ flex: 1 }} />
       <button
         type="button"
+        data-testid="feature-editor-close"
         onClick={onClose}
         aria-label="close"
         style={{
@@ -552,7 +589,7 @@ function Header({ isSubFeature, onClose }) {
           color: 'var(--text-secondary)',
           border: 'none', cursor: 'pointer',
         }}
-      >✕</button>
+      ><Icon name="close" size={14} /></button>
     </div>
   );
 }
@@ -665,6 +702,7 @@ function SubFeatureRow({ subFeature, onChange, onDelete }) {
       <input
         data-testid="subfeature-start"
         type="number"
+        disabled={subFeature.isCompound}
         // 1-based UI display: store start + 1.
         value={String((subFeature.start || 0) + 1)}
         onChange={(e) => {
@@ -678,6 +716,7 @@ function SubFeatureRow({ subFeature, onChange, onDelete }) {
       <input
         data-testid="subfeature-end"
         type="number"
+        disabled={subFeature.isCompound}
         value={String(subFeature.end || 0)}
         onChange={(e) => {
           const v = Number(e.target.value);
@@ -700,7 +739,13 @@ function SubFeatureRow({ subFeature, onChange, onDelete }) {
           borderRadius: 'var(--radius-sm, 3px)',
           cursor: 'pointer',
         }}
-      >{S.featureEditorSubfeatureDelete}</button>
+      ><Icon name="close" size={14} /></button>
+      {subFeature.isCompound && (
+        <span
+          data-testid="subfeature-compound-note"
+          style={{ gridColumn: '3 / -1', fontSize: 9, color: 'var(--text-tertiary)' }}
+        >{S.featureEditorCompoundChildCoordsReadOnly}</span>
+      )}
     </div>
   );
 }
@@ -714,4 +759,20 @@ function secondaryBtnStyle() {
     borderRadius: 'var(--radius-sm, 3px)',
     cursor: 'pointer',
   };
+}
+
+/** Deep equality of two ordered `{start,end}` segment lists. */
+function segmentsEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i].start !== b[i].start || a[i].end !== b[i].end) return false;
+  }
+  return true;
+}
+
+/** Map a core location error to a friendly inline message. */
+function locationErrorMessage(err) {
+  return /circular topology/i.test(String(err?.message || ''))
+    ? S.featureEditorLocationErrorLinearWrap
+    : S.featureEditorLocationErrorInvalid;
 }

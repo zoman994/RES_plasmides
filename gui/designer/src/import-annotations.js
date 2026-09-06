@@ -6,6 +6,7 @@
  */
 
 import { generateRegionId } from './domain-detection';
+import { ingestAnnotations } from './lib/annotation-identity';
 import {
   LOCATION_KINDS,
   makeLocation,
@@ -453,11 +454,12 @@ export function importFeatures(features, seqLength, format, docOrTopology) {
       source: 'import',
     }));
 
-  // Write-path id (⚓ DEC-ANN-10 / TD-IMPORTER-NO-ID): every annotation —
-  // region, detail, point — gets a stable id here, not deferred to read-path.
-  for (const a of annotations) {
-    if (!a.id) a.id = generateRegionId();
-  }
+  // ANN-INTEGRITY — one canonical identity ingress gate for ALL levels
+  // (region / detail / point): adopt a legacy parentId as the canonical
+  // regionId, repair duplicate ids collision-safely, stamp an opaque id on
+  // anything id-less, and drop any stale bare `segments` display-shape. Replaces
+  // the ad-hoc per-annotation id stamping (⚓ DEC-ANN-10 / TD-IMPORTER-NO-ID).
+  const gated = ingestAnnotations(annotations);
 
-  return { annotations, primers, rejected };
+  return { annotations: gated, primers, rejected };
 }

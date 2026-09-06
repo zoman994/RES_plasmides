@@ -121,17 +121,17 @@ describe('root 2 — the primer exists immediately', () => {
 describe('root 5 — two landings become a piece through the existing path', () => {
   const primersById = {
     f: {
-      id: 'f', name: 'fwd', sequence: 'GAATTCAAAACCTT', bindingSequence: 'AAAACCTT',
+      id: 'f', name: 'fwd', sequence: 'GAATTCAAAACCTTTTGG', bindingSequence: 'AAAACCTTTTGG',
       tail: 'GAATTC', direction: 'forward', scope: PRIMER_SCOPE_PROJECT,
     },
     r: {
-      id: 'r', name: 'rev', sequence: 'TTCCAAAA', bindingSequence: 'TTCCAAAA',
+      id: 'r', name: 'rev', sequence: 'GGAATTCCAAAA', bindingSequence: 'GGAATTCCAAAA',
       tail: '', direction: 'reverse', scope: PRIMER_SCOPE_PROJECT,
     },
   };
   const occurrences = [
-    { key: 'f#1', primerId: 'f', start: 4, end: 12, strand: 1, evidence: 'source' },
-    { key: 'r#1', primerId: 'r', start: 24, end: 32, strand: -1, evidence: 'source' },
+    { key: 'f#1', primerId: 'f', start: 4, end: 16, strand: 1, evidence: 'source' },
+    { key: 'r#1', primerId: 'r', start: 24, end: 36, strand: -1, evidence: 'source' },
   ];
 
   const container = { id: 'c1', name: 'pTest', sequence: TPL, circular: true };
@@ -145,7 +145,7 @@ describe('root 5 — two landings become a piece through the existing path', () 
     const piece = buildPieceFromPcrProduct(container, resolved);
     expect(piece.origin).toBe('pcr-occurrences');
     expect(piece.acquisitionMethod).toBe('pcr');
-    expect(piece.ranges[0]).toMatchObject({ sourceId: 'c1', start: 4, end: 32 });
+    expect(piece.ranges[0]).toMatchObject({ sourceId: 'c1', start: 4, end: 36 });
     expect(piece.sourceIds).toEqual(['c1']);
     // The chosen landings travel with the piece so a later reader is not left
     // re-guessing which of several identical sites was meant.
@@ -153,30 +153,30 @@ describe('root 5 — two landings become a piece through the existing path', () 
     // The resolved product itself, so nothing downstream re-slices the template
     // and quietly drops the tail.
     expect(piece.acquisitionParams.productSequence)
-      .toBe('GAATTCAAAACCTTTTGGGGAACCCCTTTTGGAA');
+      .toBe('GAATTCAAAACCTTTTGGGGAACCCCTTTTGGAATTCC');
   });
 
   it('carries projected aligned-v1 indels through selection into PCR', () => {
-    const template = 'AAAACCCCGGGGTTTTAAAACCCC';
+    const template = 'AAAACCCCGGGGTTTTAAAACCCCGGGGTTTT';
     const records = [
       {
         id: 'fi', name: 'inserted-fwd', direction: 'forward', bindingModel: 'aligned-v1',
-        tail: '', bindingSequence: 'CCCCAGGGG', sequence: 'CCCCAGGGG',
+        tail: '', bindingSequence: 'CCCCAGGGGTTTTAAAA', sequence: 'CCCCAGGGGTTTTAAAA',
         sites: [{
           id: 'sf',
           target: { entryId: 'e-indel', resourceHash: 'h-indel', topology: 'linear' },
-          location: { kind: 'single', segments: [{ start: 4, end: 12 }] },
-          strand: 1, annealedSequence: 'CCCCGGGG', tail: '',
+          location: { kind: 'single', segments: [{ start: 4, end: 20 }] },
+          strand: 1, annealedSequence: 'CCCCGGGGTTTTAAAA', tail: '',
         }],
       },
       {
         id: 'rx', name: 'exact-rev', direction: 'reverse', bindingModel: 'aligned-v1',
-        tail: '', bindingSequence: 'GGGGTTTT', sequence: 'GGGGTTTT',
+        tail: '', bindingSequence: 'AAAACCCCGGGG', sequence: 'AAAACCCCGGGG',
         sites: [{
           id: 'sr',
           target: { entryId: 'e-indel', resourceHash: 'h-indel', topology: 'linear' },
-          location: { kind: 'single', segments: [{ start: 16, end: 24 }] },
-          strand: -1, annealedSequence: 'GGGGTTTT', tail: '',
+          location: { kind: 'single', segments: [{ start: 20, end: 32 }] },
+          strand: -1, annealedSequence: 'AAAACCCCGGGG', tail: '',
         }],
       },
     ];
@@ -229,14 +229,14 @@ describe('root 5 — two landings become a piece through the existing path', () 
     const piece = buildPieceFromPcrProduct(container, resolved);
     const snap = piece.acquisitionParams.primerSnapshots;
     expect(snap.forward).toMatchObject({
-      id: 'f', sequence: 'GAATTCAAAACCTT', bindingSequence: 'AAAACCTT', tail: 'GAATTC',
+      id: 'f', sequence: 'GAATTCAAAACCTTTTGG', bindingSequence: 'AAAACCTTTTGG', tail: 'GAATTC',
     });
-    expect(snap.reverse).toMatchObject({ id: 'r', sequence: 'TTCCAAAA' });
+    expect(snap.reverse).toMatchObject({ id: 'r', sequence: 'GGAATTCCAAAA' });
     // A snapshot is immutable evidence — mutating the pool afterwards must not
     // rewrite what the reaction was primed with.
     primersById.f.sequence = 'MUTATED';
-    expect(snap.forward.sequence).toBe('GAATTCAAAACCTT');
-    primersById.f.sequence = 'GAATTCAAAACCTT';
+    expect(snap.forward.sequence).toBe('GAATTCAAAACCTTTTGG');
+    primersById.f.sequence = 'GAATTCAAAACCTTTTGG';
   });
 
   it('the piece drives the EXISTING derived-reaction builder', () => {
@@ -251,7 +251,7 @@ describe('root 5 — two landings become a piece through the existing path', () 
     expect(op).toBeTruthy();
     expect(op.kind).toBe('pcr');
     expect(op.params.templateId).toBe('c1');
-    expect(op.params.range).toEqual({ start: 4, end: 32 });
+    expect(op.params.range).toEqual({ start: 4, end: 36 });
   });
 
   it('the reaction carries the snapshots, and executing it rebuilds the SAME product', () => {
@@ -264,7 +264,7 @@ describe('root 5 — two landings become a piece through the existing path', () 
     });
     const op = next.operations.find((o) => o.id === next.pieces[0].derivedReactionId);
     expect(op.params.occurrenceKeys).toEqual(['f#1', 'r#1']);
-    expect(op.params.primerSnapshots.forward.sequence).toBe('GAATTCAAAACCTT');
+    expect(op.params.primerSnapshots.forward.sequence).toBe('GAATTCAAAACCTTTTGG');
 
     // Execution must not re-locate anything: the amplicon the biolog approved
     // in the preview is the amplicon that comes out.
@@ -278,15 +278,15 @@ describe('root 5 — two landings become a piece through the existing path', () 
 
   it('supports an origin-wrapping product without inventing a new operation kind', () => {
     const wrapPrimers = {
-      f: { id: 'wf', name: 'wf', sequence: 'AATTCCGG', bindingSequence: 'AATTCCGG', tail: '', direction: 'forward' },
-      r: { id: 'wr', name: 'wr', sequence: 'AAAAGGTT', bindingSequence: 'AAAAGGTT', tail: '', direction: 'reverse' },
+      f: { id: 'wf', name: 'wf', sequence: 'GGAATTCCGGAA', bindingSequence: 'GGAATTCCGGAA', tail: '', direction: 'forward' },
+      r: { id: 'wr', name: 'wr', sequence: 'CCAAAAGGTTTT', bindingSequence: 'CCAAAAGGTTTT', tail: '', direction: 'reverse' },
     };
     const resolved = resolvePcrProduct({
       template: TPL,
       topology: 'circular',
       occurrences: [
-        { key: 'wf#1', primerId: 'f', start: 30, end: 38, strand: 1, evidence: 'source' },
-        { key: 'wr#1', primerId: 'r', start: 6, end: 14, strand: -1, evidence: 'source' },
+        { key: 'wf#1', primerId: 'f', start: 28, end: 40, strand: 1, evidence: 'source' },
+        { key: 'wr#1', primerId: 'r', start: 4, end: 16, strand: -1, evidence: 'source' },
       ],
       primersById: wrapPrimers,
     });
@@ -297,8 +297,8 @@ describe('root 5 — two landings become a piece through the existing path', () 
     // A ring cannot be one `start > end` range — the piece invariant forbids it.
     // The wrap is two real spans on the SAME source, and sourceIds stays parallel.
     expect(piece.ranges).toHaveLength(2);
-    expect(piece.ranges[0]).toMatchObject({ sourceId: 'c1', start: 30, end: 40 });
-    expect(piece.ranges[1]).toMatchObject({ sourceId: 'c1', start: 0, end: 14 });
+    expect(piece.ranges[0]).toMatchObject({ sourceId: 'c1', start: 28, end: 40 });
+    expect(piece.ranges[1]).toMatchObject({ sourceId: 'c1', start: 0, end: 16 });
     expect(piece.sourceIds).toEqual(['c1', 'c1']);
 
     const st = {
@@ -315,12 +315,12 @@ describe('root 5 — two landings become a piece through the existing path', () 
 
 describe('trust travels with the product, and fails closed', () => {
   const primersById = {
-    f: { id: 'f', name: 'fwd', sequence: 'AAAACCTT', bindingSequence: 'AAAACCTT', tail: '', direction: 'forward' },
-    r: { id: 'r', name: 'rev', sequence: 'TTCCAAAA', bindingSequence: 'TTCCAAAA', tail: '', direction: 'reverse' },
+    f: { id: 'f', name: 'fwd', sequence: 'AAAACCTTTTGG', bindingSequence: 'AAAACCTTTTGG', tail: '', direction: 'forward' },
+    r: { id: 'r', name: 'rev', sequence: 'GGAATTCCAAAA', bindingSequence: 'GGAATTCCAAAA', tail: '', direction: 'reverse' },
   };
   const occurrences = [
-    { key: 'f#1', primerId: 'f', start: 4, end: 12, strand: 1, evidence: 'source' },
-    { key: 'r#1', primerId: 'r', start: 24, end: 32, strand: -1, evidence: 'source' },
+    { key: 'f#1', primerId: 'f', start: 4, end: 16, strand: 1, evidence: 'source' },
+    { key: 'r#1', primerId: 'r', start: 24, end: 36, strand: -1, evidence: 'source' },
   ];
   const container = { id: 'c1', name: 'pTest', sequence: TPL, circular: true };
 

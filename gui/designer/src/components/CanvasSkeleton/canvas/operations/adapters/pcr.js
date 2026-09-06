@@ -16,7 +16,74 @@ import {
 import { resolveOpTemplate } from '../../../lib/op-piece-bridge';
 import { resolvePcrProduct } from '../../../../../lib/pcr-amplicon';
 import { documentIdentityOf } from '../../../../../lib/primer-live-workflow';
+import { evaluateStandardPcrAnnealing } from '../../../../../lib/primer-annealing-policy';
 
+
+function occurrenceFromSnapshot(snapshot, primerId, strand) {
+  return {
+    key: snapshot.occurrenceKey,
+    primerId,
+    start: snapshot.start,
+    end: snapshot.end,
+    strand,
+    ...(Array.isArray(snapshot.segments) ? {
+      segments: snapshot.segments.map(({ start, end }) => ({ start, end })),
+    } : {}),
+    ...(snapshot.alignment ? {
+      alignment: {
+        ...snapshot.alignment,
+        runs: Array.isArray(snapshot.alignment.runs)
+          ? snapshot.alignment.runs.map((run) => ({ ...run }))
+          : snapshot.alignment.runs,
+        counts: snapshot.alignment.counts
+          ? { ...snapshot.alignment.counts }
+          : snapshot.alignment.counts,
+        targetSpan: snapshot.alignment.targetSpan
+          ? { ...snapshot.alignment.targetSpan }
+          : snapshot.alignment.targetSpan,
+      },
+    } : {}),
+  };
+}
+
+function shortExplicitPrimerReason(binding) {
+  const query = String(binding ?? '').replace(/\s+/g, '').toUpperCase();
+  const verdict = evaluateStandardPcrAnnealing({
+    query,
+    threePrimeMatchLength: query.length,
+  });
+  return verdict.status === 'non-annealing' ? verdict.reason : null;
+}
+
+function anchorReasonText(reason) {
+  return ({
+    'no-three-prime-anchor': 'нет посадочной части на матрицу',
+    'short-three-prime-anchor': 'на 3′-конце меньше 10 комплементарных нт',
+    'noncanonical-three-prime-anchor': 'в 3′-области посадки есть неканонический нуклеотид',
+    'invalid-three-prime-anchor-evidence': 'недостаточно данных о 3′-посадке',
+  })[reason] || '3′-посадка непригодна для стандартной PCR';
+}
+
+function explicitPrimerAnchorError(forwardBinding, reverseBinding) {
+  const forwardReason = shortExplicitPrimerReason(forwardBinding);
+  if (forwardReason) return `PCR: forward primer — ${anchorReasonText(forwardReason)}`;
+  const reverseReason = shortExplicitPrimerReason(reverseBinding);
+  if (reverseReason) return `PCR: reverse primer — ${anchorReasonText(reverseReason)}`;
+  return null;
+}
+
+function explicitBinding(record, field, fallback) {
+  return typeof record?.[field] === 'string'
+    ? record[field].toUpperCase()
+    : String(fallback || '').toUpperCase();
+}
+
+function autoDesignedPrimerError(designedPrimers) {
+  return explicitPrimerAnchorError(
+    designedPrimers?.forward?.sequence,
+    designedPrimers?.reverse?.sequence,
+  );
+}
 
 /**
  * Build the product from the landings the op already knows about.
@@ -60,25 +127,21 @@ function resolveFromOccurrences(operation, template) {
     template: template.sequence,
     topology: circular ? 'circular' : 'linear',
     occurrences: [
-      {
-        key: snaps.forward.occurrenceKey,
-        primerId: 'fwd',
-        start: snaps.forward.start,
-        end: snaps.forward.end,
-        strand: 1,
-      },
-      {
-        key: snaps.reverse.occurrenceKey,
-        primerId: 'rev',
-        start: snaps.reverse.start,
-        end: snaps.reverse.end,
-        strand: -1,
-      },
+      occurrenceFromSnapshot(snaps.forward, 'fwd', 1),
+      occurrenceFromSnapshot(snaps.reverse, 'rev', -1),
     ],
     primersById: { fwd: { ...snaps.forward, id: 'fwd' }, rev: { ...snaps.reverse, id: 'rev' } },
   });
   if (resolved.ok !== true) {
-    return { error: `PCR не собирается по выбранным посадкам: ${resolved.reason}` };
+    const reason = [
+      'no-three-prime-anchor',
+      'short-three-prime-anchor',
+      'noncanonical-three-prime-anchor',
+      'invalid-three-prime-anchor-evidence',
+    ].includes(resolved.reason)
+      ? anchorReasonText(resolved.reason)
+      : resolved.reason;
+    return { error: `PCR не собирается по выбранным посадкам: ${reason}` };
   }
   return { sequence: resolved.product.sequence, product: resolved.product };
 }
@@ -151,8 +214,10 @@ function executeSingleTemplatePCR(operation, ctx, templateId, primerPairId, auto
     // → byte-identical to the prior behaviour.
     const fwdTail = (seqs[0]?.tail ?? seqs[0]?.tailSequence ?? '').toUpperCase();
     const revTail = (seqs[1]?.tail ?? seqs[1]?.tailSequence ?? '').toUpperCase();
-    const fwdBind = (seqs[0]?.bindingSequence || fwdFull).toUpperCase();
-    const revBind = (seqs[1]?.bindingSequence || revFull).toUpperCase();
+    const fwdBind = explicitBinding(seqs[0], 'bindingSequence', fwdFull);
+    const revBind = explicitBinding(seqs[1], 'bindingSequence', revFull);
+    const anchorError = explicitPrimerAnchorError(fwdBind, revBind);
+    if (anchorError) return { error: anchorError };
     const tplSeq = template.sequence.toUpperCase();
     const fwdIdx = tplSeq.indexOf(fwdBind);
     if (fwdIdx < 0) return { error: 'Forward primer не найден в темплейте' };
@@ -187,8 +252,10 @@ function executeSingleTemplatePCR(operation, ctx, templateId, primerPairId, auto
   const userPair = operation.params?.userPrimers?.[0];
   if (!primerPairId && userPair && userPair.forward && userPair.reverse) {
     const tplSeq = template.sequence.toUpperCase();
-    const fwdBind = String(userPair.fwdBinding || userPair.forward).toUpperCase();
-    const revBind = String(userPair.revBinding || userPair.reverse).toUpperCase();
+    const fwdBind = explicitBinding(userPair, 'fwdBinding', userPair.forward);
+    const revBind = explicitBinding(userPair, 'revBinding', userPair.reverse);
+    const anchorError = explicitPrimerAnchorError(fwdBind, revBind);
+    if (anchorError) return { error: anchorError };
     const fwdIdx = tplSeq.indexOf(fwdBind);
     if (fwdIdx < 0) return { error: 'Forward primer (выбранный в вьювере) не найден в темплейте' };
     const revRc = reverseComplement(revBind);
@@ -217,6 +284,8 @@ function executeSingleTemplatePCR(operation, ctx, templateId, primerPairId, auto
     return { outputs: [amplicon, userOligoOut] };
   }
   const designedPrimers = autoDesignPrimerPair(template.sequence);
+  const designedPrimerError = autoDesignedPrimerError(designedPrimers);
+  if (designedPrimerError) return { error: designedPrimerError };
   const ampliconSeq = template.sequence;
   const amplicon = newContainer({
     name: `${template.name || 'template'}_amplicon`,
@@ -251,8 +320,10 @@ function executeMultiTemplatePCR(operation, ctx, templateIds, primerPairId, auto
     // V175 (PRIMER-9) — anneal on binding only; overhangs go to product ends.
     const fwdTail = (seqs[0]?.tail ?? seqs[0]?.tailSequence ?? '').toUpperCase();
     const revTail = (seqs[1]?.tail ?? seqs[1]?.tailSequence ?? '').toUpperCase();
-    const fwd = (seqs[0]?.bindingSequence || fwdFull).toUpperCase();
-    const rev = (seqs[1]?.bindingSequence || revFull).toUpperCase();
+    const fwd = explicitBinding(seqs[0], 'bindingSequence', fwdFull);
+    const rev = explicitBinding(seqs[1], 'bindingSequence', revFull);
+    const anchorError = explicitPrimerAnchorError(fwd, rev);
+    if (anchorError) return { error: anchorError };
     const revRc = reverseComplement(rev);
     for (const tid of templateIds) {
       const template = ctx.containers[tid];
@@ -309,6 +380,12 @@ function executeMultiTemplatePCR(operation, ctx, templateIds, primerPairId, auto
       continue;
     }
     const designedPrimers = autoDesignPrimerPair(template.sequence);
+    const designedPrimerError = autoDesignedPrimerError(designedPrimers);
+    if (designedPrimerError) {
+      skipped.push(template.name || tid);
+      errors.push(`${template.name || tid}: ${designedPrimerError}`);
+      continue;
+    }
     const amplicon = newContainer({
       name: `${template.name || 'template'}_amplicon`,
       sequence: template.sequence,
@@ -321,13 +398,14 @@ function executeMultiTemplatePCR(operation, ctx, templateIds, primerPairId, auto
         autoDesign: true,
         designedPrimers,
         multiTemplate: true,
+        skipped,
       },
     });
     const oligoOut = makeDesignedOligoContainer(operation, tid, template, designedPrimers);
     outputs.push(amplicon, oligoOut);
   }
   if (outputs.length === 0) {
-    return { error: `Multi-PCR: ни один template не валиден. ${errors.join('; ')}` };
+    return { error: `Multi-PCR: ни один template не дал пригодные праймеры. ${errors.join('; ')}` };
   }
   return { outputs };
 }

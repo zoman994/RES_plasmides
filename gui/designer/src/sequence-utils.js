@@ -59,6 +59,17 @@ export function isValidDNA(seq) {
 }
 
 /**
+ * Validate a prospective value for a controlled DNA-only field.
+ * Empty is a valid intermediate edit; every non-empty value is accepted only
+ * as a whole, so paste never silently drops or rewrites unsupported symbols.
+ */
+export function normalizeDnaFieldInput(value) {
+  if (value === '') return { accepted: true, value: '' };
+  if (!isValidDNA(value)) return { accepted: false, value: null };
+  return { accepted: true, value: value.toUpperCase() };
+}
+
+/**
  * Inspect which non-IUPAC characters would be stripped by sanitizeSequence.
  * Whitespace is ignored (it is stripped but not considered "invalid" — it is
  * a formatting artifact, not illegal content).

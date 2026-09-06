@@ -10,8 +10,15 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import LibrarySaveActions from '../LibrarySaveActions';
 import { useStore } from '../../../../store';
+import { computeResourceHash } from '../../lib/resource-hash';
 
-afterEach(cleanup);
+const originalCreateManualEditBranch = useStore.getState().createManualEditBranch;
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  useStore.setState({ createManualEditBranch: originalCreateManualEditBranch });
+});
 
 const base = {
   libraryEntryId: 'x1',
@@ -56,7 +63,8 @@ describe('LibrarySaveActions — version-only save + что изменено', (
 describe('LibrarySaveActions — createManualEditBranch dispatch', () => {
   beforeEach(() => {
     useStore.setState({
-      libraryEntries: { x1: { id: 'x1', kind: 'container', name: 'pUC19', payload: { sequence: 'ATGC', topology: 'linear', annotations: [] } } },
+      libraryEntries: { x1: { id: 'x1', kind: 'container', name: 'pUC19', payload: { sequence: 'ATGC', topology: 'circular', annotations: [] } } },
+      createManualEditBranch: originalCreateManualEditBranch,
     });
   });
 
@@ -106,5 +114,57 @@ describe('LibrarySaveActions — createManualEditBranch dispatch', () => {
     await waitFor(() => expect(onAfter).toHaveBeenCalled());
     const branch = Object.values(useStore.getState().libraryEntries).find((e) => e.id !== 'x1' && e.parentEntryId === 'x1' && e.origin?.lineageRole === 'branch');
     expect(branch).toBeTruthy();
+  });
+
+  it('topology-only save keeps the parent circular and creates a linear child with the linear hash', async () => {
+    const onAfter = vi.fn();
+    render(
+      <LibrarySaveActions
+        {...base}
+        editedSequence="ATGC"
+        editedTopology="linear"
+        changesSummary={['топология · кольцевая → линейная']}
+        changeText="топология · кольцевая → линейная"
+        onAfterSaveAsVersion={onAfter}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('library-save-as-version'));
+    fireEvent.change(screen.getByTestId('library-save-version-name'), { target: { value: 'pUC19 · linear' } });
+    fireEvent.click(screen.getByTestId('library-save-version-submit'));
+    await waitFor(() => expect(onAfter).toHaveBeenCalled());
+
+    const parent = useStore.getState().libraryEntries.x1;
+    const child = Object.values(useStore.getState().libraryEntries)
+      .find((entry) => entry.id !== 'x1' && entry.parentEntryId === 'x1');
+    expect(parent.payload.topology).toBe('circular');
+    expect(child.payload.topology).toBe('linear');
+    expect(child.payload.resourceHash).toBe(await computeResourceHash({
+      sequence: 'ATGC', topology: 'linear', ends: parent.payload.ends,
+    }));
+  });
+
+  it.each([
+    ['persist-error result', () => Promise.resolve({ ok: false, reason: 'persist-error' })],
+    ['thrown persistence error', () => Promise.reject(new Error('disk offline'))],
+  ])('keeps the form and pending buffer after %s, then permits a successful retry', async (_label, firstAttempt) => {
+    const action = vi.fn()
+      .mockImplementationOnce(firstAttempt)
+      .mockResolvedValueOnce({ ok: true, id: 'retry-id', name: 'retryable' });
+    useStore.setState({ createManualEditBranch: action });
+    const onAfter = vi.fn();
+    render(<LibrarySaveActions {...base} editedTopology="linear" onAfterSaveAsVersion={onAfter} />);
+    fireEvent.click(screen.getByTestId('library-save-as-version'));
+    fireEvent.change(screen.getByTestId('library-save-version-name'), { target: { value: 'retryable' } });
+    fireEvent.click(screen.getByTestId('library-save-version-submit'));
+
+    await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('library-save-version-submit').disabled).toBe(false));
+    expect(screen.getByTestId('library-save-version-modal')).toBeTruthy();
+    expect(screen.getByTestId('library-save-version-name').value).toBe('retryable');
+    expect(onAfter).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('library-save-version-submit'));
+    await waitFor(() => expect(onAfter).toHaveBeenCalledWith('retry-id', 'retryable'));
+    expect(action).toHaveBeenCalledTimes(2);
   });
 });

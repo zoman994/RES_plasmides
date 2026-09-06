@@ -15,6 +15,8 @@
  *                       boundary by ≤2 bases → K=3 with margin);
  *       seqLength     — only matters for the wrap-bridge row (line.wrapsOrigin);
  *       features      — entries OVERLAPPING the line, by value;
+ *       primerOccurrences — projected sites whose binding or 5′ tail paints
+ *                       the line;
  *       orfRanges     — entries overlapping the line, by value;
  *       reSites       — entries near the line (±margin for distal Type IIS cuts);
  *       framesResolution — the frame DECISION (strategy + dominant), ignoring the
@@ -32,7 +34,8 @@ const K = 3; // fullSeq context window each side (codon straddle ≤ 2 + margin)
 const RE_MARGIN = 24; // RE-site distal cut / marker reach
 
 const RELAXED = new Set([
-  'line', 'fullSeq', 'seqLength', 'features', 'orfRanges', 'reSites', 'framesResolution',
+  'line', 'fullSeq', 'seqLength', 'features', 'primerOccurrences',
+  'orfRanges', 'reSites', 'framesResolution',
 ]);
 
 function sliceOf(s, a, b) {
@@ -68,6 +71,65 @@ function overlapByPositionEqual(pa, na, start, end, margin) {
   const lo = start - margin;
   const hi = end + margin;
   const keep = (e) => e && Number.isFinite(e.position) && e.position >= lo && e.position <= hi;
+  const p = (Array.isArray(pa) ? pa : []).filter(keep);
+  const n = (Array.isArray(na) ? na : []).filter(keep);
+  return JSON.stringify(p) === JSON.stringify(n);
+}
+
+function spanOverlapsLine(spanStart, spanEnd, lineStart, lineEnd) {
+  return Number.isFinite(spanStart) && Number.isFinite(spanEnd)
+    && spanEnd > lineStart && spanStart < lineEnd;
+}
+
+function primerOccurrencePaintsLine(occurrence, start, end, circular, seqLength) {
+  const segments = Array.isArray(occurrence?.segments) ? occurrence.segments : [];
+  if (segments.some((segment) => spanOverlapsLine(
+    segment?.start, segment?.end, start, end,
+  ))) return true;
+
+  const tail = typeof occurrence?.tail === 'string'
+    ? occurrence.tail
+    : (typeof occurrence?.tailSequence === 'string' ? occurrence.tailSequence : '');
+  if (!tail.length || segments.length === 0) return false;
+
+  // Match PrimerTrack's physical 5′ boundary: the first genomic segment for a
+  // forward occurrence and the last one for a reverse occurrence. The tail can
+  // therefore paint the adjacent line even when no binding segment does.
+  const reverse = occurrence.strand === -1;
+  const boundarySegment = reverse ? segments[segments.length - 1] : segments[0];
+  if (!Number.isFinite(boundarySegment?.start) || !Number.isFinite(boundarySegment?.end)) {
+    return false;
+  }
+
+  const rawStart = reverse ? boundarySegment.end : boundarySegment.start - tail.length;
+  const rawEnd = reverse ? boundarySegment.end + tail.length : boundarySegment.start;
+  const moleculeLength = Number.isFinite(seqLength) && seqLength > 0 ? seqLength : null;
+  const clippedStart = reverse ? rawStart : Math.max(0, rawStart);
+  const clippedEnd = reverse && moleculeLength ? Math.min(moleculeLength, rawEnd) : rawEnd;
+  if (spanOverlapsLine(clippedStart, clippedEnd, start, end)) return true;
+
+  if (!circular || !moleculeLength) return false;
+  // A tail at either physical edge continues at the opposite end. Very long
+  // tails cover every line; this conservative branch also avoids modulo losing
+  // a complete lap.
+  if (tail.length >= moleculeLength) return true;
+  if (!reverse && rawStart < 0) {
+    return spanOverlapsLine(moleculeLength + rawStart, moleculeLength, start, end);
+  }
+  if (reverse && rawEnd > moleculeLength) {
+    return spanOverlapsLine(0, rawEnd - moleculeLength, start, end);
+  }
+  return false;
+}
+
+function primerOccurrencesEqual(pa, na, start, end, wrapsOrigin, circular, seqLength) {
+  if (pa === na) return true;
+  // A bridge row also renders the plasmid-start half. It is only one row, so a
+  // full value comparison is safer than duplicating wrap geometry here.
+  if (wrapsOrigin) return JSON.stringify(pa || []) === JSON.stringify(na || []);
+  const keep = (occurrence) => primerOccurrencePaintsLine(
+    occurrence, start, end, circular, seqLength,
+  );
   const p = (Array.isArray(pa) ? pa : []).filter(keep);
   const n = (Array.isArray(na) ? na : []).filter(keep);
   return JSON.stringify(p) === JSON.stringify(n);
@@ -113,6 +175,15 @@ export function sequenceLineEqual(prev, next) {
   if (!overlapBySpanEqual(prev.features, next.features, start, end, 0)) return false;
   if (!overlapBySpanEqual(prev.orfRanges, next.orfRanges, start, end, 0)) return false;
   if (!overlapByPositionEqual(prev.reSites, next.reSites, start, end, RE_MARGIN)) return false;
+  if (!primerOccurrencesEqual(
+    prev.primerOccurrences,
+    next.primerOccurrences,
+    start,
+    end,
+    ln.wrapsOrigin || (prev.line || {}).wrapsOrigin,
+    next.circular,
+    next.seqLength,
+  )) return false;
   if (!framesEqual(prev.framesResolution, next.framesResolution)) return false;
 
   return true;

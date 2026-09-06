@@ -9,7 +9,9 @@ import { useLibrarySaveFlow } from '../useLibrarySaveFlow';
 
 afterEach(cleanup);
 
-const mineItem = { _libraryEntryId: 'lib-id', name: 'pUC19', sequence: 'ATGC' };
+const mineItem = {
+  _libraryEntryId: 'lib-id', name: 'pUC19', sequence: 'ATGC', topology: 'circular',
+};
 const catalogItem = { name: 'Demo' }; // no _libraryEntryId
 
 describe('useLibrarySaveFlow (version-only)', () => {
@@ -51,14 +53,44 @@ describe('useLibrarySaveFlow (version-only)', () => {
     expect(result.current.editedSequence).toBe('ATGC');
   });
 
-  it('onAfterSaveAsVersion clears the whole transient buffer (seq + anns + log)', () => {
+  it('topology-only divergence enables version save and names the real transition', () => {
+    const { result } = renderHook(() => useLibrarySaveFlow({
+      item: mineItem,
+      edits: {
+        editedTopology: 'linear',
+        editLog: [{ kind: 'topology', from: 'circular', to: 'linear' }],
+      },
+      onUpdateEdits: () => {},
+    }));
+    expect(result.current.hasChanges).toBe(true);
+    expect(result.current.editedTopology).toBe('linear');
+    expect(result.current.changesSummary).toEqual(['топология · кольцевая → линейная']);
+    expect(result.current.changeText).not.toContain('правка');
+  });
+
+  it('an undone buffer equal to the saved molecule is clean despite lingering properties', () => {
+    const { result } = renderHook(() => useLibrarySaveFlow({
+      item: mineItem,
+      edits: { editedSequence: 'ATGC', editedTopology: 'circular', editLog: [] },
+      onUpdateEdits: () => {},
+    }));
+    expect(result.current.hasChanges).toBe(false);
+    expect(result.current.changesSummary).toEqual([]);
+  });
+
+  it('onAfterSaveAsVersion clears the whole transient buffer (seq + anns + topology + log)', () => {
     const onUpdateEdits = vi.fn();
     const { result } = renderHook(() => useLibrarySaveFlow({
-      item: mineItem, edits: { editedSequence: 'ATGCT', editedAnnotations: [{}], editLog: [{}] }, onUpdateEdits,
+      item: mineItem,
+      edits: { editedSequence: 'ATGCT', editedAnnotations: [{}], editedTopology: 'linear', editLog: [{}] },
+      onUpdateEdits,
     }));
     act(() => result.current.onAfterSaveAsVersion());
     expect(onUpdateEdits).toHaveBeenCalledWith({
-      editedAnnotations: undefined, editedSequence: undefined, editLog: undefined,
+      editedAnnotations: undefined,
+      editedSequence: undefined,
+      editedTopology: undefined,
+      editLog: undefined,
     });
   });
 });

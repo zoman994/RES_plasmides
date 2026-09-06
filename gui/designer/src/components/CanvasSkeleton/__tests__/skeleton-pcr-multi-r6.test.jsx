@@ -56,6 +56,33 @@ describe('R6-4 — executePCR multi-template', () => {
     expect(amplicons[0].origin.multiTemplate).toBe(true);
   });
 
+  it('multi-template auto-design skips a short template and keeps valid outputs', () => {
+    const short = { id: 'short', kind: 'molecule', name: 'short', sequence: 'ACGTACGTA' };
+    const valid = {
+      id: 'valid', kind: 'molecule', name: 'valid',
+      sequence: 'ATCGATCGATCGATCGATCGATCGATCGATCG',
+    };
+    const result = executePCR({
+      id: 'op', kind: 'pcr', params: { templateIds: ['short', 'valid'], autoDesign: true },
+    }, { containers: { short, valid } });
+
+    expect(result.error).toBeUndefined();
+    expect(result.outputs).toHaveLength(2);
+    expect(result.outputs[0].name).toBe('valid_amplicon');
+    expect(result.outputs[0].origin.skipped).toContain('short');
+  });
+
+  it('multi-template auto-design fails when every generated pair has a short 3-prime anchor', () => {
+    const a = { id: 'a', kind: 'molecule', name: 'A', sequence: 'ACGTACGTA' };
+    const b = { id: 'b', kind: 'molecule', name: 'B', sequence: 'TGCATGCAT' };
+    const result = executePCR({
+      id: 'op', kind: 'pcr', params: { templateIds: ['a', 'b'], autoDesign: true },
+    }, { containers: { a, b } });
+
+    expect(result.error).toMatch(/меньше 10/i);
+    expect(result.outputs).toBeUndefined();
+  });
+
   it('multi-template с primer pair skips non-matching templates', () => {
     const fwdSeq = 'GGGGCCCCGGGG';
     const revSeq = 'CGATCGATCGAT';
@@ -84,8 +111,8 @@ describe('R6-4 — executePCR multi-template', () => {
   });
 
   it('multi-template все темплейты не сматчили → error', () => {
-    const fwdSeq = 'XYXYXYXYXYXY';
-    const revSeq = 'ZZZZZZZZZZZZ';
+    const fwdSeq = 'ACACACACACAC';
+    const revSeq = 'TGTGTGTGTGTG';
     const t1 = { id: 't1', kind: 'molecule', name: 'A', sequence: 'ATCGATCGATCG' };
     const t2 = { id: 't2', kind: 'molecule', name: 'B', sequence: 'GGGGGGGGGGGG' };
     const oligo = {

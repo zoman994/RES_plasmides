@@ -150,6 +150,36 @@ function formatQualifier(key, value, indent = 21) {
   return `${pad}/${key}="${escapeQualifier(value)}"`;
 }
 
+// Qualifier keys already emitted explicitly above the rich bag — never duplicate them.
+const RESERVED_QUALIFIER_KEYS = new Set([
+  'label', 'bodge_id', 'parent_feature', 'color', 'note', 'bodge_level', 'bodge_type',
+]);
+
+/**
+ * ANN-INTEGRITY seam 6 — serialize the preserved rich INSDC qualifiers so
+ * provenance survives a `.bodge` round-trip: a repeated qualifier (array) emits
+ * one line per value, a valueless flag (`true` / `''`) emits `/key`, everything
+ * else emits `/key="value"` with embedded quotes doubled.
+ */
+function formatQualifierBag(qualifiers, indent = 21) {
+  if (!qualifiers || typeof qualifiers !== 'object') return '';
+  const pad = ' '.repeat(indent);
+  let out = '';
+  for (const [k, v] of Object.entries(qualifiers)) {
+    if (RESERVED_QUALIFIER_KEYS.has(k)) continue;
+    const vals = Array.isArray(v) ? v : [v];
+    for (const one of vals) {
+      if (one == null || one === false) continue;
+      if (one === true || one === '') {
+        out += `${pad}/${k}\n`; // valueless flag
+      } else {
+        out += `${formatQualifier(k, one, indent)}\n`;
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Serialize a BodgeGene container object to GenBank string.
  *
@@ -205,16 +235,29 @@ export function writeContainerToGenBank(container) {
     out += `     ${gbType.padEnd(16)}${location}\n`;
     out += `${formatQualifier('label', ann.name || ann.type || 'feature')}\n`;
     if (ann.id) out += `${formatQualifier('bodge_id', ann.id)}\n`;
-    if (ann.parentId) out += `${formatQualifier('parent_feature', ann.parentId)}\n`;
+    // ANN-INTEGRITY seam 6 — /parent_feature carries the CANONICAL regionId link
+    // (falling back to a legacy parentId still present in memory), so a modern
+    // regionId-linked sub-feature keeps its parent through .bodge.
+    const parentLink = ann.regionId != null ? ann.regionId : ann.parentId;
+    if (parentLink) out += `${formatQualifier('parent_feature', parentLink)}\n`;
     if (ann.color) out += `${formatQualifier('color', ann.color)}\n`;
     if (ann.type === 'primer_bind' && ann.sequence) {
       out += `${formatQualifier('note', `sequence:${ann.sequence}`)}\n`;
     } else if (ann.note) {
       out += `${formatQualifier('note', ann.note)}\n`;
     }
-    if (ann.level && ann.level !== 'region') {
+    // Level is preserved for every annotation (⚓ ANN-INTEGRITY seam 6) so the
+    // region/detail/point distinction round-trips, not only the non-default ones.
+    if (ann.level) {
       out += `${formatQualifier('bodge_level', ann.level)}\n`;
     }
+    // ANN-INTEGRITY correction — the CANONICAL Bodge type. The GenBank feature
+    // key is lossy (marker / reporter → CDS, tag / linker → misc_feature), so the
+    // real type is carried explicitly and restored on read.
+    if (ann.type) {
+      out += `${formatQualifier('bodge_type', ann.type)}\n`;
+    }
+    out += formatQualifierBag(ann.qualifiers);
   }
 
   if (container.provenance) {
@@ -386,6 +429,10 @@ function applyQualifier(feature, key, value) {
       feature.id = value;
       break;
     case 'parent_feature':
+      // ANN-INTEGRITY seam 6 — /parent_feature is adopted as the CANONICAL
+      // regionId (legacy parentId read only as an ingress alias); parentId is
+      // retained for existing container consumers during migration.
+      feature.regionId = value;
       feature.parentId = value;
       break;
     case 'color':
@@ -394,6 +441,10 @@ function applyQualifier(feature, key, value) {
     case 'bodge_level':
       feature.level = value;
       break;
+    case 'bodge_type':
+      // Restore the canonical type over the lossy GenBank-key-derived one.
+      feature.type = value;
+      break;
     case 'note':
       if (feature.type === 'primer_bind' && /^sequence:/.test(value)) {
         feature.sequence = value.replace(/^sequence:/, '');
@@ -401,10 +452,31 @@ function applyQualifier(feature, key, value) {
         feature.note = value;
       }
       break;
-    default:
-      // Preserve unknown qualifiers under a generic bag.
+    default: {
+      // Preserve unknown qualifiers under the legacy generic bag.
       if (!feature.unknownQualifiers) feature.unknownQualifiers = {};
       feature.unknownQualifiers[key] = value;
+      // ANN-INTEGRITY seam 6 — also preserve every qualifier on the canonical
+      // `qualifiers` map (the shape the rest of the app + import-annotations
+      // use): a repeated key becomes an array, a valueless qualifier a flag.
+      if (!feature.qualifiers) feature.qualifiers = {};
+      const flagOrVal = value === '' ? true : value;
+      const existing = feature.qualifiers[key];
+      if (existing === undefined) {
+        feature.qualifiers[key] = flagOrVal;
+      } else if (Array.isArray(existing)) {
+        const last = existing[existing.length - 1];
+        if (typeof last === 'string' && typeof flagOrVal === 'string' && flagOrVal.startsWith(last)) {
+          existing[existing.length - 1] = flagOrVal; // multi-line continuation
+        } else {
+          existing.push(flagOrVal);
+        }
+      } else if (typeof existing === 'string' && typeof flagOrVal === 'string' && flagOrVal.startsWith(existing)) {
+        feature.qualifiers[key] = flagOrVal; // continuation of a single value
+      } else {
+        feature.qualifiers[key] = [existing, flagOrVal]; // genuine repeat
+      }
       break;
+    }
   }
 }

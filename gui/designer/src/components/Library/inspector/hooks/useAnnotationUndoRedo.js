@@ -5,9 +5,9 @@ const UNDO_LIMIT = 50;
 /**
  * Annotation undo/redo for SingleInspector.
  *
- * Track a rolling stack of pre-edit annotation snapshots. Each edit
- * pushes the BEFORE-state via `pushSnapshot(before)`; undo pops it
- * back into editedAnnotations through `onUpdateEdits`. The redo
+ * Track a rolling stack of pre-edit snapshots. Annotation-only callers push
+ * just annotations; molecule edits push sequence + annotations + topology +
+ * editLog as one coherent buffer. Undo restores through `onUpdateEdits`. Redo
  * stack is populated only when an undo happens; any fresh edit
  * (i.e. a new pushSnapshot call) clears the redo branch — standard
  * editor behaviour.
@@ -20,38 +20,57 @@ const UNDO_LIMIT = 50;
  *
  * Inputs:
  *   - itemKey:       string-ish, identifies the active plasmid
- *   - currentAnnotations: array reflecting the live annotations now
- *                    (so redo can push the «current state» onto the
- *                    redo stack before applying the previous one)
- *   - onUpdateEdits: callback that accepts `{ editedAnnotations }`
+ *   - currentAnnotations/currentSequence/currentTopology/currentEditLog:
+ *                    the live buffer used to capture the inverse snapshot
+ *   - onUpdateEdits: callback that accepts a transient-buffer patch
  *
  * Returns: { pushSnapshot, undo, redo, hasUndo, hasRedo }.
  */
 export function useAnnotationUndoRedo({
-  itemKey, currentAnnotations, currentSequence, onUpdateEdits,
+  itemKey,
+  currentAnnotations,
+  currentSequence,
+  currentTopology,
+  currentEditLog,
+  onUpdateEdits,
 }) {
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
-  // Track the live edit-state ({annotations, sequence}) so redo can push
-  // the «current» before re-applying. 17.06.2026 — sequence editing now
-  // flows through the SAME transient buffer + undo stack, so a snapshot
-  // optionally carries the pre-edit sequence too.
-  const currentRef = useRef({ annotations: currentAnnotations, sequence: currentSequence });
-  currentRef.current = { annotations: currentAnnotations, sequence: currentSequence };
+  // Track the live buffer so undo/redo can capture the exact counter-snapshot.
+  const currentRef = useRef({
+    annotations: currentAnnotations,
+    sequence: currentSequence,
+    topology: currentTopology,
+    editLog: currentEditLog,
+  });
+  currentRef.current = {
+    annotations: currentAnnotations,
+    sequence: currentSequence,
+    topology: currentTopology,
+    editLog: currentEditLog,
+  };
 
   useEffect(() => {
     undoStackRef.current = [];
     redoStackRef.current = [];
   }, [itemKey]);
 
-  // `before` = pre-edit annotations (array). `beforeSequence` (optional)
-  // = pre-edit sequence — pass it for nucleotide edits so Ctrl+Z restores
-  // the sequence too. Annotation-only callers omit it (sequence untouched).
-  const pushSnapshot = useCallback((before, beforeSequence) => {
+  // `beforeSequence` marks a coherent molecule snapshot. Annotation-only
+  // callers omit it, so sequence/topology/provenance remain untouched.
+  const pushSnapshot = useCallback((before, beforeSequence, beforeTopology, beforeEditLog) => {
     if (!Array.isArray(before)) return;
+    const coherent = beforeSequence !== undefined;
     undoStackRef.current = [
       ...undoStackRef.current.slice(-UNDO_LIMIT + 1),
-      { annotations: before, sequence: beforeSequence },
+      {
+        annotations: before,
+        coherent,
+        ...(coherent ? {
+          sequence: beforeSequence,
+          topology: beforeTopology,
+          editLog: beforeEditLog,
+        } : {}),
+      },
     ];
     redoStackRef.current = [];
   }, []);
@@ -61,8 +80,20 @@ export function useAnnotationUndoRedo({
     onUpdateEdits({
       editedAnnotations: snap.annotations,
       ...(snap.sequence !== undefined ? { editedSequence: snap.sequence } : {}),
+      ...(snap.topology !== undefined ? { editedTopology: snap.topology } : {}),
+      ...(snap.editLog !== undefined ? { editLog: snap.editLog } : {}),
     });
   }, [onUpdateEdits]);
+
+  const counterSnapshot = useCallback((template) => ({
+    annotations: currentRef.current.annotations,
+    coherent: !!template.coherent,
+    ...(template.coherent ? {
+      sequence: currentRef.current.sequence,
+      topology: currentRef.current.topology,
+      editLog: currentRef.current.editLog,
+    } : {}),
+  }), []);
 
   const undo = useCallback(() => {
     if (!onUpdateEdits) return;
@@ -70,9 +101,9 @@ export function useAnnotationUndoRedo({
     if (stack.length === 0) return;
     const prev = stack[stack.length - 1];
     undoStackRef.current = stack.slice(0, -1);
-    redoStackRef.current = [...redoStackRef.current, { ...currentRef.current }];
+    redoStackRef.current = [...redoStackRef.current, counterSnapshot(prev)];
     restore(prev);
-  }, [onUpdateEdits, restore]);
+  }, [counterSnapshot, onUpdateEdits, restore]);
 
   const redo = useCallback(() => {
     if (!onUpdateEdits) return;
@@ -80,9 +111,9 @@ export function useAnnotationUndoRedo({
     if (stack.length === 0) return;
     const next = stack[stack.length - 1];
     redoStackRef.current = stack.slice(0, -1);
-    undoStackRef.current = [...undoStackRef.current, { ...currentRef.current }];
+    undoStackRef.current = [...undoStackRef.current, counterSnapshot(next)];
     restore(next);
-  }, [onUpdateEdits, restore]);
+  }, [counterSnapshot, onUpdateEdits, restore]);
 
   useEffect(() => {
     const onKey = (e) => {

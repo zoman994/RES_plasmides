@@ -18,18 +18,39 @@ Complete sequence/annotation history through the current project/library revisio
 
 ### Modal event isolation
 
-Audit and fix event propagation/focus ownership in `PiecePrimersPickModal` and `PieceCreateModal`. Escape, Enter and click-outside must affect only the active transient surface.
-Refactor `AddModal` open-transition reset away from synchronous state writes inside `useEffect`;
-the pattern already exists in HEAD and keeps scoped ESLint red even when new modal code is clean.
-Legacy debt ID: `TD-CROSS-PORTAL-AUDIT`.
+Audit and fix event propagation and focus ownership for every transient surface over a
+viewer: `PiecePrimersPickModal`, `PieceCreateModal`, `RangePickerModal`, `MutationModal`,
+`CircularizeModal`, `OpGroupPicker`, `AAMutationDialog`, `DigestFragmentPicker`,
+`PromptModal`, `SettingsModal`, `ProjectInfoModal`, `HotkeyCheatsheet`. Escape, Enter,
+Ctrl+Z, Tab and Ctrl+R must affect only the active transient surface. The global hotkey
+registry is a single slot per id: a nested SequenceView overwrites the assembly
+`pcr-primer-*` handlers and leaves the slot empty after unmount until the parent caret
+changes; replace with a stack or an explicit hand-back. The working-tree
+document-wide `[data-block-global-escape]` suppression must be scoped to the viewer that
+owns the expanded primer, not to the whole document, because Library and Annotator can
+mount two viewers at once. Refactor `AddModal` open-transition reset away from
+synchronous state writes inside `useEffect`. Defects: BG-078, BG-079. Legacy debt ID:
+`TD-CROSS-PORTAL-AUDIT`.
 
 ### Lint baseline and scoped command
 
 Restore a green project-wide ESLint baseline and add a true scoped script. Today
 `npm run lint -- <paths>` still executes `eslint .` before the requested paths, so a package
-must invoke the local ESLint binary directly to separate its result from unrelated legacy errors.
+must invoke the local ESLint binary directly to separate its result from unrelated legacy
+errors. Baseline on 05.09.2026: 360 errors / 5 458 warnings. Root causes to remove in
+order: (1) `eslint.config.js` applies only `globals.browser` to every `.js/.jsx`, so
+`vite.config.js` (`process`), 24 test files (`__dirname`, `Buffer`, `global`) and helpers
+such as `lib/bodge-hash.js:18` fail `no-undef`; add a second config block with
+`globals.node`/`globals.vitest` for tests, config and Node-fallback helpers; (2) three
+Fast Refresh errors from helper exports beside a default component:
+`SequenceView/SequenceLandingPreview.jsx:52`, `assembly-mode/AssemblyPrimersPanel.jsx:199`,
+`SequenceView/popups/PrimerTmReadout.jsx:19`; (3) 42 of 70 `eslint-disable` directives
+name rules that are not enabled (32 `no-console`, `react/*`, `jsx-a11y/*`) and surface as
+unused-directive warnings; (4) `DATA_FILES_WITH_RUSSIAN` omits the dictionaries
+`src/lib/strings.js` and `src/components/Library/lib/importer-strings.js`; (5) the
+`no-cyrillic` rule does not visit JSXText, so hardcoded UI text in JSX is invisible to it.
 Move the remaining user-visible `.bodge` Open/StartScreen literal strings into the i18n
-dictionary; BG-003's scoped gate is error-free but still reports these Cyrillic-string warnings.
+dictionary. `.mjs` scripts under `gui/designer/scripts/` are never linted.
 
 ### Search follow-ups
 
@@ -51,7 +72,16 @@ dictionary; BG-003's scoped gate is error-free but still reports these Cyrillic-
 - normalize inline typed errors with worker errors if consumers ever need a common `.reason`;
 - prove whether the full `seq` field in `search-result-vm` has any production consumer and remove
   it from row view-models if dead; the rendered locus summary already needs only compact metrics;
-- keep provider failure/incomplete and strict final AND contracts unchanged.
+- keep provider failure/incomplete and strict final AND contracts unchanged;
+- decide the fate of the legacy seed-and-extend engine `lib/sequence-search.js`
+  (IUPAC, main-thread, no cancel): it still serves Align homolog ranking and exports
+  `canonicalDnaQuery`/`identityBucket` to the new pipeline, and
+  `SMART_SEARCH_SCOPES_PREFIXES_REV2.md` still describes it as superseded;
+- `search.worker.js` overwrites `activeId` on any job frame; add defence-in-depth against a
+  second concurrent job even though the client never sends one;
+- refresh stale in-code comments: `search-facade.js:154` still lists `maxMismatches`;
+  `search-provider-contract.js:102` and `search-provider-failures.js:21` call
+  `library-search.js` “frozen (size + hash)” while it is 22 417 B with no pin test.
 
 ### Weak-PC search benchmark (deferred check)
 
@@ -74,7 +104,12 @@ own peak.
 
 ### Restriction-primer protective bases
 
-Replace the fixed/asymmetric `GCGC` policy with an enzyme-aware, symmetric and validated protective-base policy. Preserve separate Type IIS/classical restriction semantics and add end-to-end primer/export tests. Legacy debt ID: `TD-PRIMER-PER-ENZYME-IDENTITY`.
+Replace the fixed/asymmetric `GCGC` policy with an enzyme-aware, symmetric and validated
+protective-base policy. Two policies coexist today: `primer-derive.js:37` hard-codes
+`RE_PROTECTIVE = 'GCGC'` while `CanvasSkeleton/lib/end-chemistry.js:26, 41` already carries
+an enzyme-aware `minFlanking` fallback (`PROTECTIVE_DEFAULT = 6`). Converge on one.
+Preserve separate Type IIS/classical restriction semantics and add end-to-end
+primer/export tests. Legacy debt ID: `TD-PRIMER-PER-ENZYME-IDENTITY`.
 
 ## Next — connected capabilities
 
@@ -97,23 +132,82 @@ Introduce explicit transcript identity for alternative intron/exon sets, non-tab
 - add keyboard-accessible feature selection/editing, dialog/menu semantics and focus
   restoration without relying on the SVG map as the only control;
 - give common-feature curation an explicit edit transaction or undo, validated DNA/
-  IUPAC/frame semantics and a preview before destructive dedup.
+  IUPAC/frame semantics and a preview before destructive dedup;
+- route every annotation ingress through `ingestAnnotations`: `.bodge` open
+  (`StartScreen.jsx:117`, `open-bodge.js:96`), `bodge-assembly-portable.js:53` and
+  `cross-project-bodge-import.js:115` still bypass the gate, `bodge-container-genbank.js:436`
+  still sets legacy `parentId`, and `cross-project-bodge-import.js:237` re-emits it;
+- retire the private 16-enzyme `COMMON_RE_SITES` table in `auto-annotate.js:133-149`
+  in favour of `restriction-db.js`, or declare why `restriction_site` point annotations
+  need a separate catalog;
+- bound `annotator.runContexts` (grows per job until document change);
+- align the ANN-INTEGRITY seam numbers in untracked file headers with BUGS.md ids
+  (`annotation-identity.js:3`, `annotator-run-identity.js:2`, four proof tests cite
+  BG-030/032/033 for other seams);
+- update `.agents/skills/annotation-contract/SKILL.md` for the opaque-id ingest gate.
 
 The fast select -> name -> Enter creation path and detail/point rendering on overview
 maps already exist; do not plan them again. Correctness defects discovered by the
 annotation audit are tracked only as BG-026…BG-034 in `BUGS.md`.
 
-### Primer-pool interaction after ANN-0L
+### Primer-pool follow-ups
 
-After the lossless record/site foundation is accepted, add one keyboard-first primer
-workflow rather than another editor surface: occurrence selection shared by Map and
-SequenceView, `E`/double-click to edit, guarded Delete/Backspace, Escape/focus return,
-and explicit version/variant behavior when the full oligo changes. Keep source-declared
+Complete Map/SequenceView occurrence-selection parity, guarded Delete/Backspace behavior
+and explicit version/variant semantics when the full oligo changes. Keep source-declared
 sites distinct from computed off-targets and do not infer tubes, lots or physical stock.
+Residuals recorded on 05.09.2026: source-form provenance does not pass Python→JS (former
+BG-035); `resolveAnchoredOligo` (`lib/primer-identity.js:308-411`) has no production
+consumer after `resolvePhysicalOligo`; `segmentPositions`/`positionsToSegments` are
+duplicated in `primer-site-projection.js` and `primer-five-prime-projection.js`;
+`primer-known-placement.js:93` writes `tail: ''` (“proven absent”) for an unknown tail;
+MIN_TM/MAX_DELTA_TM thresholds are duplicated as literals in `pcr-amplicon.js:435-439`;
+the primer dialog now always writes `tm` (number or null), so renaming an unprojectable
+legacy primer clears its stored Tm — deliberate and tested, but user-visible.
+
+### Primer thermodynamics beyond P6a
+
+Add numeric imperfect-duplex Tm only from complete published context-specific parameter
+tables with an independent oracle: single internal mismatches first, strand/context-specific
+single-base bulges separately, and no invented penalties for mixed/long loops. Add bounded
+IUPAC ranges, project/reaction-persisted concentration profiles and vendor-specific Ta as
+separate concepts; do not change the accepted P6a fail-closed `not-calculated` fallback or
+silently recalibrate legacy assembly heuristics.
 
 ### Assembly workbench convergence
 
 Unify piece acquisition, junction configuration, primer-tail derivation and live graph projection around the current four-tier model and [`ASSEMBLY_WORKBENCH.md`](specs/ASSEMBLY_WORKBENCH.md). Finish PrimerPool reuse without reviving legacy wizards.
+
+Known model gaps registered as BG-064/065/072/073/074/076. Also: realise silently
+substitutes the ring-closure method (`overlap_pcr → gibson`, `kld` with N>1 → `gibson`) in
+`guardClosureMethod` (`zone-pieces-to-dag.js:608-609`) instead of blocking; UI-transient
+fields `junctionPicker`, `focusedZoneId`, `highlightedVariantGroup`, `activeAssemblyId` are
+persisted and restored (`skeleton-persistence.js:71`); two junction representations
+(`zone.junctions[pairKey]` vs `state.junctions[]`) and two mini-map renderers
+(`components/PlasmidMiniMap.jsx` vs `canvas/MiniPlasmidMap.jsx`) coexist; the test-only
+window event `__v88_re_click__` lives in production `RangePickerModal.jsx:392-398` with a
+deps-less effect; `MutationModal` default position is `0` while the comment promises the
+piece centre (`AssemblyShellBody.jsx:1036-1040`); `onRangeConfirm` recovers the inserted
+container by a `setTimeout(0)` snapshot diff with an any-new-container fallback
+(`AssemblyShellBody.jsx:553-563`).
+
+### Heavy compute off the UI thread
+
+Only the DNA search worker honours DECISIONS §1 today. Move, with cancellation and
+stale-drop, in this order: (1) `scanAllSites` — 459 REBASE + 62 curated enzymes, a full
+`toUpperCase()` copy and two fresh `RegExp` per enzyme, run inside render-time `useMemo`
+in `SequenceView/index.jsx:518-540`, `PlasmidMapV2.jsx:167`, `LinearMapV2.jsx:101`; the
+working tree runs it twice while the primer editor is open (`primerTemplateReSites`);
+cache compiled patterns per catalog generation; (2) pairwise/multi-read alignment
+(`store/alignmentSlice.js:268-282`, status `running` never paints); (3) `re:`/`cut:` and
+`aa:` search providers (`search-facade.js:15, 96`); (4) splice CNN
+(`Annotator/index.jsx:479`), `scanLibraryForPrimer` in `PrimerBindingSites.jsx:37`,
+`detectORFRanges` with per-char concatenation (`orf-ranges.js:23`), `.bodge`
+`zipSync`/`unzipSync` (`bodge-zip.js:331, 639`). The predictor worker chunk pulls the whole
+Zustand store (Dexie, immer, a second copy of the REBASE table; 464 kB in dist) because
+`feature-detection.js:82` dynamically imports `store/commonFeaturesSlice`; it has no
+cancel frame and `annotator-pipeline.js:66` silently re-runs on the main thread when the
+worker rejects. Fix the chunk boundary and surface the fallback. Refresh stale perf
+comments (`file-summary.js:118` “~50 enzymes”, `annotator-worker-client.js:18` “~5-15 ms”).
 
 ### `.bodge` v2 completion
 
@@ -123,15 +217,68 @@ references, real `.bodgeassembly` merge semantics, recoverable cross-store impor
 byte-preserving handling of unknown optional extensions. BG-003 unified project Open but did not
 claim any of these format/repository cutovers.
 
+Documentation drift to resolve with the next format vertical: `SPEC_BODGE_FORMAT_V2_CORE.md`
+§4 describes `containers/<id>.json`, vendor manifests and `ui/layout.json`, while the
+writer emits `containers/<id>.gb`, `extensions/bodgegene/skeleton.json` and a
+`library/entries.json` section the spec never mentions; `USER_GUIDE_FORMATS.md:31-38`
+promises library and Notebook persistence that Ctrl+S does not perform (BG-027, and no
+notebook slice exists); `BODGE_V2_IMPLEMENTATION_PLAN.md` §2.15 still mentions a v1
+fallback that no longer exists. Defects: BG-069, BG-070, BG-071.
+
 ### Alignment/Sanger trust
 
-Resume the blocked alignment reliability specification only after current repository/schema gates are stable. Require quality evidence and corpus-based acceptance, not presentation-only confidence.
+Resume the blocked alignment reliability specification only after current repository/schema
+gates are stable. Require quality evidence and corpus-based acceptance, not
+presentation-only confidence. The five runtime defects the specification lists are now
+registered as BG-077 and may be fixed ahead of the specification. None of the planned
+modules (`lib/alignment/{contracts,fingerprint,session,reference-pileup,
+consensus-likelihood,verification-policy}.js`, `lib/bio-compute/*`, an alignment worker)
+exists; the spec cites `DEC-ALIGN-01/04`, which are not in DECISIONS.md.
+`alignCircular` and `poaConsensus` are library code without production consumers. The
+Notebook editor (`src/canvas/`) is not mounted by any production component and its
+unmount cleanup drops the pending 500 ms debounce without flushing.
 
 ## Maintenance after format checkpoint
 
+### Test infrastructure
+
+Сделать загрузку common-features детерминированной в Vitest: добавить в `setupFiles`
+глобальный stub только для `/common-features.json` либо инъекцию загрузчика. Неожиданные
+URL не должны молча получать успешный ответ, а тесты fail-closed/error-path обязаны явно
+переопределять default stub. Сейчас относительный fetch из `feature-detection.js:49`
+разрешается happy-dom в `localhost:3000` и печатает пять безымянных `ECONNREFUSED` через
+`page.console.error`; аудит выявил 13 файлов-кандидатов, рендерящих Library, App или
+Annotator без stub. Это отдельная гигиена логов и изоляция тестов, а не исправление или
+критерий закрытия BG-022.
+
 ### Oversized module boundaries
 
-Do not split stable files merely to satisfy a byte counter. Before the next feature change in these areas, characterize behavior and extract along live ownership boundaries. Current hard-zone changed modules include `SequenceView/index.jsx` (71.5 KiB), `AssemblyShellBody.jsx` (59.5 KiB), `ContainerEditorSkeleton.jsx` (42.7 KiB), `store/librarySlice.js` (47.8 KiB), `zone-pieces-to-dag.js` (31.9 KiB) and `skeleton-state.js` (26.8 KiB). New soft-zone entrants in the 0.8.8 WIP snapshot are `PrimerTrack.jsx` (35.2 KiB), `PlasmidMapV2.jsx` (30.7 KiB) and `skeleton-state-assembly.js` (24.7 KiB). Existing watch items also include `RangePickerModal.jsx`, `PlasmidMiniMap.jsx`, `LibrarySingleInspector.jsx`, `AnnotationTrack.jsx` and `AATrack.jsx`. Generated/data dictionaries are exempt. Prioritize a split only when the file is in scope and change coupling is demonstrated. Legacy debt IDs: `TD-SIZE-SEQUENCEVIEW-INDEX`, `TD-SIZE-CONTAINER-EDITOR-SKELETON`, `TD-SIZE-LIBRARYSLICE`, `TD-SIZE-PLASMID-MINI-MAP`, `TD-SIZE-LIBRARYSINGLEINSPECTOR`, `TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2`, `TD-ANNOTATIONTRACK-DECOMPOSE-V2`, `TD-SIZE-AATRACK`, `TD-SKELETON-STATE-SIZE`.
+Do not split stable files merely to satisfy a byte counter. Before the next feature change
+in these areas, characterize behavior and extract along live ownership boundaries. Sizes on
+05.09.2026 (bytes on disk; LF-normalised values are 1–3 % smaller for CRLF files).
+Hard-zone `.jsx` (limit 40 960): `SequenceView/index.jsx` 74 231, `AssemblyShellBody.jsx`
+62 066, `RangePickerModal.jsx` 57 745, `PlasmidMiniMap.jsx` 43 845,
+`ContainerEditorSkeleton.jsx` 41 110. Hard-zone `.js` (limit 25 600):
+`store/librarySlice.js` 49 163, `CanvasSkeleton/lib/zone-pieces-to-dag.js` 33 531,
+`canvas/canvas-layout.js` 31 456 (14 472 B of exports have only test consumers),
+`SequenceView/hooks/useSelectionState.js` 31 038, `store/projectSlice.js` 28 931,
+`store/skeleton-state.js` 27 491, `store/skeleton-state-canvas.js` 27 286,
+`lib/feature-match-core.js` 26 129, `lib/bodge-zip.js` 25 639. Within 200 B of the hard
+line: `SegmentZonesOverlay.jsx` 40 926, `AnnotationTrack.jsx` 40 834,
+`LibraryWorkspace.jsx` 40 797, `skeleton-state-assembly.js` 25 549. Soft-zone watch:
+`AATrack.jsx` 38 882, `LibrarySingleInspector.jsx` 36 861, `Annotator/index.jsx` 35 480
+(new entrant), `PrimerTrack.jsx` 32 903, `PlasmidMapV2.jsx` 31 404,
+`lib/annotation-edit.js` 24 574 (new entrant, 96 % of hard), `primer-derive.js` 24 737,
+`local-primer-design.js` 23 501, `segment-overhangs.js` 23 460, `search-sequence-contract.js`
+23 445, `query-classify.js` 23 210, `auto-annotate.js` 22 432 (new entrant),
+`alignmentSlice.js` 21 738, `protocol-export.js` 22 120. Generated/data dictionaries are
+exempt (`restriction-db-rebase.js`, `i18n.js`, `cnn-weights.js`, `strings.js`);
+`restriction-db.js` (44 190 B) mixes the curated dictionary with scanning/digest logic and
+needs a data/logic split before it can be judged. Decomposition seams with line ranges
+for `SequenceView/index.jsx`, `AssemblyShellBody.jsx`, `RangePickerModal.jsx`,
+`PlasmidMiniMap.jsx`, `ContainerEditorSkeleton.jsx` and `canvas-layout.js` are recorded
+in the 05.09.2026 audit and should be reused when a file enters scope. No automated
+size check exists; add one to the hygiene tests. Legacy debt IDs unchanged.
 
 ### Legacy `project.dag` state
 
@@ -149,9 +296,69 @@ Maintain reproducible benchmarks on the reference 2-core/8-GB machine: UI cancel
 
 Move the curated cross-name/AmpR dedup rules from `scripts/dedup_common_features.py` into the tested SnapGene feature builder, then delete the separate postprocessor. Until then, its local snapshots belong only in ignored `scripts/.backups/`.
 
-### Library metadata editing
+### Dead-but-tested modules
 
-Expose tags and topology in the current `LibraryWorkspace` with direct, tested persistence to the library entry. Do not restore the retired importer workspace merely to recover its old metadata column.
+Tests are proof of a change, not a product. The following have no production consumer
+and are kept alive only by their tests; each removal needs the consumer proof and full
+regression run AGENTS.md requires, or an explicit decision to wire it: `lib/bodge-migrations/`,
+`lib/notebook-migrations/`, `bodge-export-profiles.applyProfile`, `bodge-atomic-write`,
+`bodge-recovery` (uses CommonJS `require('fflate')` inside ESM), `bodge-extensions`,
+`bodge-assembly-portable`, `canvas/ExportProjectModal.jsx` and the whole `src/canvas/`
+Notebook UI; ten `canvas-layout.js` exports (collision, magnet snap, auto junctions, edge
+pan, viewportToWorld); ~270 lines of persisted-undo/overwrite/save-as-version actions in
+`store/librarySlice.js` (`overwriteLibraryEntryAnnotations`, `saveLibraryEntryAsVersion`,
+`applySequenceEditOnLibraryEntry`, `updateLibraryEntryTopology`, `libraryUndo`);
+`skeleton-bodge-bridge.js:85-107` duplicates of `primersForProject`/`primersFromCanonical`;
+`selectLabPoolStructure`; `lib/alignment/align-circular.js`, `poa.js`;
+`components/Dag/ContainerWindowPlaceholder.jsx` and the `containerWindow` route nothing
+pushes; Python `feature_db.py`, `kld.py`, `assembly_engine.py` (no tests) and 10 of 11
+`gui/api/server.py` routes.
+
+### Store ownership leaks
+
+`MainPanel.handleProjectClick` activates a project with raw `useStore.setState` and a
+local MRU cap of 20 versus 10 in `projectSlice.activateProject`; `showReSites` is written
+directly from `SequenceToolbar.jsx:45`, `ContainerEditorSkeleton.jsx:399`,
+`RangePickerModal.jsx:262` although `restrictionViewSlice` exposes setters;
+`ContainerEditorSkeleton` forces `reOrientation='horizontal'` on mount and restores on
+unmount (:396-411) — revisit after P17 made it the default; persistence side effects run
+inside immer producers in `uiSlice.js` and `annotatorSlice.js`; `projectSlice`,
+`librarySlice`, `primerSlice`, `projectAssembliesSlice` import from `components/`,
+inverting ARCHITECTURE §7; `commonFeaturesSlice` imports `useStore` from `./index`;
+`hydrateProjectsFromDexie` has no `_hydrated` guard; `App.jsx` keeps `hotkeysOpen` in
+local `useState` plus 10 manual `useCallback` and a dead `project` subscription;
+`LibrarySingleInspector.jsx:419-473` calls two hooks after a conditional early return
+(compiler bailout); `useSidebarCollapsed` binds Ctrl+B outside the hotkey registry.
+Direct `localStorage` use in 13 files bypasses `lib/storage.js`; `SettingsModal.jsx:49`
+calls `localStorage.clear()`.
+
+### Repository hygiene
+
+No CI, no `engines` field (Vite 8 needs Node ≥ 20.19; machine has 24.14), no
+`.gitattributes` while `core.autocrlf=true` yields mixed CRLF/LF inside files
+(`AATrack.jsx`, `useSelectionState.js`, `RestrictionTrack.jsx`); add `* text=auto eol=lf`.
+`__tests__/ann0m-primer-vertical.test.jsx:42` embeds raw NUL bytes and is tracked as a
+binary blob. Large checkpoint commits (876bad0, 6f652ac) have no body; require a body
+listing streams and gate numbers. `docs/SMART_SEARCH_SCOPES_PREFIXES_REV2.md` (99 KB,
+“partially implemented”) sits in the docs root and still describes the closed match-all
+defect as current; move to `docs/specs/` or delete as an implemented plan.
+`docs/specs/agarose-gel/` (1 496 lines) has no code behind it. `public/manifest.webmanifest`
+is a stale duplicate of the VitePWA-generated manifest. `scripts/gen-rebase-enzymes.mjs`
+depends on an ignored, absent `.rebase-tmp/`. Hygiene tests to add: docs paths exist,
+size budget, App.jsx has no `useState`, repo-wide `outline:none`/hex guard (today only
+`components/Search` is guarded).
+
+### Python backend scope
+
+Decide whether the `pvcs` CLI and its SQLite model remain a product surface or become the
+planned `bodge` reference CLI. Until then: enzyme catalogs exist in four Python tables
+(`assembly_engine.GG_ENZYMES`, `golden_gate.ENZYME_SITES`, `restriction.RE_DATABASE`,
+`utils.COMMON_RE_SITES`) and two JS catalogs with different sets and `cut_offset`
+semantics and no parity test; `utils.calc_tm` omits the terminal-AT initiation term the JS
+kernel applies; `intron_detection.py` imports undeclared `mappy` and answers HTTP 200
+`{error}`; `/api/import` wraps its own 400 into a 422; `server.py` carries unused imports
+`asdict`, `design_overlaps`. Proposed decision for DECISIONS §7: JS catalogs are the
+source of truth for enzymes and Tm; Python is parsing and versioning only.
 
 ## Legacy debt migrated from the retired tracker
 

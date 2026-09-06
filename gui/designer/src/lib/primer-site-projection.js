@@ -34,8 +34,9 @@
  *     tail, evidence, sourceVisibility, wrapsOrigin }
  *
  *   evidence: 'source'   — the file says the primer binds here (authoritative)
- *             'computed' — no source site for this molecule, so an EXACT match
- *                          of the known binding sequence was located instead
+ *             'computed' — no source site for this molecule, so an EXACT
+ *                          canonical terminal 3′ seed of the physical oligo
+ *                          was located and extended toward 5′ instead
  *
  * A computed hit is never written back as a source fact, and approximate or
  * off-target scanning is deliberately absent: it belongs in an explicit
@@ -43,7 +44,16 @@
  */
 
 import { reverseComplement } from '../sequence-utils';
-import { resolveAnchoredOligo, ANCHORED_OLIGO_OK } from './primer-identity';
+import {
+  resolvePhysicalOligo,
+  ANCHORED_OLIGO_OK,
+} from './primer-identity';
+import {
+  alignPrimerBindingAtThreePrimeEnd,
+  focusAlignment,
+} from './primer-binding-alignment';
+import { DEFAULT_PRIMER_BINDING_MIN_LENGTH } from './primer-binding-search';
+import { deriveFivePrimeLanding } from './primer-five-prime-projection';
 
 function oligoRecord(primer) {
   if (typeof primer?.tail === 'string' && primer.tail) return primer;
@@ -72,6 +82,49 @@ function siteSegments(site) {
   return [];
 }
 
+/** Forward-coordinate positions of a footprint, in segment reading order. */
+function segmentPositions(segments) {
+  const out = [];
+  for (const s of segments) for (let p = s.start; p < s.end; p += 1) out.push(p);
+  return out;
+}
+
+/** Group a forward-ordered position list back into contiguous half-open segments. */
+function positionsToSegments(positions) {
+  const out = [];
+  let segStart = positions[0];
+  let prev = positions[0];
+  for (let k = 1; k < positions.length; k += 1) {
+    const p = positions[k];
+    if (p === prev + 1) { prev = p; continue; }
+    out.push({ start: segStart, end: prev + 1 });
+    segStart = p;
+    prev = p;
+  }
+  out.push({ start: segStart, end: prev + 1 });
+  return out;
+}
+
+/**
+ * Shrink the anchor footprint to the effective landing subspan.
+ *
+ * A terminal trim shortens the honest landing: the query lands on a SUBSPAN of
+ * the anchor, and the clipped anchor bases leave the footprint entirely rather
+ * than becoming deletions. `span` is in the primer's own orientation, so a
+ * minus-strand landing is mapped from its 3′ (forward-low) edge. Returns `null`
+ * when the footprint cannot be reconciled with the anchor length — a trim we
+ * cannot place is withheld, not drawn at a guessed length.
+ */
+function effectiveFootprint(segments, strand, span, anchorLength) {
+  const forward = segmentPositions(segments);
+  if (forward.length !== anchorLength) return null;
+  const ordered = strand === -1 ? forward.slice().reverse() : forward;
+  const sub = ordered.slice(span.start, span.end);
+  if (!sub.length) return null;
+  const forwardSub = strand === -1 ? sub.slice().reverse() : sub;
+  return positionsToSegments(forwardSub);
+}
+
 /**
  * Is this geometry drawable on this molecule?
  *
@@ -90,6 +143,13 @@ function segmentsAreDrawable(segments, length, circular) {
     if (Number.isFinite(length) && length > 0 && s.end > length) return false;
   }
   return true;
+}
+
+/** Current template bases under a source footprint, in primer orientation. */
+function templateBinding(template, segments, strand) {
+  if (!template || (strand !== 1 && strand !== -1)) return null;
+  const top = segments.map(({ start, end }) => template.slice(start, end)).join('');
+  return strand === -1 ? reverseComplement(top) : top;
 }
 
 /**
@@ -151,37 +211,71 @@ export function buildRenderContext({
   };
 }
 
-/** Every exact occurrence of `needle`, as occurrences on this molecule. */
+/**
+ * Every exact occurrence of one split-independent terminal 3′ seed.
+ *
+ * The tail/body fields are authoring helpers, so neither may choose the
+ * candidate set. A fixed suffix of the full physical oligo locates possible
+ * 3′ endpoints; the full oligo is then locally aligned at that endpoint so
+ * upstream complementary islands survive internal X/I/D runs.
+ */
 function exactHits(primer, current, template, { circular, direction }) {
-  const needle = current.binding;
-  if (!needle || !template) return [];
+  if (!current.sequence || !template) return [];
   const out = [];
+  const seen = new Set();
   const n = template.length;
+  const seedLength = Math.min(DEFAULT_PRIMER_BINDING_MIN_LENGTH, current.sequence.length);
+  const needle = current.sequence.slice(-seedLength);
 
-  const push = (idx, strand, seq) => {
+  // Ambiguity codes are not proof of exact complementarity. Also refuse a
+  // seed longer than a circular molecule: repeating template bases for a
+  // second lap would manufacture a landing that no physical ring contains.
+  if (!/^[ACGT]+$/.test(needle) || needle.length > n) return [];
+
+  const push = (idx, strand) => {
     // A hit running past the end is only real on a circular molecule, where it
     // continues across the origin as two segments of one binding.
-    const end = idx + seq.length;
-    const segments = end <= n
+    const end = idx + needle.length;
+    const seedSegments = end <= n
       ? [{ start: idx, end }]
       : [{ start: idx, end: n }, { start: 0, end: end - n }];
+    const target = templateBinding(template, seedSegments, strand);
+    const alignment = alignPrimerBindingAtThreePrimeEnd(current.sequence, target);
+    const landing = deriveFivePrimeLanding({
+      sequence: current.sequence,
+      alignment,
+      segments: seedSegments,
+      strand,
+      template,
+      circular,
+    });
+    if (!landing || !segmentsAreDrawable(landing.segments, n, circular)) return;
+    // A computed candidate is identified by strand and biological 3′ endpoint,
+    // not by how far its 5′ side happened to extend. This is the invariant that
+    // survives moving bases between the two helper fields.
+    const threePrimeEnd = strand === -1
+      ? idx
+      : (circular ? (idx + needle.length) % n : idx + needle.length);
+    const key = `${primer.id}#computed:${threePrimeEnd}:${strand}`;
+    if (seen.has(key)) return;
+    seen.add(key);
     out.push({
       primerId: primer.id,
       siteId: null,
-      key: `${primer.id}#computed:${idx}:${strand}`,
-      segments,
+      key,
+      segments: landing.segments,
       strand,
       sequence: current.sequence,
-      annealedSequence: current.binding,
-      // A computed hit locates the oligo; it proves nothing new about it, so a
-      // tail the record already knows is carried, never invented.
-      tail: current.tail
-        || (typeof primer.tailSequence === 'string' && primer.tailSequence
-          ? primer.tailSequence : null),
+      annealedSequence: landing.annealedSequence,
+      tail: landing.tail,
+      unpairedPrefixLength: landing.unpairedPrefixLength,
+      confirmedFivePrimeSuffixLength: landing.confirmedFivePrimeSuffixLength,
+      bindingModel: current.bindingModel || null,
       oligoStatus: current.status,
+      alignment: landing.alignment,
       evidence: 'computed',
       sourceVisibility: 'shown',
-      wrapsOrigin: segments.length > 1,
+      wrapsOrigin: wrapsOrigin(landing.segments),
     });
   };
 
@@ -192,7 +286,7 @@ function exactHits(primer, current, template, { circular, direction }) {
     for (let i = haystack.indexOf(seq); i !== -1; i = haystack.indexOf(seq, i + 1)) {
       if (i >= n) break;
       if (!circular && i + seq.length > n) break;
-      push(i, strand, seq);
+      push(i, strand);
     }
   };
 
@@ -248,32 +342,85 @@ export function projectPrimerSites(primer, ctx = {}) {
     // to prevent.
     return confirmed
       .map((site) => {
-        const segments = siteSegments(site);
+        let segments = siteSegments(site);
         if (!segmentsAreDrawable(segments, length, circular)) return null;
+        const strand = site.strand === 1 || site.strand === -1 ? site.strand : null;
         // SEQ-VIS-1 — the site owns WHERE, the record owns WHAT. Handing the
         // site's own `tail`/`annealedSequence` straight to the renderer meant a
         // tail added after the landing was declared never appeared, while a
         // stale one did; and a record storing its overhang inside a long
         // `bindingSequence` drew only its historical snapshot. Read against the
-        // fixed anchor, the current oligo splits into overhang + landing — and
-        // `binding` is exactly the anchor's length, so the footprint below is
-        // untouched. Anything unreadable keeps the site's own answer rather
-        // than inventing a tail.
-        const current = resolveAnchoredOligo(oligoRecord(primer), { anchor: site.annealedSequence });
+        // fixed anchor, the current oligo splits into overhang + landing.
+        // Anything unreadable keeps the site's own answer rather than inventing
+        // a tail.
+        // Resolve only the physical oligo here. A confirmed site's historical
+        // helper split is not biological evidence: legacy/imported records may
+        // put the same bases on either side of the tail/body UI boundary. The
+        // pinned full-sequence alignment below is the sole owner of the current
+        // landing and its true unpaired 5′ prefix.
+        const current = resolvePhysicalOligo(oligoRecord(primer), {
+          anchor: site.annealedSequence,
+        });
         const resolved = current.status === ANCHORED_OLIGO_OK;
+        // The site snapshot is only the historical split anchor. Biological
+        // complementarity is always judged against the CURRENT molecule under
+        // the confirmed footprint, including legacy/imported records that do
+        // not carry a binding-model marker.
+        const actualTarget = templateBinding(
+          String(template || '').toUpperCase(), segments, strand,
+        );
+        let alignment = resolved && actualTarget != null
+          // The full physical oligo is the biological input. `tail` and
+          // `bindingSequence` are authoring conveniences and must not change
+          // the landing when their concatenation is the same.
+          ? alignPrimerBindingAtThreePrimeEnd(current.sequence, actualTarget)
+          : null;
+        // P5 — a terminal trim lands the whole query on a SUBSPAN of the anchor.
+        // The clipped anchor bases leave the footprint (they are honest clips,
+        // not deletions), so the drawn segments shrink to the effective landing
+        // and the alignment is re-based onto it. A trim we cannot geometrically
+        // reconcile with the anchor is withheld, never drawn at a wrong length.
+        if (alignment && alignment.targetSpan
+          && (alignment.targetSpan.start !== 0
+            || alignment.targetSpan.end !== alignment.target.length)) {
+          const shrunk = strand != null
+            ? effectiveFootprint(segments, strand, alignment.targetSpan, alignment.target.length)
+            : null;
+          if (!shrunk || !segmentsAreDrawable(shrunk, length, circular)) return null;
+          segments = shrunk;
+          alignment = focusAlignment(alignment);
+        }
+        let landing = null;
+        if (resolved && alignment && strand != null) {
+          landing = deriveFivePrimeLanding({
+            sequence: current.sequence,
+            alignment,
+            segments,
+            strand,
+            template: String(template || '').toUpperCase(),
+            circular,
+          });
+          if (!landing || !segmentsAreDrawable(landing.segments, length, circular)) return null;
+          segments = landing.segments;
+          alignment = landing.alignment;
+        }
         return {
           primerId: primer.id,
           siteId: site.id,
           key: `${primer.id}#${site.id}`,
           segments,
-          strand: site.strand === 1 || site.strand === -1 ? site.strand : null,
+          strand,
           sequence: resolved ? current.sequence : null,
           annealedSequence: resolved
-            ? current.binding
+            ? (landing?.annealedSequence || current.binding)
             : null,
-          tail: resolved ? (current.tail || null) : null,
+          tail: resolved ? (landing ? landing.tail : (current.tail || null)) : null,
+          unpairedPrefixLength: resolved
+            ? (landing?.unpairedPrefixLength ?? current.tail.length)
+            : null,
+          confirmedFivePrimeSuffixLength: landing?.confirmedFivePrimeSuffixLength ?? 0,
           bindingModel: resolved ? (current.bindingModel || null) : null,
-          alignment: resolved ? (current.alignment || null) : null,
+          alignment,
           oligoStatus: current.status,
           evidence: 'source',
           sourceVisibility: site.sourceVisibility || 'shown',
@@ -283,11 +430,12 @@ export function projectPrimerSites(primer, ctx = {}) {
       .filter(Boolean);
   }
 
-  // No source site confirmed for this document — fall back to an exact search
-  // of what we know anneals, marked `computed` so no consumer mistakes it for
-  // a fact from the file.
-  const current = resolveAnchoredOligo(oligoRecord(primer));
-  if (current.status !== ANCHORED_OLIGO_OK || !current.binding) return [];
+  // No source site confirmed for this document — locate an exact canonical
+  // terminal 3′ seed of the FULL physical oligo, then derive its anchored-local
+  // landing in the current template. The helper tail/body split never chooses
+  // candidate loci.
+  const current = resolvePhysicalOligo(oligoRecord(primer));
+  if (current.status !== ANCHORED_OLIGO_OK || !current.sequence) return [];
   return exactHits(
     primer,
     current,

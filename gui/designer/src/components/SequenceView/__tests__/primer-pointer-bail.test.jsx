@@ -24,6 +24,7 @@ import {
   render, screen, cleanup, fireEvent,
 } from "@testing-library/react";
 import { useSelectionState } from "../hooks/useSelectionState.js";
+import PrimerTrack from "../tracks/PrimerTrack.jsx";
 
 afterEach(cleanup);
 
@@ -46,11 +47,50 @@ function Harness({ onCaret }) {
     <div ref={containerRef} data-testid="root" onPointerDown={onRootPointerDown}>
       <div data-testid="sequence-view-line" data-line-start="0">
         <svg data-testid="sequence-view-primers">
-          <g data-testid="sequence-view-primer">
+          <g data-testid="sequence-view-primer" data-primer-interactive="true">
             <rect data-primer-hit="true" data-testid="hit" />
           </g>
         </svg>
         <span data-testid="plain">plain area (not a primer)</span>
+      </div>
+    </div>
+  );
+}
+
+function WrappedTailHarness({ onCaret, onPrimerClick, onPrimerDoubleClick }) {
+  const containerRef = useRef(null);
+  const fullSeq = `${"T".repeat(16)}ACGTACGTACGT${"T".repeat(12)}`;
+  const { onRootPointerDown } = useSelectionState({
+    fullSeq,
+    seqLength: fullSeq.length,
+    charsPerLine: 16,
+    charPx: 7,
+    caretPos: null,
+    caretAnchor: null,
+    selectionMode: null,
+    selectionStrand: 1,
+    onCaretChange: onCaret,
+    onSelectRange: () => {},
+    containerRef,
+  });
+  return (
+    <div ref={containerRef} data-testid="tail-root" onPointerDown={onRootPointerDown}>
+      <div data-testid="sequence-view-line" data-line-start="0">
+        <PrimerTrack
+          primers={[{
+            id: 'wrapped-tail', name: 'wrapped-tail', direction: 'forward',
+            bindingSequence: 'ACGTACGTACGT', tail: 'GGGGGG', sequence: 'GGGGGGACGTACGTACGT',
+          }]}
+          fullSeq={fullSeq}
+          lineStart={0}
+          lineLen={16}
+          charPx={7}
+          labelChars={0}
+          primerStyle="filled"
+          directionFilter="forward"
+          onPrimerClick={onPrimerClick}
+          onPrimerDoubleClick={onPrimerDoubleClick}
+        />
       </div>
     </div>
   );
@@ -92,5 +132,37 @@ describe("onRootPointerDown — primer bail", () => {
     });
     expect(onCaret).not.toHaveBeenCalled();
     expect(cap).not.toHaveBeenCalled();
+  });
+
+  it("a separated tail owns the same occurrence and bails before caret/capture", () => {
+    const onCaret = vi.fn();
+    const onPrimerClick = vi.fn();
+    const onPrimerDoubleClick = vi.fn();
+    render(<WrappedTailHarness
+      onCaret={onCaret}
+      onPrimerClick={onPrimerClick}
+      onPrimerDoubleClick={onPrimerDoubleClick}
+    />);
+    stubLineRect();
+    const root = screen.getByTestId("tail-root");
+    const cap = vi.fn();
+    root.setPointerCapture = cap;
+    const tailGroup = screen.getByTestId('sequence-view-primer-tail-wrap');
+    const tail = screen.getByTestId('sequence-view-primer-tail');
+
+    expect(tailGroup.dataset.primerInteractive).toBe('true');
+    expect(tailGroup.dataset.primerOccurrenceKey).toBe(tailGroup.dataset.primerKey);
+    fireEvent.pointerDown(tail, {
+      button: 0, pointerId: 2, clientX: 80, clientY: 10,
+    });
+    expect(onCaret).not.toHaveBeenCalled();
+    expect(cap).not.toHaveBeenCalled();
+    fireEvent.click(tailGroup);
+    fireEvent.doubleClick(tailGroup);
+    fireEvent.keyDown(tailGroup, { key: 'Enter' });
+    fireEvent.keyDown(tailGroup, { key: ' ' });
+    expect(onPrimerClick).toHaveBeenCalledTimes(3);
+    expect(onPrimerDoubleClick).toHaveBeenCalledTimes(1);
+    expect(new Set(onPrimerClick.mock.calls.map(([key]) => key)).size).toBe(1);
   });
 });

@@ -16,7 +16,7 @@
 import { v7 as uuidv7 } from 'uuid';
 import { reverseComplement } from '../../../sequence-utils';
 import { getNextSegmentColor } from './segment-color-palette';
-import { transferAnnotations } from './segment-annotation-transfer';
+import { shiftAnnotations, transferAnnotations } from './segment-annotation-transfer';
 
 let _autoName = 0;
 
@@ -44,7 +44,7 @@ export function segmentLength(seg) {
 /**
  * concatSegmentAnnotations — annotations of the realised PRODUCT (the
  * concatenation of all segments). Each segment's already-local
- * annotations (1-based inclusive, from transferAnnotations) shift by
+ * annotations (canonical 0-based/end-exclusive, from transferAnnotations) shift by
  * the running char offset, mirroring computeAssemblySequence's concat
  * order. Gap / annotation-less segments still advance the offset so
  * later segments land at the right product coordinate (Игорь
@@ -54,9 +54,7 @@ export function concatSegmentAnnotations(segments) {
   const out = [];
   let offset = 0;
   for (const seg of segments || []) {
-    for (const a of (seg && seg.annotations) || []) {
-      out.push({ ...a, start: a.start + offset, end: a.end + offset });
-    }
+    out.push(...shiftAnnotations((seg && seg.annotations) || [], offset));
     offset += segmentLength(seg);
   }
   return out;

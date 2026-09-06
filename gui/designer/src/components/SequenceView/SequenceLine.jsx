@@ -44,11 +44,14 @@ const SequenceLine = memo(function SequenceLine({
   fullSeq,
   features,
   primers,
+  primerOccurrences = null,
+  primerEdgeGuardPx = 0,
   // 18.05.2026 — primer click/selection (Игорь redesign). Stable refs
   // from SequenceView so React.memo only re-renders on actual change.
   onPrimerClick,
   onPrimerDoubleClick,
   selectedPrimerKeys,
+  expandedPrimerKey,
   reSites,
   charPx,
   // PERF-4 — settings split into scalars so memo bails per-field.
@@ -255,6 +258,7 @@ const SequenceLine = memo(function SequenceLine({
           position: "relative",
           height: Number.isFinite(placeholderHeight) && placeholderHeight > 0 ? placeholderHeight : 120,
           marginBottom: kind !== nextKind ? 6 : 14,
+          marginInline: primerEdgeGuardPx || undefined,
           contain: "strict",
         }}
       />
@@ -302,11 +306,13 @@ const SequenceLine = memo(function SequenceLine({
         // before main). Tighten the gap to a few px for the marker
         // to sit in.
         marginBottom: kind !== nextKind ? 6 : 14,
+        marginInline: primerEdgeGuardPx || undefined,
         paddingBottom: kind !== nextKind ? 4 : 14,
         borderBottom: kind !== nextKind ? 'none' : "1px dashed var(--border-default, #c9c5c1)",
         // Browser-level paint isolation: scroll-induced repaints stay
         // inside this line's box, neighbours don't repaint.
         contain: "paint",
+        overflowClipMargin: primerEdgeGuardPx || undefined,
         // `content-visibility: auto` was removed 2026-05-06 (round 2)
         // — biolog: «как будто 60 Hz а хочется 90-120». auto-mode
         // realises off-screen lines as they enter the viewport, which
@@ -435,11 +441,13 @@ const SequenceLine = memo(function SequenceLine({
           lineLen={line.seq.length}
           charPx={charPx}
           labelChars={LABEL_WIDTH}
+          projectedOccurrences={primerOccurrences}
           primerStyle={primerStyle}
           directionFilter="forward"
           onPrimerClick={onPrimerClick}
           onPrimerDoubleClick={onPrimerDoubleClick}
           selectedPrimerKeys={selectedPrimerKeys}
+          expandedPrimerKey={expandedPrimerKey}
           wrapsOrigin={line.wrapsOrigin === true}
           wrapAt={line.wrapsOrigin ? line.wrapAt : undefined}
           seqLength={line.wrapsOrigin ? seqLength : undefined}
@@ -490,11 +498,13 @@ const SequenceLine = memo(function SequenceLine({
           lineLen={line.seq.length}
           charPx={charPx}
           labelChars={LABEL_WIDTH}
+          projectedOccurrences={primerOccurrences}
           primerStyle={primerStyle}
           directionFilter="reverse"
           onPrimerClick={onPrimerClick}
           onPrimerDoubleClick={onPrimerDoubleClick}
           selectedPrimerKeys={selectedPrimerKeys}
+          expandedPrimerKey={expandedPrimerKey}
           wrapsOrigin={line.wrapsOrigin === true}
           wrapAt={line.wrapsOrigin ? line.wrapAt : undefined}
           seqLength={line.wrapsOrigin ? seqLength : undefined}

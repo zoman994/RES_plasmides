@@ -65,6 +65,91 @@ describe('sequenceLineEqual — overlap-scoped arrays', () => {
     const aFar = { ...base(), reSites: [farSite] };
     expect(sequenceLineEqual(aFar, { ...aFar, reSites: [{ ...farSite, enzyme: 'BsmBI' }] })).toBe(true);
   });
+  it('scopes shared primer projections to occurrences overlapping this line', () => {
+    const near = {
+      key: 'near', segments: [{ start: 2, end: 6 }], alignment: { runs: [{ op: 'M' }] },
+    };
+    const far = {
+      key: 'far', segments: [{ start: 50, end: 60 }], alignment: { runs: [{ op: 'M' }] },
+    };
+    const withNear = { ...base(), primerOccurrences: [near] };
+    const withFar = { ...base(), primerOccurrences: [far] };
+
+    expect(sequenceLineEqual(withNear, {
+      ...withNear,
+      primerOccurrences: [{ ...near, alignment: { runs: [{ op: 'X' }] } }],
+    })).toBe(false);
+    expect(sequenceLineEqual(withFar, {
+      ...withFar,
+      primerOccurrences: [{ ...far, alignment: { runs: [{ op: 'X' }] } }],
+    })).toBe(true);
+  });
+  it('treats an adjacent forward 5-prime tail as line-relevant projection paint', () => {
+    const tailOnly = {
+      key: 'tail-only',
+      segments: [{ start: 12, end: 18 }],
+      strand: 1,
+      tail: 'AAAA',
+      alignment: { runs: [{ op: 'M' }] },
+    };
+    const current = { ...base(), primerOccurrences: [tailOnly] };
+    expect(sequenceLineEqual(current, {
+      ...current,
+      primerOccurrences: [{ ...tailOnly, tail: 'TTTT' }],
+    })).toBe(false);
+  });
+  it('treats an adjacent reverse 5-prime tail as line-relevant projection paint', () => {
+    const tailOnly = {
+      key: 'reverse-tail-only',
+      segments: [{ start: 2, end: 8 }],
+      strand: -1,
+      tail: 'AAAA',
+      alignment: { runs: [{ op: 'M' }] },
+    };
+    const current = {
+      ...base(),
+      line: { start: 10, seq: 'GTACGTACGT', kind: 'main' },
+      fullSeq: 'ACGTACGTACGTACGTACGTACGTACGTAC',
+      seqLength: 30,
+      primerOccurrences: [tailOnly],
+    };
+    expect(sequenceLineEqual(current, {
+      ...current,
+      primerOccurrences: [{ ...tailOnly, tail: 'TTTT' }],
+    })).toBe(false);
+  });
+  it('treats circular 5-prime tails wrapping across either origin edge as line-relevant', () => {
+    const forward = {
+      key: 'circular-forward-tail',
+      segments: [{ start: 1, end: 5 }],
+      strand: 1,
+      tail: 'AAAA',
+      alignment: { runs: [{ op: 'M' }] },
+    };
+    const lastLine = {
+      ...base(),
+      line: { start: 15, seq: 'TACGT', kind: 'main' },
+      circular: true,
+      primerOccurrences: [forward],
+    };
+    expect(sequenceLineEqual(lastLine, {
+      ...lastLine,
+      primerOccurrences: [{ ...forward, tail: 'TTTT' }],
+    })).toBe(false);
+
+    const reverse = {
+      key: 'circular-reverse-tail',
+      segments: [{ start: 15, end: 19 }],
+      strand: -1,
+      tail: 'AAAA',
+      alignment: { runs: [{ op: 'M' }] },
+    };
+    const firstLine = { ...base(), circular: true, primerOccurrences: [reverse] };
+    expect(sequenceLineEqual(firstLine, {
+      ...firstLine,
+      primerOccurrences: [{ ...reverse, tail: 'TTTT' }],
+    })).toBe(false);
+  });
 });
 
 describe('sequenceLineEqual — framesResolution + seqLength', () => {

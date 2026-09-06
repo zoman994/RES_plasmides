@@ -24,12 +24,14 @@ import {
 import { PrimerRow } from '../AssemblyPrimersPanel';
 import { useAssemblyPrimerWriting } from '../useAssemblyPrimerWriting';
 import { useStore } from '../../../../../store';
-import { resetDBForTests } from '../../../../../db/dexie-schema';
+import {
+  getPrimer, listPrimers, resetDBForTests,
+} from '../../../../../db/dexie-schema';
 import { PRIMER_SCOPE_GLOBAL } from '../../../../../lib/primer-identity';
 
 const actions = { updateAssemblyPrimer: () => {}, removeAssemblyPrimer: () => {} };
 const draft = {
-  id: 'p1', name: 'asm-fwd', label: 'asm-fwd', direction: 'forward',
+  id: 'p1', draftId: 'd1', name: 'asm-fwd', label: 'asm-fwd', direction: 'forward',
   sequence: 'ACGTACGTACGTACGTACGT', bindingSequence: 'ACGTACGTACGTACGTACGT',
   tail: '', tm: 60, gc: 50, autoMode: 'auto',
 };
@@ -128,6 +130,9 @@ describe('assembly primers persist themselves', () => {
     expect(saved.origin.kind).toBe('assembly-derived');
     // The draft it came from, so a recompute can recognise its own record.
     expect(saved.origin.draftPrimerId).toBe('p1');
+    await waitFor(async () => {
+      expect((await getPrimer(saved.id))?.origin?.draftPrimerId).toBe('p1');
+    });
   });
 
   it('is idempotent — recomputing the assembly does not duplicate the pool', async () => {
@@ -144,6 +149,10 @@ describe('assembly primers persist themselves', () => {
     rerender({ primers: [{ ...draft, tm: 60.5 }] });
     await new Promise((r) => { setTimeout(r, 0); });
     expect(Object.keys(useStore.getState().primersById)).toHaveLength(1);
+    const savedId = Object.keys(useStore.getState().primersById)[0];
+    await waitFor(async () => {
+      expect((await getPrimer(savedId))?.origin?.draftPrimerId).toBe('p1');
+    });
   });
 
   it('a second, genuinely different primer gets its own record', async () => {
@@ -156,6 +165,9 @@ describe('assembly primers persist themselves', () => {
     }));
     await waitFor(() => {
       expect(Object.keys(useStore.getState().primersById)).toHaveLength(2);
+    });
+    await waitFor(async () => {
+      expect(await listPrimers()).toHaveLength(2);
     });
   });
 });
@@ -234,6 +246,9 @@ describe('PRIMER-TAIL-SAVE-1 — editing an existing primer', () => {
     expect(rows[0].tail).toBe('GGGG'); // the tail reached the canonical pool
     expect(rows[0].bindingSequence).toBe('ACGTACGTACGTACGTACGT');
     expect(rows[0].origin.draftPrimerId).toBe('p1');
+    await waitFor(async () => {
+      expect((await getPrimer(firstKey))?.sequence).toBe('GGGGACGTACGTACGTACGTACGT');
+    });
   });
 });
 
@@ -366,7 +381,7 @@ describe('pool sync serialization — race safety', () => {
     try {
       const SEQ = 'ACGTACGTACGTACGTACGT'; // 20 bp
       const initial = {
-        id: 'p1', name: 'asm-fwd', label: 'asm-fwd', direction: 'forward',
+        id: 'p1', draftId: 'd1', name: 'asm-fwd', label: 'asm-fwd', direction: 'forward',
         sequence: SEQ, bindingSequence: SEQ, tail: '', tm: 60, gc: 50,
       };
       const withTailA = {

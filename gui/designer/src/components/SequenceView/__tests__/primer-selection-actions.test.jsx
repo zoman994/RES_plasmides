@@ -15,8 +15,22 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import PrimerSelectionActions from '../PrimerSelectionActions';
 import { PRIMER_SCOPE_GLOBAL, PRIMER_SCOPE_PROJECT } from '../../../lib/primer-identity';
+import TRANSLATIONS from '../../../i18n';
 
 afterEach(cleanup);
+
+it('has localized text for every physical 3-prime warning', () => {
+  for (const lang of ['en', 'ru']) {
+    for (const key of [
+      'pcr.product.warn.three-prime-noncanonical',
+      'pcr.product.warn.three-prime-evidence-invalid',
+      'pcr.product.warn.hairpin',
+    ]) {
+      expect(TRANSLATIONS[lang][key]).toEqual(expect.any(String));
+      expect(TRANSLATIONS[lang][key].length).toBeGreaterThan(0);
+    }
+  }
+});
 
 //        0         1         2         3
 //        0123456789012345678901234567890123456789
@@ -24,6 +38,8 @@ const TPL = 'GGGGAAAACCTTTTGGGGAACCCCTTTTGGAATTCCGGAA';
 
 const FWD = 'AAAACCTT'; // TPL[4..12)
 const REV = 'TTCCAAAA'; // rc(TPL[24..32))
+const PCR_FWD = 'AAAACCTTTTGG'; // TPL[4..16)
+const PCR_REV = 'GGAATTCCAAAA'; // rc(TPL[24..36))
 
 const stock = (over) => ({
   id: over.id,
@@ -84,6 +100,7 @@ describe('lab matches follow the selection', () => {
       ],
     });
     const root = screen.getByTestId('primer-selection-actions');
+    expect(root.getAttribute('data-primer-disclosure-keepopen')).toBe('true');
     const exact = screen.getByTestId('primer-lab-exact-ex');
     const sub = screen.getByTestId('primer-lab-substitution-sub');
     expect(root.contains(exact)).toBe(true);
@@ -176,25 +193,26 @@ describe('warnings about the oligo under the selection', () => {
         labRecords={[]}
       />,
     );
-    expect(screen.getByTestId('primer-selection-warnings').textContent.length)
-      .toBeGreaterThan(0);
+    const warning = screen.getByTestId('primer-selection-warnings').textContent;
+    expect(warning.length).toBeGreaterThan(0);
+    expect(warning).not.toContain('{run}');
   });
 });
 
 describe('two landings — one action', () => {
   const primersById = {
-    f: { id: 'f', name: 'fwd', sequence: FWD, bindingSequence: FWD, tail: '', direction: 'forward' },
-    r: { id: 'r', name: 'rev', sequence: REV, bindingSequence: REV, tail: '', direction: 'reverse' },
+    f: { id: 'f', name: 'fwd', sequence: PCR_FWD, bindingSequence: PCR_FWD, tail: '', direction: 'forward' },
+    r: { id: 'r', name: 'rev', sequence: PCR_REV, bindingSequence: PCR_REV, tail: '', direction: 'reverse' },
   };
   const pair = [
-    { key: 'f#1', primerId: 'f', start: 4, end: 12, strand: 1, evidence: 'source' },
-    { key: 'r#1', primerId: 'r', start: 24, end: 32, strand: -1, evidence: 'source' },
+    { key: 'f#1', primerId: 'f', start: 4, end: 16, strand: 1, evidence: 'source' },
+    { key: 'r#1', primerId: 'r', start: 24, end: 36, strand: -1, evidence: 'source' },
   ];
 
   it('previews the product and exposes exactly one create action', () => {
     renderActions({ occurrences: pair, primersById });
     const preview = screen.getByTestId('pcr-product-preview');
-    expect(preview.textContent).toMatch(/28/);
+    expect(preview.textContent).toMatch(/32/);
     expect(screen.getAllByTestId('pcr-product-create')).toHaveLength(1);
     expect(screen.queryByTestId('pcr-product-blocked')).toBeNull();
   });
@@ -205,7 +223,7 @@ describe('two landings — one action', () => {
     fireEvent.click(screen.getByTestId('pcr-product-create'));
     expect(onCreate).toHaveBeenCalledTimes(1);
     const arg = onCreate.mock.calls[0][0];
-    expect(arg.product.sequence).toBe('AAAACCTTTTGGGGAACCCCTTTTGGAA');
+    expect(arg.product.sequence).toBe('AAAACCTTTTGGGGAACCCCTTTTGGAATTCC');
     expect(arg.product.forward.key).toBe('f#1');
     expect(arg.product.reverse.key).toBe('r#1');
   });
@@ -226,7 +244,7 @@ describe('two landings — one action', () => {
     renderActions({
       primersById: {
         ...primersById,
-        f: { ...primersById.f, sequence: 'AATACCTT', bindingSequence: 'AATACCTT' },
+        f: { ...primersById.f, sequence: 'ATAACCTTTTGG', bindingSequence: 'ATAACCTTTTGG' },
       },
       occurrences: pair,
     });
