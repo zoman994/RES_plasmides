@@ -40,4 +40,17 @@ describe('useUndoHotkey — Ctrl+Z / Ctrl+Y for the canvas editor', () => {
     fireEvent.keyDown(getByTestId('field'), { code: 'KeyZ', ctrlKey: true });
     expect(onUndo).not.toHaveBeenCalled();
   });
+
+  it('does not mutate hidden canvas history while a modal marker exists', () => {
+    render(
+      <>
+        <Harness onUndo={onUndo} onRedo={onRedo} canUndo canRedo />
+        <div data-modal-open="" data-block-global-hotkeys="true" />
+      </>,
+    );
+    fireEvent.keyDown(window, { code: 'KeyZ', ctrlKey: true });
+    fireEvent.keyDown(window, { code: 'KeyY', ctrlKey: true });
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(onRedo).not.toHaveBeenCalled();
+  });
 });

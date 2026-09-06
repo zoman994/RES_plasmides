@@ -1,6 +1,8 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, act } from '@testing-library/react';
+import {
+  render, cleanup, act, screen,
+} from '@testing-library/react';
 vi.mock('../components/StartScreen/lib/open-bodge', () => ({
   openBodgeIntoLibrary: vi.fn(async () => {}),
 }));
@@ -8,7 +10,9 @@ import { openBodgeIntoLibrary } from '../components/StartScreen/lib/open-bodge';
 import { useStore } from '../store';
 import { clearAllAutosaveTimers, clearAllLocks, setAutosaveDelay, DEFAULT_AUTOSAVE_DELAY_MS } from '../store/projectSlice';
 import { clearAll } from '../db/dexie-schema';
-import { _setPlatformOverrideForTests, _clearHandlersForTests } from '../lib/hotkeys';
+import {
+  _setPlatformOverrideForTests, _clearHandlersForTests, registerHandler,
+} from '../lib/hotkeys';
 import App from '../App';
 
 async function reset() {
@@ -33,6 +37,7 @@ async function reset() {
     state.canvas.activeFullscreen = 'start';
     state.canvas.navStack = [{ fullscreen: 'start', payload: null }];
     state.modals = { settings: false, projectInfo: false };
+    state.prompt = null;
     state.toasts = [];
     state.theme = 'light';
   });
@@ -119,6 +124,47 @@ describe('K4-fixup — hotkey scenario F (round-trip via registry)', () => {
     expect(useStore.getState().modals.settings).toBe(false);
   });
 
+  it('a real modal blocks app-owned browser chords but leaves native copy alone', async () => {
+    const hiddenPrimerAction = vi.fn();
+    const hiddenEditAction = vi.fn();
+    const unregister = registerHandler('pcr-primer-forward', hiddenPrimerAction);
+    const unregisterEdit = registerHandler('primer-edit', hiddenEditAction);
+    render(<App />);
+    await act(async () => {
+      pressHotkey({ key: ',', ctrl: true });
+      await flushAsync();
+    });
+
+    const input = screen.getByTestId('settings-name');
+    const reload = new KeyboardEvent('keydown', {
+      key: 'r', ctrlKey: true, bubbles: true, cancelable: true,
+    });
+    input.dispatchEvent(reload);
+    expect(reload.defaultPrevented).toBe(true);
+    expect(hiddenPrimerAction).not.toHaveBeenCalled();
+
+    const newWindow = new KeyboardEvent('keydown', {
+      key: 'n', ctrlKey: true, bubbles: true, cancelable: true,
+    });
+    input.dispatchEvent(newWindow);
+    expect(newWindow.defaultPrevented).toBe(true);
+    expect(useStore.getState().currentProjectId).toBeNull();
+
+    const copy = new KeyboardEvent('keydown', {
+      key: 'c', ctrlKey: true, bubbles: true, cancelable: true,
+    });
+    input.dispatchEvent(copy);
+    expect(copy.defaultPrevented).toBe(false);
+    const typedE = new KeyboardEvent('keydown', {
+      key: 'e', bubbles: true, cancelable: true,
+    });
+    input.dispatchEvent(typedE);
+    expect(typedE.defaultPrevented).toBe(false);
+    expect(hiddenEditAction).not.toHaveBeenCalled();
+    unregister();
+    unregisterEdit();
+  });
+
   it('a held Escape closes one modal without also popping the screen underneath', async () => {
     useStore.setState((state) => {
       state.canvas.activeFullscreen = 'underConstruction';
@@ -152,6 +198,32 @@ describe('K4-fixup — hotkey scenario F (round-trip via registry)', () => {
       await flushAsync();
     });
     expect(useStore.getState().canvas.activeFullscreen).toBe('start');
+  });
+
+  it('Escape cancels PromptModal without popping the fullscreen underneath', async () => {
+    useStore.setState((state) => {
+      state.canvas.activeFullscreen = 'underConstruction';
+      state.canvas.navStack = [
+        { fullscreen: 'start', payload: null },
+        { fullscreen: 'underConstruction', payload: { milestone: 'M-H', name: 'Library' } },
+      ];
+    });
+    render(<App />);
+    let promptResult;
+    await act(async () => {
+      promptResult = useStore.getState().requestPrompt({ title: 'Rename' });
+      await flushAsync();
+    });
+    expect(useStore.getState().prompt).toBeTruthy();
+
+    await act(async () => {
+      pressHotkey({ key: 'Escape' });
+      await flushAsync();
+    });
+    await expect(promptResult).resolves.toBeNull();
+    expect(useStore.getState().prompt).toBeNull();
+    expect(useStore.getState().canvas.activeFullscreen).toBe('underConstruction');
+    expect(useStore.getState().canvas.navStack).toHaveLength(2);
   });
 
   it('Cmd/Ctrl+W closes the project (only when one is open)', async () => {

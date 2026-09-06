@@ -16,10 +16,15 @@ import {
   describe, it, expect, afterEach, vi,
 } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
-import { runHotkeyResolver } from '../../../lib/hotkeys';
+import {
+  _clearHandlersForTests, registerHandler, runHotkeyResolver,
+} from '../../../lib/hotkeys';
 import { usePrimerHotkeys } from '../hooks/usePrimerHotkeys';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  _clearHandlersForTests();
+});
 
 function Host(props) {
   usePrimerHotkeys(props);
@@ -147,5 +152,20 @@ describe('usePrimerHotkeys', () => {
     unmount();
     pressFwd();
     expect(onWritePrimer).not.toHaveBeenCalled();
+  });
+
+  it('a read-only nested viewer hands Ctrl+R back to the underlying writer on unmount', () => {
+    const underlyingWriter = vi.fn();
+    const unregisterUnderlying = registerHandler('pcr-primer-forward', underlyingWriter);
+    const { unmount } = render(
+      <Host onWritePrimer={undefined} caretAnchor={1} caretPos={9} />,
+    );
+
+    pressFwd();
+    expect(underlyingWriter).not.toHaveBeenCalled();
+    unmount();
+    pressFwd();
+    expect(underlyingWriter).toHaveBeenCalledTimes(1);
+    unregisterUnderlying();
   });
 });

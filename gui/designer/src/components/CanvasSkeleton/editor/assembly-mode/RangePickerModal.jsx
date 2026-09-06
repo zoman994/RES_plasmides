@@ -23,6 +23,7 @@
  * Closes on Esc / click-outside (ui-interactions modal contract).
  */
 import { useEffect, useMemo, useState } from 'react';
+import useModalKeyboardBoundary from '../../../../hooks/useModalKeyboardBoundary';
 import SequenceTab from '../../../Library/inspector/tabs/SequenceTab';
 import { useStore } from '../../../../store';
 import { selectAllEnzymeSets, selectMergedREEnzymes } from '../../../../store/customEnzymesSlice';
@@ -65,6 +66,7 @@ function featureLabel(a, idx) {
 }
 
 export default function RangePickerModal({ source, onConfirm, onCancel, priorEnzymes = [] }) {
+  const modalBoundary = useModalKeyboardBoundary(onCancel);
   const seq = (source && source.sequence) || '';
   const annotations = (source && source.annotations) || [];
   const [rc, setRc] = useState(false);
@@ -262,12 +264,6 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
       useStore.setState({ showReSites: true });
     }
   }, []);
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
 
   const onPickFeature = (e) => {
     const v = e.target.value;
@@ -523,6 +519,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
     <div
       role="dialog"
       data-testid="range-picker-modal"
+      {...modalBoundary}
       onClick={onCancel}
       style={{
         position: 'fixed', inset: 0, zIndex: 100,

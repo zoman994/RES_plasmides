@@ -8,7 +8,8 @@
  *
  * Closes on Esc / click-outside (ui-interactions modal contract).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import useModalKeyboardBoundary from '../../../../hooks/useModalKeyboardBoundary';
 
 // KLD is intentionally absent — it is a single-template self-closure reaction,
 // not a way to join ≥2 selected pieces (the picker only opens on ≥2). KLD is
@@ -33,22 +34,18 @@ function autoSuggest() {
 }
 
 export default function OpGroupPicker({
-  pieceIds, zoneFinalTopology, onConfirm, onCancel,
+  pieceIds, onConfirm, onCancel,
 }) {
+  const modalBoundary = useModalKeyboardBoundary(onCancel);
   const initial = useMemo(() => autoSuggest(), []);
   const [kind, setKind] = useState(initial);
   const [name, setName] = useState('');
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
 
   return (
     <div
       role="dialog"
       data-testid="op-group-picker-modal"
+      {...modalBoundary}
       onClick={onCancel}
       style={{
         position: 'absolute', inset: 0, zIndex: 100,

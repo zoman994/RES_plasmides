@@ -5,7 +5,8 @@
  * region of the piece's amplification primer.
  * Closes on Esc / click-outside (ui-interactions modal contract).
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import useModalKeyboardBoundary from '../../../../hooks/useModalKeyboardBoundary';
 
 const BASES = ['A', 'C', 'G', 'T'];
 const KINDS = [
@@ -17,6 +18,7 @@ const KINDS = [
 export default function MutationModal({
   sourceName, defaultPosition, fromBase, sequence, onConfirm, onCancel, kldApplies = false,
 }) {
+  const modalBoundary = useModalKeyboardBoundary(onCancel);
   const [position, setPosition] = useState(
     Number.isFinite(defaultPosition) ? defaultPosition : 0,
   );
@@ -32,12 +34,6 @@ export default function MutationModal({
   );
   const [kind, setKind] = useState('silent');
   const [notes, setNotes] = useState('');
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
 
   // H2/M2 (audit) — an auto mutagenic primer only carries the edit if it falls in
   // a TERMINAL binding window (~36 nt from either end of the piece). An interior
@@ -71,6 +67,7 @@ export default function MutationModal({
     <div
       role="dialog"
       data-testid="mutation-modal"
+      {...modalBoundary}
       onClick={onCancel}
       style={{
         position: 'absolute', inset: 0, zIndex: 100,

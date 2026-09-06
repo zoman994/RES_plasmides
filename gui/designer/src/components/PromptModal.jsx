@@ -8,12 +8,15 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store';
+import useModalKeyboardBoundary from '../hooks/useModalKeyboardBoundary';
 
 export default function PromptModal() {
   const prompt = useStore((s) => s.prompt);
   const resolvePrompt = useStore((s) => s.resolvePrompt);
   const [value, setValue] = useState('');
   const inputRef = useRef(null);
+  const cancel = () => resolvePrompt(null);
+  const modalBoundary = useModalKeyboardBoundary(cancel, { active: !!prompt });
 
   useEffect(() => {
     if (!prompt) return undefined;
@@ -28,7 +31,6 @@ export default function PromptModal() {
   if (!prompt) return null;
 
   const confirm = () => resolvePrompt(value);
-  const cancel = () => resolvePrompt(null);
 
   const onKeyDown = (e) => {
     if (e.key === 'Escape') { e.preventDefault(); cancel(); return; }
@@ -48,6 +50,7 @@ export default function PromptModal() {
   return (
     <div
       data-testid="prompt-modal"
+      {...modalBoundary}
       onMouseDown={(e) => { if (e.target === e.currentTarget) cancel(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 4000,

@@ -113,10 +113,11 @@ export const HOTKEYS = Object.freeze({
   },
   // V72 — write a primer from the selected DNA range inside the PCR
   // viewer. Scoped to the viewer by HANDLER LIFECYCLE, not by `scope`:
-  // PcrModeShell registers the handler via useHotkey only while mounted,
-  // and the resolver skips ids with no registered handler WITHOUT
-  // calling preventDefault — so Ctrl+R reloads the browser normally
-  // everywhere except inside the open PCR viewer. `alt`/`shift` are
+  // PcrModeShell registers the handler via useHotkey only while mounted.
+  // Registrations are stacked so a nested viewer temporarily owns Ctrl+R
+  // without deleting the underlying assembly handler on cleanup. With no
+  // handler, Ctrl+R remains the normal browser reload outside a blocking modal.
+  // `alt`/`shift` are
   // pinned so Ctrl+R (fwd) and Ctrl+Alt+R (rev) never cross-match and
   // Ctrl+Shift+R stays a hard-reload.
   'pcr-primer-forward': {
@@ -190,6 +191,8 @@ function scopeRank(scope) {
   return idx >= 0 ? idx : -1;
 }
 
+// id -> registration records in mount order. A record (rather than the function
+// alone) makes cleanup exact even when the same callback is registered twice.
 const _handlers = new Map();
 let _platformOverride = null;
 
@@ -211,9 +214,17 @@ export function registerHandler(id, handler) {
     console.warn(`[bodgegene/hotkeys] unknown id "${id}"`);
     return () => {};
   }
-  _handlers.set(id, handler);
+  const registration = { handler };
+  const stack = _handlers.get(id) || [];
+  stack.push(registration);
+  _handlers.set(id, stack);
   return () => {
-    if (_handlers.get(id) === handler) _handlers.delete(id);
+    const current = _handlers.get(id);
+    if (!current) return;
+    const index = current.indexOf(registration);
+    if (index < 0) return;
+    current.splice(index, 1);
+    if (current.length === 0) _handlers.delete(id);
   };
 }
 
@@ -222,7 +233,12 @@ export function _clearHandlersForTests() {
 }
 
 export function _getHandlersForTests() {
-  return new Map(_handlers);
+  return new Map(
+    Array.from(_handlers, ([id, registrations]) => [
+      id,
+      registrations.map((registration) => registration.handler),
+    ]),
+  );
 }
 
 export function useHotkey(id, handler) {
@@ -300,6 +316,10 @@ function _blocksGlobalHotkeys(target, event) {
   if (String(event?.key || '').toLowerCase() === 'escape'
     && !event?.ctrlKey && !event?.metaKey && !event?.altKey && !event?.shiftKey) {
     if (element?.closest?.('[data-block-global-escape="true"]')) return true;
+    const viewerRoot = element?.closest?.('[data-testid="sequence-view-root"]');
+    if (viewerRoot) {
+      return !!viewerRoot.querySelector('[data-block-global-escape="true"]');
+    }
     if (typeof document !== 'undefined'
       && document.querySelector('[data-block-global-escape="true"]')) return true;
   }
@@ -311,6 +331,27 @@ function _blocksGlobalHotkeys(target, event) {
   return !!document.querySelector(
     '[data-modal-open][data-block-global-hotkeys="true"]',
   );
+}
+
+function _matchesAppOwnedHotkey(event) {
+  // Escape has no browser default worth suppressing. The topmost modal owns
+  // preventDefault/close in bubble phase, after an inner control had a chance
+  // to consume Escape itself. Marking it here in App capture would make the
+  // modal mistake the resolver's guard for an inner control decision.
+  if (String(event?.key || '').toLowerCase() === 'escape'
+    && !event?.ctrlKey && !event?.metaKey && !event?.altKey && !event?.shiftKey) {
+    return false;
+  }
+  const platform = detectPlatform();
+  const inInput = _isInInputElement(event.target);
+  return Object.values(HOTKEYS).some((def) => {
+    return _combosForPlatform(def, platform)
+      .some((combo) => _eventMatchesCombo(event, combo)
+        // allowInInput controls app dispatch, not browser ownership. Modified
+        // app chords such as Ctrl+N must not open a browser surface behind a
+        // modal, while bare E/S/P still remain editable text.
+        && (!inInput || def.allowInInput || combo.ctrl || combo.meta || combo.alt));
+  });
 }
 
 function _defaultGetContext() {
@@ -361,7 +402,10 @@ function _scopeAllowed(scope, ctx) {
  */
 export function runHotkeyResolver(event, opts = {}) {
   if (!event || event.defaultPrevented) return false;
-  if (_blocksGlobalHotkeys(event.target, event)) return false;
+  if (_blocksGlobalHotkeys(event.target, event)) {
+    if (_matchesAppOwnedHotkey(event)) event.preventDefault();
+    return false;
+  }
   const platform = detectPlatform();
   const ctx = opts.context ? opts.context : _getContext();
   const inInput = _isInInputElement(event.target);
@@ -387,7 +431,9 @@ export function runHotkeyResolver(event, opts = {}) {
   }
   if (!best) return false;
 
-  const handler = _handlers.get(best);
+  const registrations = _handlers.get(best);
+  const handler = registrations?.[registrations.length - 1]?.handler;
+  if (typeof handler !== 'function') return false;
   event.preventDefault();
   try {
     const ret = handler(event);

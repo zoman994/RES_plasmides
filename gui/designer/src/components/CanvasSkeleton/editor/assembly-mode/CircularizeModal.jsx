@@ -12,7 +12,8 @@
  * dispatches setAssemblyDraftTopology + SET_ASSEMBLY_METHOD / closure config.
  * Mirrors the OpGroupPicker dialog contract (backdrop, Esc, confirm/cancel).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import useModalKeyboardBoundary from '../../../../hooks/useModalKeyboardBoundary';
 import { CLOSURE_METHODS, defaultEnzymeForMethod } from '../../lib/junction-derive';
 import { validateClosure } from '../../lib/circularize-validate';
 import { GG_ENZYMES } from '../../../../golden-gate';
@@ -146,18 +147,13 @@ function Preview({ segments, circular, methodColor }) {
 export default function CircularizeModal({
   draft, closureMethod, onConfirm, onCancel,
 }) {
+  const modalBoundary = useModalKeyboardBoundary(onCancel);
   const segments = (draft && draft.segments ? draft.segments.length : 0);
   // KLD is single-fragment self-closure; a multi-fragment ring defaults to Gibson.
   const closureDefault = segments === 1 ? 'kld' : 'gibson';
   const [method, setMethod] = useState(() => closureMethod || closureDefault);
   // F — the chosen enzyme (GG Type IIS / RE). Defaults per the initial method.
   const [enzyme, setEnzyme] = useState(() => defaultEnzymeForMethod(closureMethod || closureDefault));
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
 
   // KLD is only valid as single-fragment self-closure.
   const isDisabled = (id) => (id === 'kld' && segments !== 1);
@@ -191,6 +187,7 @@ export default function CircularizeModal({
     <div
       role="dialog"
       data-testid="circularize-modal"
+      {...modalBoundary}
       onClick={onCancel}
       style={{
         position: 'absolute', inset: 0, zIndex: 100,

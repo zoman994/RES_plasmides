@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
 import { formatHotkey } from '../lib/hotkeys';
 import { STRINGS } from '../lib/strings';
+import useModalKeyboardBoundary from '../hooks/useModalKeyboardBoundary';
 
 const NAME_MAX = 100;
 const DESC_MAX = 1000;
@@ -22,6 +23,7 @@ export default function ProjectInfoModal() {
   const addTag = useStore(s => s.addTag);
   const removeTag = useStore(s => s.removeTag);
   const showToast = useStore(s => s.showToast);
+  const modalBoundary = useModalKeyboardBoundary(closeProjectInfo, { active: !!project });
 
   const initialTags = project?.tags || [];
   const [name, setName] = useState(project?.name || '');
@@ -36,8 +38,6 @@ export default function ProjectInfoModal() {
       nameRef.current.select();
     }
   }, []);
-
-  if (!project) return null;
 
   function addTagFromInput() {
     const norm = normalizeTag(tagInput);
@@ -105,10 +105,13 @@ export default function ProjectInfoModal() {
       .map(([t]) => t);
   }, [allProjects, tags]);
 
+  if (!project) return null;
+
   return (
     <div
       data-testid="project-info-modal-backdrop"
       role="dialog"
+      {...modalBoundary}
       onClick={onCancel}
       className="modal-anim-backdrop"
       style={{

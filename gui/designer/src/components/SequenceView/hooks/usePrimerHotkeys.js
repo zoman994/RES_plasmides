@@ -22,11 +22,9 @@
  *
  * Mirrors usePieceHotkey (DEC-T5-13 lifecycle-scoped): no-op without a
  * selection or without a write channel. The hotkey ids are shared with
- * useAssemblyPrimerWriting / PcrModeShell, but `_handlers` is single-
- * per-id and child effects register before parent — so when an
- * assembly/PCR shell wraps a SequenceView, the SHELL re-registers last
- * (its caret-dep handler re-runs on every selection) and keeps its own
- * direct-write behaviour; standalone viewers get this one.
+ * useAssemblyPrimerWriting / PcrModeShell. Registrations form a LIFO stack:
+ * the last mounted consumer owns the chord, and its exact cleanup restores
+ * the previous consumer instead of leaving the shared id empty.
  */
 import { useCallback } from 'react';
 import { useHotkey } from '../../../lib/hotkeys';

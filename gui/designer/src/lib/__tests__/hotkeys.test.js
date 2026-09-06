@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import {
   HOTKEYS, formatHotkey, useHotkey, runHotkeyResolver,
-  _setPlatformOverrideForTests, _clearHandlersForTests, _setGetContextForTests, _getHandlersForTests,
+  registerHandler, _setPlatformOverrideForTests, _clearHandlersForTests,
+  _setGetContextForTests, _getHandlersForTests,
 } from '../hotkeys';
 
 function makeEvent({ key, meta = false, ctrl = false, alt = false, shift = false, target } = {}) {
@@ -29,6 +30,9 @@ describe('K4 — hotkey infrastructure', () => {
     _clearHandlersForTests();
     _setPlatformOverrideForTests(null);
     _setGetContextForTests(null);
+    document
+      .querySelectorAll('[data-block-global-hotkeys], [data-block-global-escape]')
+      .forEach((element) => element.remove());
   });
 
   it('1) formatHotkey returns mac/win-linux display strings', () => {
@@ -280,7 +284,7 @@ describe('K4 — hotkey infrastructure', () => {
 
     const event = makeEvent({ key: 'p', ctrl: true, target: button });
     expect(runHotkeyResolver(event)).toBe(false);
-    expect(event.defaultPrevented).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
     expect(handler).not.toHaveBeenCalled();
     modal.remove();
   });
@@ -336,10 +340,96 @@ describe('K4 — hotkey infrastructure', () => {
 
     const event = makeEvent({ key: 'Escape', target: escapedFocus });
     expect(runHotkeyResolver(event)).toBe(false);
+    // The resolver blocks the underlying app action; the modal's own
+    // topmost boundary consumes plain Escape later in bubble phase.
     expect(event.defaultPrevented).toBe(false);
     expect(handler).not.toHaveBeenCalled();
     modal.remove();
     escapedFocus.remove();
+  });
+
+  it('a modal suppresses browser default only for an app-owned chord', () => {
+    _setPlatformOverrideForTests('other');
+    const modal = document.createElement('section');
+    modal.setAttribute('data-modal-open', '');
+    modal.setAttribute('data-block-global-hotkeys', 'true');
+    document.body.appendChild(modal);
+
+    const reload = makeEvent({ key: 'r', ctrl: true, target: document.body });
+    expect(runHotkeyResolver(reload)).toBe(false);
+    expect(reload.defaultPrevented).toBe(true);
+
+    const copy = makeEvent({ key: 'c', ctrl: true, target: document.body });
+    expect(runHotkeyResolver(copy)).toBe(false);
+    expect(copy.defaultPrevented).toBe(false);
+    modal.remove();
+  });
+
+  it('handler registrations are LIFO and removing the top restores the previous handler', () => {
+    _setPlatformOverrideForTests('other');
+    const underlying = vi.fn();
+    const overlay = vi.fn();
+    const unregisterUnderlying = registerHandler('pcr-primer-forward', underlying);
+    const unregisterOverlay = registerHandler('pcr-primer-forward', overlay);
+
+    expect(_getHandlersForTests().get('pcr-primer-forward')).toEqual([underlying, overlay]);
+    expect(runHotkeyResolver(makeEvent({ key: 'r', ctrl: true }))).toBe(true);
+    expect(overlay).toHaveBeenCalledTimes(1);
+    expect(underlying).not.toHaveBeenCalled();
+
+    unregisterOverlay();
+    expect(_getHandlersForTests().get('pcr-primer-forward')).toEqual([underlying]);
+    expect(runHotkeyResolver(makeEvent({ key: 'r', ctrl: true }))).toBe(true);
+    expect(underlying).toHaveBeenCalledTimes(1);
+    unregisterUnderlying();
+  });
+
+  it('exact unregister removes a non-top registration, including duplicate functions', () => {
+    const shared = vi.fn();
+    const top = vi.fn();
+    const unregisterFirst = registerHandler('escape', shared);
+    const unregisterDuplicate = registerHandler('escape', shared);
+    const unregisterTop = registerHandler('escape', top);
+
+    unregisterDuplicate();
+    expect(_getHandlersForTests().get('escape')).toEqual([shared, top]);
+    expect(runHotkeyResolver(makeEvent({ key: 'Escape' }))).toBe(true);
+    expect(top).toHaveBeenCalledTimes(1);
+
+    unregisterTop();
+    expect(runHotkeyResolver(makeEvent({ key: 'Escape' }))).toBe(true);
+    expect(shared).toHaveBeenCalledTimes(1);
+    unregisterFirst();
+    expect(_getHandlersForTests().has('escape')).toBe(false);
+  });
+
+  it('outside a modal, handlerless Ctrl+R remains available to the browser', () => {
+    _setPlatformOverrideForTests('other');
+    const event = makeEvent({ key: 'r', ctrl: true });
+    expect(runHotkeyResolver(event)).toBe(false);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('an expanded primer in viewer A does not steal Escape targeted inside viewer B', () => {
+    _setPlatformOverrideForTests('other');
+    const escape = vi.fn();
+    renderHook(() => useHotkey('escape', escape));
+
+    const viewerA = document.createElement('section');
+    viewerA.setAttribute('data-testid', 'sequence-view-root');
+    const disclosureA = document.createElement('div');
+    disclosureA.setAttribute('data-block-global-escape', 'true');
+    viewerA.appendChild(disclosureA);
+    const viewerB = document.createElement('section');
+    viewerB.setAttribute('data-testid', 'sequence-view-root');
+    const targetB = document.createElement('button');
+    viewerB.appendChild(targetB);
+    document.body.append(viewerA, viewerB);
+
+    expect(runHotkeyResolver(makeEvent({ key: 'Escape', target: targetB }))).toBe(true);
+    expect(escape).toHaveBeenCalledTimes(1);
+    viewerA.remove();
+    viewerB.remove();
   });
 
   // PRIMER-LIVE-1 — «E» edits the selected primer occurrence, the keyboard

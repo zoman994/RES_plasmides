@@ -8,22 +8,12 @@
  * Closes on Esc, backdrop click, or the close button. No store state —
  * a parent prop drives `open`.
  */
-import { useEffect } from 'react';
 import { HOTKEYS, formatHotkey } from '../lib/hotkeys';
 import { STRINGS } from '../lib/strings';
+import useModalKeyboardBoundary from '../hooks/useModalKeyboardBoundary';
 
 export default function HotkeyCheatsheet({ open, onClose }) {
-  useEffect(() => {
-    if (!open) return undefined;
-    function onKey(e) {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose?.();
-      }
-    }
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, onClose]);
+  const modalBoundary = useModalKeyboardBoundary(onClose, { active: open });
 
   if (!open) return null;
 
@@ -38,6 +28,7 @@ export default function HotkeyCheatsheet({ open, onClose }) {
       data-testid="hotkey-cheatsheet-backdrop"
       role="dialog"
       aria-modal="true"
+      {...modalBoundary}
       aria-label={STRINGS.hotkeyCheatsheet?.title || 'Keyboard shortcuts'}
       onClick={onClose}
       className="modal-anim-backdrop"

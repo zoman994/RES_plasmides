@@ -6,6 +6,7 @@ import { AA_NAMES, getCodonsForAA } from '../../../../codons';
 import { chooseMutantCodon, getCommonSubstitutions } from '../../../../mutagenesis';
 import { t, tf } from '../../../../i18n';
 import { Icon } from '../../../icons/Icon';
+import useModalKeyboardBoundary from '../../../../hooks/useModalKeyboardBoundary';
 
 const AMINO_ACIDS = Object.keys(AA_NAMES).filter((aa) => aa !== '*').sort();
 
@@ -22,6 +23,7 @@ function countChanges(fromCodon, toCodon) {
 }
 
 export default function AAMutationDialog({ selection, error = null, onApply, onCancel }) {
+  const modalBoundary = useModalKeyboardBoundary(onCancel);
   const sourceAA = String(selection?.aa || '').toUpperCase();
   const sourceCodon = String(selection?.codon || '').toUpperCase();
   const [targetAA, setTargetAA] = useState(() => recommendedAA(sourceAA));
@@ -39,13 +41,6 @@ export default function AAMutationDialog({ selection, error = null, onApply, onC
     if (prior && typeof prior.focus === 'function' && prior.isConnected) prior.focus();
   }, []);
 
-  const closeOnEscape = (event) => {
-    event.stopPropagation();
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      onCancel();
-    }
-  };
   const apply = () => onApply({ targetAA, targetCodon });
   const aaIndex = Number.isInteger(selection?.aaIndex) ? selection.aaIndex : '?';
 
@@ -55,8 +50,8 @@ export default function AAMutationDialog({ selection, error = null, onApply, onC
       aria-modal="true"
       aria-labelledby="aa-mutation-title"
       data-testid="aa-mutation-dialog"
+      {...modalBoundary}
       onMouseDown={onCancel}
-      onKeyDown={closeOnEscape}
       style={backdropStyle}
     >
       <div onMouseDown={(event) => event.stopPropagation()} style={panelStyle}>

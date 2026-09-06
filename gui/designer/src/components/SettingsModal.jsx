@@ -4,6 +4,7 @@ import { clearAll } from '../db/dexie-schema';
 import { formatHotkey } from '../lib/hotkeys';
 import { STRINGS } from '../lib/strings';
 import { promptInstall, isPwaInstalled } from '../lib/pwa-install';
+import useModalKeyboardBoundary from '../hooks/useModalKeyboardBoundary';
 
 const TABS = [
   { id: 'identity', labelKey: 'identity' },
@@ -24,6 +25,7 @@ const THEME_OPTIONS = [
 
 export default function SettingsModal() {
   const closeSettings = useStore(s => s.closeSettings);
+  const modalBoundary = useModalKeyboardBoundary(closeSettings);
   const agent = useStore(s => s.agent);
   const setAgent = useStore(s => s.setAgent);
   const showToast = useStore(s => s.showToast);
@@ -57,6 +59,7 @@ export default function SettingsModal() {
     <div
       data-testid="settings-modal-backdrop"
       role="dialog"
+      {...modalBoundary}
       onClick={closeSettings}
       className="modal-anim-backdrop"
       style={{

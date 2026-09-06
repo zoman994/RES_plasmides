@@ -1,101 +1,111 @@
-# CURRENT_TASK — INFRA-GATE-2 checkpointed: module-aware RSS и точный Vitest gate
+# CURRENT_TASK — ASM-6A: модалка владеет клавиатурой
 
-**Статус:** принят и сохранён 06.09.2026 как
-`7417966c2d29adc424139b21e59b9154bf42863c`. INFRA-GATE-1 остановлен после
-информативного полного прогона: все 859 модулей завершились; reporter отдельно показал
-два skipped, а RSS — две setup-only записи без moduleId. Их точное соответствие ещё не
-доказано. Строгий контракт «две RSS-точки на каждый expected module» отклонён; это не
-worker crash и не закрытие BG-022.
+**Статус:** ACTIVE, контракт заморожен 06.09.2026 после read-only аудита DOC-09.
 
 ## Основание и режим
 
-- Accepted base: `6145bf0f1fcc8e44211eaf17445f1b00f84a6d96`; implementation checkpoint:
-  `7417966c2d29adc424139b21e59b9154bf42863c`.
+- Accepted base: `47f72a2198dbc9b9b79bfe42bea93b22120b8b2b` (`INFRA-GATE-2`).
 - Writer mode: solo; Integration owner: Codex; writable checkout только
   `D:\RESplasmide`.
-- Владелец 06.09.2026 разрешил пакет, exact stage/commit, bundle и обычный push. Tag не
-  создаётся: имя не задано, а BG-022 открыт.
-- Принятые входы нового пакета: точечный common-features stub, три независимых inventory
-  и сохранение raw stdout/stderr. Перепроверяется только опровергнутый RSS-контракт.
+- Владелец разрешил реализацию, exact stage/commit, bundle и обычный push. Tag не
+  создаётся: имя не задано.
+- Один decision center и один tracker. Три read-only аудита подтвердили, что DOC-09
+  смешивал независимые UI, editor-flow и biological цели; этот пакет принимает только
+  keyboard/modal boundary из BG-078/BG-079.
+
+## Что это даст пользователю
+
+Открытый диалог становится настоящей стеной: одно Escape закрывает только верхний
+диалог; Ctrl+Z, Tab, E и Ctrl+R не меняют скрытый canvas и не перезагружают вкладку.
+После закрытия вложенного SequenceView исходный assembly Ctrl+R снова работает, потому
+что registry восстанавливает предыдущий handler.
 
 ## Наблюдаемый контракт
 
-1. Test setup перехватывает только точную строку `/common-features.json`, возвращает
-   свежую test DB и делегирует любой другой URL/Request исходному happy-dom fetch.
-   Локальные success/error mocks тестов имеют приоритет и восстанавливаются cleanup.
-2. Gate требует raw exit 0, Vitest reason `passed`, JSON success и точное ненулевое
-   expected = ended = run-end = JSON inventory; missing/extra/duplicate дают nonzero.
-3. Каждый RSS-сэмпл содержит `moduleId`, один раз полученный из текущего Vitest worker
-   context, и `phase`; gate нормализует путь централизованно. Каждый expected module
-   обязан дать ровно один `setup`.
-4. Модуль со state `skipped` может дать `setup` либо `setup -> afterAll`; любой иной
-   модуль обязан дать точную пару. State кроме `passed`/`skipped` независимо оставляет
-   общий gate красным. Неизвестный module/state, duplicate, неверный порядок, missing
-   или лишний sample — FAIL; skipped setup-only отдельно перечисляются в summary.
-5. Сопоставление RSS по одному `moduleId` допустимо только при его уникальности в expected
-   inventory; неоднозначность между проектами делает evidence неполным.
-6. RSS остаётся точечным `process.memoryUsage().rss`, не process-tree total и не peak.
-   Каждый run сохраняет отдельные byte-for-byte stdout/stderr, JSON, lifecycle, RSS и
-   summary в ignored `tmp/vitest-gate/<run-id>`.
+1. Общий modal-boundary регистрирует каждый открытый слой в LIFO-stack. Escape из
+   верхнего слоя или при оставшемся на opener фокусе закрывает ровно topmost; cleanup
+   non-top слоя не меняет topmost. Остальные keydown сначала доступны контролу внутри
+   диалога, затем не всплывают в React-родителя.
+2. Каждый целевой modal root несёт `data-modal-open=""` и
+   `data-block-global-hotkeys="true"`: RangePickerModal, MutationModal,
+   CircularizeModal, OpGroupPicker, AAMutationDialog, DigestFragmentPicker,
+   PromptModal, SettingsModal, ProjectInfoModal, HotkeyCheatsheet.
+3. Global resolver при открытом blocking-modal не вызывает app handler. Если chord
+   совпадает с HOTKEYS, он гасит browser default; незарегистрированные браузерные/текстовые
+   клавиши (например Ctrl+C) не гасит.
+4. Registry хранит стек регистраций на id. Вызывается последний; exact unregister
+   восстанавливает предыдущий, включая снятие non-top и повторную регистрацию той же
+   функции.
+5. Вне модалки отсутствие handler сохраняет прежний контракт: resolver возвращает
+   false и не гасит browser Ctrl+R. Формулировка DOC-09 «гасить всегда» отклонена: она
+   маскировала бы registry-дефект и навсегда отняла обычный reload вне PCR/assembly.
+6. Expanded-primer Escape действует только в `sequence-view-root` event target. Для
+   target вне любого viewer остаётся document fallback, чтобы не сломать принятый P16
+   focus-outside контракт.
+7. `useUndoHotkey` и `useTabHotkey` не меняются: они уже fail-closed при наличии
+   `[data-modal-open]`; реальные тесты доказывают их поведение.
 
-## Manifest
-
-Implementation candidate:
+## Production manifest
 
 - `CURRENT_TASK.md`;
-- `gui/designer/package.json`;
-- `gui/designer/vite.config.js`;
-- `gui/designer/src/test/common-features-fetch.js`;
-- `gui/designer/src/test/setup.js`;
-- `gui/designer/src/test/vitest-process-probe.js`;
-- `gui/designer/src/test/__tests__/common-features-fetch.test.js`;
-- `gui/designer/scripts/vitest-inventory-reporter.mjs`;
-- `gui/designer/scripts/vitest-gate.mjs`;
-- `gui/designer/scripts/__tests__/vitest-gate.test.js`;
-- `gui/designer/scripts/__tests__/fixtures/vitest-gate-fully-skipped.test.js`.
+- `gui/designer/src/hooks/useModalKeyboardBoundary.js` (new);
+- `gui/designer/src/lib/hotkeys.js`;
+- `gui/designer/src/components/SequenceView/hooks/usePrimerHotkeys.js` (comment-only,
+  удаляет устаревшее описание однослотового registry);
+- `gui/designer/src/components/CanvasSkeleton/editor/assembly-mode/RangePickerModal.jsx`;
+- `gui/designer/src/components/CanvasSkeleton/editor/assembly-mode/MutationModal.jsx`;
+- `gui/designer/src/components/CanvasSkeleton/editor/assembly-mode/CircularizeModal.jsx`;
+- `gui/designer/src/components/CanvasSkeleton/editor/assembly-mode/OpGroupPicker.jsx`;
+- `gui/designer/src/components/CanvasSkeleton/editor/assembly-mode/AAMutationDialog.jsx`;
+- `gui/designer/src/components/CanvasSkeleton/editor/assembly-mode/DigestFragmentPicker.jsx`;
+- `gui/designer/src/components/PromptModal.jsx`;
+- `gui/designer/src/components/SettingsModal.jsx`;
+- `gui/designer/src/components/ProjectInfoModal.jsx`;
+- `gui/designer/src/components/HotkeyCheatsheet.jsx`.
 
-Planner tracker sync: `BUGS.md`, `docs/BACKLOG.md`, `PROJECT_STATE.md`.
+Proof manifest:
 
-## OUT
+- `gui/designer/src/hooks/__tests__/use-modal-keyboard-boundary.test.jsx` (new);
+- `gui/designer/src/lib/__tests__/hotkeys.test.js`;
+- `gui/designer/src/components/SequenceView/__tests__/use-primer-hotkeys.test.jsx`;
+- `gui/designer/src/__tests__/hotkey-flow.integration.test.jsx`;
+- `gui/designer/src/components/__tests__/modal-keyboard-boundary-wiring.test.jsx` (new);
+- `gui/designer/src/components/CanvasSkeleton/editor/__tests__/use-undo-hotkey.test.jsx`;
+- `gui/designer/src/components/CanvasSkeleton/editor/__tests__/use-tab-hotkey.test.jsx` (new).
 
-- Product fetch/load semantics, `/api/import`, store/plugin behavior и BG-067.
-- Смена Vitest pool, зависимостей, timeout, concurrency или product fixtures.
-- Закрытие BG-022, три подтверждающих прогона, browser и продуктовые ASM/ACT-пакеты.
-- Вторичные worktree, Graphify, release tag и force-push.
+Planner tracker sync после acceptance/blocker: `BUGS.md`, `docs/BACKLOG.md`,
+`PROJECT_STATE.md`.
 
-## TDD и проверка
+## OUT / исправления исходного DOC-09
 
-- [x] RED/GREEN для точечного common-features stub и потерянного inventory; compatibility
-      selection подтвердил override/cleanup/delegation.
-- [x] Первый полный gate дал exact 859/859 во всех inventory и опроверг строгую RSS-пару:
-      setup 859, afterAll 857; reporter отдельно дал два ended state `skipped`, но старые
-      samples не позволяют сопоставить их по moduleId.
-- [x] RED-RSS2: `passed` setup-only должен FAIL, а точно сопоставленный `skipped`
-      setup-only — PASS; unknown/duplicate/missing module остаются fail-closed.
-- [x] Реализация записывает реальный moduleId в setup и afterAll; focused real gate
-      exact 2/2 доказал одну RSS-пару и один именованный skipped setup-only; unit 25/25.
-- [x] Frozen digest `006d5009…a42a` воспроизвели два независимых read-only reviewer;
-      оба дали ACCEPT без correction.
-- [x] Один полный параллельный `test:gate`: exact 860/860 во всех inventories,
-      9 318 тестов (9 297 passed, 21 skipped), exit 0, unhandled 0, RSS complete.
-- [x] Production build: 624 modules PASS; scoped ESLint 8 infra-файлов: 0 ошибок.
-- [x] Финальные `git diff --check`, размеры, exact status/manifest и package digest.
-      Pytest/browser вне scope.
+- IntentDialog отсутствует и остаётся ACT-3 OUT.
+- PiecePrimersPickModal, PieceCreateModal и AddModal audit — отдельный остаток BACKLOG.
+- Deterministic range insertion, BG-081 primer context, BG-009 op-groups,
+  REMOVE_ZONE и тестовый `__v88_re_click__` — отдельные последовательные пакеты.
+- BG-010 ждёт продуктового выбора: реальный order workflow или удаление ложной команды.
+- BG-005/BG-013 вынесены в high-risk MUT-1. Объект point annotation из DOC-09
+  contract-invalid; KLD требует решения о 5′-фосфате, backbone и atomic derive/Realise.
+- Не меняются App navigation, product biology, persistence, dependencies, Vitest pool,
+  secondary worktrees, Graphify и release tag.
+
+## TDD и gate
+
+- [ ] RED: LIFO/exact unregister; blocking-modal browser default; two-viewer Escape;
+      topmost/focus-outside Escape и десять реальных roots. Undo/tab — зелёная
+      characterization уже существующего presence contract, production hooks не меняются.
+- [ ] Минимальная реализация; focused tests с именованным вопросом и counts.
+- [ ] Related tests один раз от accepted base, ненулевой inventory.
+- [ ] Frozen manifest + SHA-256 package digest; до двух независимых read-only review.
+- [ ] Максимум один correction pass; пережившая correction причина = STOP/replan.
+- [ ] Один Planner full `test:gate`, production build и scoped ESLint; browser smoke
+      Escape/Ctrl+R на реальном modal flow. Pytest вне scope (frontend-only).
+- [ ] `git diff --check`, exact status, размеры. `RangePickerModal.jsx` уже hard-zone:
+      keyboard ownership выносится в новый hook, в файл входит только тонкая проводка;
+      новый hard-entrant запрещён, существующий размер честно фиксируется.
 
 ## Критерий завершения
 
-- Common-features localhost noise отсутствует; остаточный `/api/import` шум не маскируется.
-- Полный gate либо поимённо доказывает каждый модуль и module-aware RSS, либо честно
-  называет потерю/state/sample и возвращает nonzero.
-- BG-022 остаётся OPEN до причины, исправления и трёх подряд полных parallel exact PASS;
-  один чистый gate этого пакета для закрытия недостаточен.
-
-Итоговый run: 860 setup, 857 afterAll, 857 точных пар и три поимённых skipped
-setup-only (`vitest-gate-fully-skipped`, `canvas-click-add-v99`,
-`skeleton-canvas-layout`); 1 717/1 717 RSS-сэмплов валидны. Наблюдавшийся максимум
-worker RSS — 866 148 352 bytes; это не process-tree total и не гарантированный peak.
-
-## Следом, не смешивать
-
-- Первый продуктовый пакет после infra acceptance: ASM-6, затем ASM-5.
-- ACT-0 ждёт явных семантических решений владельца, включая BG-064 и KLD.
+BG-078/BG-079 можно закрыть только если production-shaped proof показывает: скрытый
+canvas не получает команды, один Escape снимает один верхний слой, assembly handler
+переживает mount/unmount вложенного viewer, а browser default блокируется только внутри
+явной modal boundary. Широкий DOC-09 этим пакетом не объявляется завершённым.

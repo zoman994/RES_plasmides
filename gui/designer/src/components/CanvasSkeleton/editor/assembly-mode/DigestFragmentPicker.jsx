@@ -10,12 +10,14 @@ import { useState } from 'react';
 import { RE_ENZYMES } from '../../../../restriction-db';
 import { digestFragments } from '../../lib/digest-fragments';
 import PlasmidMapV2 from '../../../PlasmidMapV2';
+import useModalKeyboardBoundary from '../../../../hooks/useModalKeyboardBoundary';
 
 const BAND_COLORS = ['#4A7C59', '#b85c3e', '#3e6db8', '#b8860b', '#7c4a6e', '#3e8c8c', '#8c6a3e'];
 
 export default function DigestFragmentPicker({
   source, enzymes, onPick, onCancel,
 }) {
+  const modalBoundary = useModalKeyboardBoundary(onCancel);
   const seq = (source && source.sequence) || '';
   const circular = !!(source && source.circular);
   const annotations = (source && source.annotations) || [];
@@ -44,6 +46,7 @@ export default function DigestFragmentPicker({
     <div
       role="dialog"
       data-testid="digest-fragment-picker"
+      {...modalBoundary}
       onClick={onCancel}
       style={{
         position: 'fixed', inset: 0, zIndex: 110, background: 'rgba(28,25,23,0.4)',
