@@ -16,21 +16,14 @@ Close clone-to-focus gaps and replace save-on-blur-only behavior where focus cha
 
 Complete sequence/annotation history through the current project/library revision model. Define one user-visible history path and migration behavior before adding more revision UI. Legacy debt IDs: `TD-ARCH-ANNOTATION-VERSIONING`, `TD-PLASMID-GIT-LOSS`.
 
-### Modal event isolation
+### Remaining transient-surface isolation
 
-Audit and fix event propagation and focus ownership for every transient surface over a
-viewer: `PiecePrimersPickModal`, `PieceCreateModal`, `RangePickerModal`, `MutationModal`,
-`CircularizeModal`, `OpGroupPicker`, `AAMutationDialog`, `DigestFragmentPicker`,
-`PromptModal`, `SettingsModal`, `ProjectInfoModal`, `HotkeyCheatsheet`. Escape, Enter,
-Ctrl+Z, Tab and Ctrl+R must affect only the active transient surface. The global hotkey
-registry is a single slot per id: a nested SequenceView overwrites the assembly
-`pcr-primer-*` handlers and leaves the slot empty after unmount until the parent caret
-changes; replace with a stack or an explicit hand-back. The working-tree
-document-wide `[data-block-global-escape]` suppression must be scoped to the viewer that
-owns the expanded primer, not to the whole document, because Library and Annotator can
-mount two viewers at once. Refactor `AddModal` open-transition reset away from
-synchronous state writes inside `useEffect`. Defects: BG-078, BG-079. Legacy debt ID:
-`TD-CROSS-PORTAL-AUDIT`.
+Audit the transient surfaces outside the shared ASM-6A boundary:
+`PiecePrimersPickModal`, `PieceCreateModal`, `AddModal` and canvas/library overlays that
+still own ad-hoc document/window listeners. Each adopted surface needs an explicit
+topmost/lifecycle contract before it joins the common stack; portals do not isolate React
+events. Refactor `AddModal` open-transition reset away from synchronous state writes
+inside `useEffect`. Legacy debt ID: `TD-CROSS-PORTAL-AUDIT`.
 
 ### Lint baseline and scoped command
 

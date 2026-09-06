@@ -556,39 +556,6 @@ product-path или fixture пока не локализована и заодн
 entries и открывает ожидаемый следующий экран; если устарел fixture, обновить контракт,
 а не маскировать пустой результат ожиданием или увеличением timeout.
 
-### BG-078 — модалки редактора сборки не блокируют родительские hotkeys; Ctrl+R после закрытия picker перезагружает браузер
-
-RangePickerModal, MutationModal, CircularizeModal, OpGroupPicker, AAMutationDialog,
-DigestFragmentPicker не несут `data-modal-open`/`data-block-global-hotkeys`
-(`RangePickerModal.jsx:523-532`; их ставит только `OrderOligosConfirmGate.jsx:25`).
-`useUndoHotkey` пропускает лишь editable target и `[data-modal-open]`
-(`editor/useUndoHotkey.js:28`): Ctrl+Z с фокусом на кнопке picker откатывает историю
-canvas. Registry hotkeys однослотовый: встроенный SequenceView picker регистрирует no-op
-`pcr-primer-forward` поверх `writeForward` (`SequenceView/index.jsx:965`;
-`usePrimerHotkeys.js:25-29`), при unmount слот удаляется и до смены каретки
-`runHotkeyResolver` не находит обработчик — Ctrl+R уходит в браузер
-(`useAssemblyPrimerWriting.js:155`).
-
-**Риск:** клавиши внутри модалки меняют canvas, а Ctrl+R после закрытия picker может
-перезагрузить страницу и потерять несохранённый контекст.
-**Приёмка:** все модалки редактора помечены; registry восстанавливает предыдущий
-обработчик либо гасит Ctrl+R; тесты. Расширяет BACKLOG «Modal event isolation».
-
-### BG-079 — Escape в PromptModal попает fullscreen под ним
-
-Единственный capture-listener `App.jsx:266` → `runHotkeyResolver`; 'escape' —
-`context-aware`, `allowInInput`, не в MODAL_BLOCKED (`lib/hotkeys.js:52, 369`); контекст
-знает только settings/projectInfo. PromptModal (fork-name в `EditorWindowShell.jsx:91`,
-rename в дереве) без blocking-атрибутов, его Escape — bubble-обработчик
-(`PromptModal.jsx:34`). `handleEscape` при `navStack.length > 1` вызывает
-`popFullscreen` (`App.jsx:200`): prompt отменяется и пользователь вылетает из canvas.
-Аналогично SettingsModal, ProjectInfoModal, HotkeyCheatsheet.
-
-**Риск:** одно нажатие Escape одновременно отменяет диалог и закрывает нижележащий
-fullscreen, разрушая ожидаемый modal boundary и рабочий контекст.
-**Приёмка:** модалки декларируют блокировку либо resolver знает prompt; тест Escape в
-PromptModal над canvasSkeleton оставляет navStack.
-
 ### BG-080 — projectSlice пишет удалённый fullscreen `'dag'`
 
 `FULLSCREENS` больше не содержит 'dag' (`store/canvasSlice.js:5`), но
@@ -769,6 +736,15 @@ unhandled errors. Все 1 717 RSS-сэмплов валидны: 860 setup, 857
 866 148 352 bytes — точечный sample, не process-tree total и не гарантированный peak.
 Этот run не воспроизвёл fork-error и доказал полноту собственного inventory, но не
 установил причину интермиттентного crash и один не закрывает BG-022.
+
+**Наблюдение ASM-6A 06.09.2026:** related-прогон от base `47f72a2` ожидал 146
+модулей, но fork-worker завершился после 145 и потерял один модуль на четыре теста.
+Предопределённая локализация тремя непересекающимися точными разделами завершила
+67 + 30 + 49 = **146 / 146** модулей и 1 252 теста без assertion failure. После
+correction финальный `test:gate` на commit `864bc76` завершил exact expected = ended =
+run-end = JSON inventories **863 / 863**: 9 339 тестов, 9 318 passed, 21 skipped,
+0 failed, raw exit 0. Это доказывает регрессионный gate ASM-6A, но не устанавливает
+причину интермиттентного fork crash и не выполняет критерий трёх чистых прогонов.
 
 Пять безымянных блоков `ECONNREFUSED` к `localhost:3000` печатает happy-dom
 (`node_modules/happy-dom/lib/fetch/Fetch.js:539`) через `page.console.error` для
