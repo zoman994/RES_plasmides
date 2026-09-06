@@ -1,9 +1,10 @@
-# CURRENT_TASK — SYNC-1 принят / S3-C2 smoke isolation принят, BG-022 STOP / 0.8.8
+# CURRENT_TASK — SYNC-1 checkpointed / S3-C2 smoke isolation принят, BG-022 STOP / 0.8.8
 
-**Статус:** SYNC-1 принят 06.09.2026. S3-C2 принят только как изоляция конкретного
-smoke-теста; утверждения «worker исправлен» и «полный gate стабильно зелёный» отклонены.
-BG-022 остаётся открытым, эта correction-линия остановлена. Checkpoint ждёт отдельного
-явного разрешения на stage и commit.
+**Статус:** SYNC-1 и S3-C2 приняты 06.09.2026; S3-C2 — только изоляция конкретного
+smoke-теста, не worker-fix. Recovery checkpoint всего принятого main создан как
+`31fcca17a56e9d76c9db46c2c0d8cd6972968658`; этот docs-follow-up закрепляет новый base.
+BG-022 открыт, correction-линия остановлена. Bundle и обычный push разрешены отдельно
+от checkpoint; тег без явно названного имени не создаётся.
 
 ## S3-C2 correction contract
 
@@ -46,9 +47,9 @@ BG-022 остаётся открытым, эта correction-линия оста�
 ## Основание и границы
 
 - HEAD/base: `15169db8636ed8c9fdc2dbb759a8719f58e7af23`.
-- Dirty main worktree (141 M / 54 ??) — принятый воспроизводимый вход. Чужие hunks не
-  трогать и не очищать; перед правкой уже изменённого файла отделить существующий diff
-  от своего.
+- Pre-checkpoint dirty main (150 M / 54 ??) был принятым воспроизводимым входом и
+  целиком зафиксирован в recovery checkpoint `31fcca17`. Вторичные worktree исключены и
+  оставлены нетронутыми.
 - Writer mode: один Implementation coder, он же Integration owner; main checkout
   `D:\RESplasmide`, без отдельного worktree. Stage/commit/push запрещены.
 - Planner: Claude (сессия аудита 05.09). Приёмка владельца после одного review.
@@ -146,11 +147,11 @@ OUT: `DECISIONS.md`; любой другой продуктовый код и т
 
 ## После приёмки (S3, не для coder)
 
-Полный gate один раз → `git worktree list` → stage по manifest всего dirty tree с
-явным списком исключений → commit `chore(checkpoint): 0.8.8-alpha WIP checkpoint
-2026-09-05` с телом (потоки, принятое/непринятое, цифры gate, digest) → docs-commit с
-новым base SHA → `git bundle --all` на другой диск + `git push -u origin
-checkpoint/integration-2026-07-17` при разрешении владельца.
+Выполнено: полный gate и flake-классификация → `git worktree list` → точный stage
+204 файлов (150 M + 54 ??) → recovery checkpoint `31fcca17` с честным телом про BG-022,
+gate и manifest digests. Этот отдельный docs-commit фиксирует checkpoint как base;
+`git bundle --all` на другой диск и обычный `git push -u origin
+checkpoint/integration-2026-07-17` выполняются по выданному разрешению после него.
 
 ## Открытые вопросы владельца
 

@@ -4,11 +4,12 @@
 
 ## Текущий снимок
 
-- GUI: **0.8.8-alpha**; ветка `checkpoint/integration-2026-07-17`; HEAD/base
-  `15169db8636ed8c9fdc2dbb759a8719f58e7af23`; ветка без upstream, 66 коммитов с
-  12.06.2026 существуют только локально.
-- Main checkout намеренно содержит интегрированный WIP: 150 изменённых и 54 untracked
-  файла против HEAD. Stage/commit/push после base не выполнялись.
+- GUI: **0.8.8-alpha**; ветка `checkpoint/integration-2026-07-17`; recovery checkpoint
+  принятого product/WIP-снимка — `31fcca17a56e9d76c9db46c2c0d8cd6972968658`
+  (предыдущий base `15169db8636ed8c9fdc2dbb759a8719f58e7af23`).
+- Checkpoint зафиксировал точный main-manifest: 150 изменённых tracked + 54 untracked =
+  204 файла, 22 358 additions / 2 930 deletions. Main был чист сразу после commit;
+  этот snapshot-документ фиксируется отдельным docs-commit поверх recovery base.
 - Post-correction gate 06.09.2026: из трёх полных Vitest-прогонов на одном дереве два
   собрали **857 файлов / 9 286 тестов** (9 266 passed, 20 skipped, exit 0), один —
   **856 / 9 266**, `Worker exited unexpectedly`, exit 1, потерян файл на 20 тестов.
@@ -48,11 +49,11 @@
 
 ## Текущий пакет
 
-**SYNC-1 принят. S3-C2 принят только как smoke-test isolation** (см. `CURRENT_TASK.md`):
-локальные async/network side effects конкретного теста устранены, но случайный fork-worker
-crash пережил correction. Эта линия остановлена по контракту; BG-022 остаётся открытым.
-Checkpoint всего dirty-дерева рекомендован и ждёт отдельного явного разрешения владельца
-на stage и commit; bundle и push требуют самостоятельного разрешения.
+**SYNC-1 checkpointed. S3-C2 принят только как smoke-test isolation** (см.
+`CURRENT_TASK.md`): локальные async/network side effects конкретного теста устранены, но
+случайный fork-worker crash пережил correction. Эта линия остановлена по контракту;
+BG-022 открыт. Recovery base — `31fcca17`; bundle и обычный push разрешены и выполняются
+после follow-up docs-commit. Тег не создаётся без явно названного имени.
 
 ## Открытые направления после SYNC-1
 
@@ -82,9 +83,10 @@ Checkpoint всего dirty-дерева рекомендован и ждёт о
 
 ## Репозиторий и источники истины
 
-- Вторичные worktree (`.claude/worktrees/*`, `.codex`, Desktop v05): Codex-worktree
-  находится на том же HEAD, остальные перечисленные worktree — строгие предки; не
-  удалять без разрешения, их dirty-состояние не инспектировалось.
+- Вторичные worktree (`.claude/worktrees/*`, `.codex`, Desktop v05) сверены перед
+  checkpoint: Codex `b85d` остался на предыдущем `15169db`, остальные — на более ранних
+  HEAD. Их dirty/staged/untracked состояние исключено из checkpoint и сохранено;
+  worktree не удалялись.
 - Источник истины: код и тесты → `AGENTS.md` → `CURRENT_TASK.md` → этот snapshot →
   `BUGS.md` / `docs/BACKLOG.md` / архитектурные спецификации.
 - Полный аудит 05.09.2026 (22 read-only читателя, 70 независимых верификаций) хранится
