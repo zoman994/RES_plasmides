@@ -1,6 +1,6 @@
 # PROJECT_STATE — BodgeGene
 
-Обновлено: 07.09.2026 (PROC-3R-FREEZE принят; ожидает checkpoint).
+Обновлено: 07.09.2026 (PROC-3R-FREEZE checkpointed; docs-state sync).
 
 ## Текущий снимок
 
@@ -9,7 +9,14 @@
   (предыдущий base `15169db8636ed8c9fdc2dbb759a8719f58e7af23`); принятый infra checkpoint —
   `7417966c2d29adc424139b21e59b9154bf42863c`; принятый UI checkpoint —
   `864bc76deabada4b47f84cdecb5f2d31ff2314c9`.
-- Checkpoint зафиксировал точный main-manifest: 150 изменённых tracked + 54 untracked =
+- Локальный checkpoint принятого process-пакета и сохранённого WIP —
+  `02a26b75bc22062e0eccc02c3b982b2e952104dc` на parent
+  `bd710973112ad8712c81c619eefd7fc6c755858d`: exact 76-path snapshot / 9 580 B /
+  `e75205cc586b652d0716ffb8569fde45f2de48854300182e21fb7ad345fe37a2`;
+  55 modified, 18 added, 3 deleted; 4 332 additions / 943 deletions. Main был чист
+  сразу после commit; bundle, push и tag не выполнялись.
+- Recovery checkpoint `31fcca17…` зафиксировал точный main-manifest: 150 изменённых
+  tracked + 54 untracked =
   204 файла, 22 358 additions / 2 930 deletions. Main был чист сразу после commit;
   follow-up snapshot — `6145bf0f1fcc8e44211eaf17445f1b00f84a6d96`. Оба commit отправлены
   в `origin/checkpoint/integration-2026-07-17`; проверенный complete bundle хранится вне
@@ -53,14 +60,17 @@
 
 ## Текущий пакет
 
-**PROC-3R-FREEZE принят; активного Кодера нет.** Единственный correction C1 закрыл обе
-P1: AUD хранит evidence/risk без теневого disposition, а REF разделён на immutable
-metadata-wrapper и payload с `SIDECAR`/`POINTER_ONLY`, dual pin и честным `UNVERIFIED`.
+**PROC-3R-FREEZE принят и checkpointed; активного Кодера нет.** Единственный correction
+C1 закрыл обе P1: AUD хранит evidence/risk без теневого disposition, а REF разделён на
+immutable metadata-wrapper и payload с `SIDECAR`/`POINTER_ONLY`, dual pin и честным
+`UNVERIFIED`.
 Semantic и forensic линзы дали ACCEPT. Final correction 9-path `7e27fdcf…`, unified
 process 20-path `47e3843e…`. Frozen audit `AUD-2026-09-07-004` (`99b0b2cb…`) и matching
-`PACKAGE_REVIEW/ACCEPT` DISP (`0f094c2d…`) фиксируют приёмку. Рабочее дерево: 76 dirty =
-74 frozen paths (`9b1e09f8…`) + 2 Reviewer control-plane; staged/commit/push отсутствуют.
-Tests/build/browser не запускались: docs/policy-only. Следующий пакет ждёт checkpoint.
+`PACKAGE_REVIEW/ACCEPT` DISP (`0f094c2d…`) фиксируют приёмку. Checkpoint `02a26b75…`
+сохранил exact 76-path snapshot (`e75205cc…`), включая frozen 74-path subset
+(`9b1e09f8…`) и два canonical control-plane файла. Tests/build/browser не запускались:
+docs/policy-only. Этот двухфайловый docs-state sync не меняет candidate; его фактический
+SHA определяется после commit, а следующий пакет должен пинить итоговый чистый HEAD.
 
 **PROC-3R STOP / REPLAN, не принят.** Его 19 process-файлов физически остаются в main и
 побайтово совпадают с source (`3bb1fda1…`), но candidate отклонён: shared-record
@@ -69,7 +79,7 @@ Tests/build/browser не запускались: docs/policy-only. Следую�
 выбран как read-only evidence нового replan. Source-worktree сохраняется; живой файл
 Креативщика не принят, не прочитан и не перенесён в main.
 
-**ASM-5B остаётся STOP и не принят.** На base/HEAD `bd710973112ad8712c81c619eefd7fc6c755858d`
+**ASM-5B остаётся STOP и не принят.** На package base `bd710973112ad8712c81c619eefd7fc6c755858d`
 заморожен product/proof candidate: 49 путей, payload 6 594 B, SHA-256 `d78a7b61…`.
 Обе named read-only линзы приняли correction; focused correction 35/35, related gate
 466/466 файлов и 4 480 тестов, exit 0. Единственный полный module-aware gate потерял
@@ -78,7 +88,8 @@ Tests/build/browser не запускались: docs/policy-only. Следую�
 строгие inventory/RSS неполны. BG-022 остаётся открыт, полного
 retry нет. Build, scoped lint и browser smoke после STOP не запускались; BG-062/063/086
 не закрыты. Product/test-файлы не менялись после freeze; tracker-sync выполнен отдельно
-на blocker-границе. Stage/commit/push отсутствуют.
+на blocker-границе. Candidate сохранён внутри checkpoint `02a26b75…` без приёмки;
+push отсутствует.
 
 ## Открытые направления после SYNC-1
 

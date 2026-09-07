@@ -1,7 +1,8 @@
-# CURRENT_TASK — PROC-3R-FREEZE принят; ожидает checkpoint
+# CURRENT_TASK — PROC-3R-FREEZE принят и checkpointed
 
-**Статус:** ACCEPTED / NO ACTIVE CODER. Единственный correction C1 завершён и прошёл
-финальную read-only проверку. Stage, commit, bundle и push не разрешены.
+**Статус:** ACCEPTED / CHECKPOINTED / NO ACTIVE CODER. Единственный correction C1
+завершён, прошёл финальную read-only проверку и зафиксирован локальным checkpoint.
+Bundle, push и tag не выполнялись и отдельно не разрешены.
 
 ## Что получено
 
@@ -22,9 +23,10 @@ REF теперь имеет две разные идентичности: Markdo
 - Decision class/disposition: `PACKAGE_REVIEW` / `ACCEPT`.
 - Canonical target: этот раздел, package ID `PROC-3R-FREEZE-ACCEPTED`.
 
-## Принятый candidate
+## Принятый candidate и checkpoint
 
-- Base/main HEAD: `bd710973112ad8712c81c619eefd7fc6c755858d`.
+- Package base: `bd710973112ad8712c81c619eefd7fc6c755858d`.
+- Checkpoint commit: `02a26b75bc22062e0eccc02c3b982b2e952104dc`.
 - Branch: `checkpoint/integration-2026-07-17`.
 - Final correction: 9 paths / 901 B /
   `7e27fdcf16524103d8411504a8d0af91780d1a5fafbfe634cde38936309e1d22`.
@@ -32,8 +34,10 @@ REF теперь имеет две разные идентичности: Markdo
   `47e3843ee90683b076dd1193ec00b17e65007ab79068cd1715501b617835e4e0`.
 - Candidate-time preserved WIP: 63 paths / 8 147 B /
   `463a50b5aee7c120a25dc2f22e58daaffca01da2bb7f59be78d49bec7885acd3`.
-- Acceptance-time worktree: 76 dirty = 74 frozen paths + 2 Reviewer control-plane;
-  staged = 0. Frozen 74-path snapshot: 9 417 B /
+- Exact checkpoint: 76 paths / 9 580 B /
+  `e75205cc586b652d0716ffb8569fde45f2de48854300182e21fb7ad345fe37a2`;
+  55 modified, 18 added, 3 deleted; 4 332 additions / 943 deletions.
+- Внутри checkpoint frozen 74-path snapshot: 9 417 B /
   `9b1e09f8b681ea027eba7ca85e1a524b1bfdc49f83bb806e1a380e400f1930ea`.
 - Digest formula: `StringComparer.Ordinal`; `path<TAB>sha256|DELETED`, LF после каждой
   строки, UTF-8 без BOM, затем SHA-256.
@@ -45,7 +49,8 @@ REF теперь имеет две разные идентичности: Markdo
 - Восемь REF entrypoint согласованно требуют wrapper/payload identities, два допустимых
   mode, dual pin для используемого `SIDECAR` и честный `UNVERIFIED` для pointer.
 - Frozen source/decision и legacy-audit hashes совпали; 63 preserved paths не менялись.
-- `git diff --check` exit 0; staged = 0.
+- До commit `git diff --cached --check` дал exit 0; после commit `git show --check`
+  дал exit 0, а main был чист: 0 staged / 0 unstaged / 0 untracked.
 - Tests/build/lint/browser/benchmark не запускались: docs/policy-only package.
 
 ## Остаточный риск
@@ -56,6 +61,7 @@ REF теперь имеет две разные идентичности: Markdo
 
 ## Следующее действие
 
-Нового Кодера не запускать. Следующий implementation-пакет начинается только от
-принятого checkpoint SHA. Для stage/commit нужен отдельный явный приказ владельца и
-точный manifest; bundle/push/tag разрешаются отдельно.
+Нового Кодера не запускать. Этот документ фиксирует product/process checkpoint
+`02a26b75bc22062e0eccc02c3b982b2e952104dc`; следующий implementation-пакет должен
+отдельно пинить чистый live HEAD после docs-only follow-up. Bundle/push/tag разрешаются
+отдельно. До выпуска нового `CURRENT_TASK.md` product-writes запрещены.
