@@ -85,6 +85,36 @@ describe('selection-ops — stickyEnds (overhang detection)', () => {
     expect(stickyEnds({ selStart: 1, selEnd: 2, sites: [], enzymes: ENZ })).toBeNull();
     expect(stickyEnds({ selStart: 1, selEnd: 1, sites, enzymes: ENZ })).toBeNull();
   });
+
+  it('uses canonical reverse-occurrence geometry and actual overhang sequence', () => {
+    const occurrence = {
+      occurrenceKey: 'RevI:-1:4',
+      enzyme: 'RevI',
+      topCut: 7,
+      bottomCut: 9,
+      topCutUnwrapped: 7,
+      bottomCutUnwrapped: 9,
+      overhang: { type: '5overhang', seq: 'GT', length: 2 },
+    };
+    const r = stickyEnds({
+      selStart: 7,
+      selEnd: 11,
+      sites: [{ enzyme: 'RevI', position: 7, occurrence }],
+      enzymes: { RevI: { site: 'AACGTC', cut: [1, 3], end: '5prime', overhang: 'AC' } },
+    });
+    expect(r.left).toMatchObject({
+      enzyme: 'RevI', delta: 2, type: '5prime', overhang: 'GT',
+    });
+  });
+
+  it('does not fall back to catalog geometry when a canonical occurrence is malformed', () => {
+    expect(stickyEnds({
+      selStart: 7,
+      selEnd: 11,
+      sites: [{ enzyme: 'RevI', position: 7, occurrence: { enzyme: 'RevI' } }],
+      enzymes: { RevI: { site: 'AACGTC', cut: [1, 3], end: '5prime', overhang: 'AC' } },
+    })).toBeNull();
+  });
 });
 
 describe('selection-ops — invertedStickyStrandRanges (backbone staircase on invert)', () => {

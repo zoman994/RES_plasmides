@@ -7,9 +7,11 @@
  * который honors enzyme.cut[0]/cut[1] (sticky/blunt overhang-aware) и
  * shifts annotations для circular → linear.
  */
-import { findSitesInSequence, RE_ENZYMES, digest } from '../../../../../restriction-db';
+import { effectiveEnzymes, digest } from '../../../../../restriction-db';
+import { scanOccurrences } from '../../../../../lib/restriction-occurrence';
 import { newContainer } from './_shared';
 import { resolveOpTemplate } from '../../../lib/op-piece-bridge';
+import { projectAnnotationsGeometry } from '../../../lib/segment-annotation-transfer';
 
 /**
  * L11 (audit) — the cut END an enzyme leaves, in the shape detectJunctionKind
@@ -17,11 +19,17 @@ import { resolveOpTemplate } from '../../../lib/op-piece-bridge';
  * with NO ends, so a downstream junction mis-classified as 'overlap' instead of
  * the enzyme-correct re_ligation / golden_gate.
  */
-function endFromEnzyme(enzymeName) {
-  const re = RE_ENZYMES[enzymeName];
-  if (!re) return null;
-  const type = re.end === 'blunt' ? 'blunt' : (re.end === '3prime' ? '3overhang' : '5overhang');
-  return { overhang: re.overhang || '', type, enzymeUsed: enzymeName };
+function endFromOccurrence(occurrence) {
+  if (!occurrence || !occurrence.overhang) return null;
+  const overhangType = occurrence.overhang.type;
+  const type = overhangType === 'blunt'
+    ? 'blunt'
+    : (overhangType === '3overhang' ? '3overhang' : '5overhang');
+  return {
+    overhang: occurrence.overhang.seq || '',
+    type,
+    enzymeUsed: occurrence.enzyme,
+  };
 }
 
 export function executeCut(operation, ctx) {
@@ -104,32 +112,27 @@ export function executeCut(operation, ctx) {
   }
 
   // Legacy multi-enzyme / linear path (≥3 enzymes или linear template).
-  const cuts = [];
-  for (const enzyme of enzymes) {
-    const re = RE_ENZYMES[enzyme];
-    if (!re) continue;
-    const sites = findSitesInSequence(enzyme, seq);
-    for (const s of sites) {
-      cuts.push({ position: s.position + re.cut[0], enzyme });
-    }
-  }
+  const catalog = effectiveEnzymes();
+  const cuts = scanOccurrences(seq, {
+    circular: isCircular,
+    enzymes: catalog,
+    names: enzymes,
+  })
+    .filter((occurrence) => Number.isFinite(occurrence.topCut))
+    .map((occurrence) => ({
+      position: occurrence.topCut,
+      enzyme: occurrence.enzyme,
+      occurrence,
+      end: endFromOccurrence(occurrence),
+    }));
   cuts.sort((a, b) => a.position - b.position);
   if (cuts.length === 0) {
     return { error: 'Нет сайтов рестрикции в темплейте' };
   }
 
-  // R5-2: clip annotations to each fragment's range.
-  const clipAnnotationsToRange = (lo, hi) => {
-    const out = [];
-    for (const a of anns) {
-      if (typeof a?.start !== 'number' || typeof a?.end !== 'number') continue;
-      const aLo = Math.max(a.start, lo);
-      const aHi = Math.min(a.end, hi);
-      if (aHi <= aLo) continue;
-      out.push({ ...a, start: aLo - lo, end: aHi - lo });
-    }
-    return out;
-  };
+  // R5-2 / ASM-5: location is authoritative. Project every canonical segment
+  // and derive scalar start/end from it in the same operation.
+  const projectAnnotationsToRanges = (ranges) => projectAnnotationsGeometry(anns, ranges);
 
   const fragments = [];
   if (isCircular) {
@@ -140,22 +143,22 @@ export function executeCut(operation, ctx) {
       let fragAnns;
       if (i === cuts.length - 1) {
         part = seq.slice(a) + seq.slice(0, b);
-        fragAnns = [
-          ...clipAnnotationsToRange(a, seq.length),
-          ...clipAnnotationsToRange(0, b).map((x) => ({
-            ...x,
-            start: x.start + (seq.length - a),
-            end: x.end + (seq.length - a),
-          })),
-        ];
+        fragAnns = projectAnnotationsToRanges([
+          { start: a, end: seq.length, offset: 0 },
+          { start: 0, end: b, offset: seq.length - a },
+        ]);
       } else {
         part = seq.slice(a, b);
-        fragAnns = clipAnnotationsToRange(a, b);
+        fragAnns = projectAnnotationsToRanges([{ start: a, end: b, offset: 0 }]);
       }
       fragments.push({
         sequence: part,
         annotations: fragAnns,
         name: `${template.name || 'fragment'}_cut${i + 1}`,
+        leftEnd: cuts[i].end ? { ...cuts[i].end } : null,
+        rightEnd: cuts[(i + 1) % cuts.length].end
+          ? { ...cuts[(i + 1) % cuts.length].end }
+          : null,
       });
     }
   } else {
@@ -163,20 +166,22 @@ export function executeCut(operation, ctx) {
     for (let i = 0; i < cuts.length; i += 1) {
       fragments.push({
         sequence: seq.slice(last, cuts[i].position),
-        annotations: clipAnnotationsToRange(last, cuts[i].position),
+        annotations: projectAnnotationsToRanges([{
+          start: last, end: cuts[i].position, offset: 0,
+        }]),
         name: `${template.name || 'fragment'}_part${i + 1}`,
         // L11 — left end = the previous cut's enzyme (none for the first piece,
         // it's the original linear 5′ end); right end = this cut's enzyme.
-        leftEnd: i === 0 ? null : endFromEnzyme(cuts[i - 1].enzyme),
-        rightEnd: endFromEnzyme(cuts[i].enzyme),
+        leftEnd: i === 0 || !cuts[i - 1].end ? null : { ...cuts[i - 1].end },
+        rightEnd: cuts[i].end ? { ...cuts[i].end } : null,
       });
       last = cuts[i].position;
     }
     fragments.push({
       sequence: seq.slice(last),
-      annotations: clipAnnotationsToRange(last, seq.length),
+      annotations: projectAnnotationsToRanges([{ start: last, end: seq.length, offset: 0 }]),
       name: `${template.name || 'fragment'}_part${cuts.length + 1}`,
-      leftEnd: endFromEnzyme(cuts[cuts.length - 1].enzyme),
+      leftEnd: cuts[cuts.length - 1].end ? { ...cuts[cuts.length - 1].end } : null,
       rightEnd: null, // original linear 3′ end
     });
   }

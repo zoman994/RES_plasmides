@@ -44,7 +44,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { useStore, selectActiveSetEnzymes } from "../../store";
+import {
+  useStore,
+  selectActiveSetEnzymes,
+  selectMergedREEnzymes,
+} from "../../store";
 import { SEQUENCE_VIEW_DEFAULTS } from "../../store/uiSlice.js";
 import {
   SEQUENCE_FONT_FAMILY,
@@ -61,7 +65,7 @@ import {
 import { detectORFRanges } from "./lib/orf-ranges.js";
 import { resolveFramesMode } from "./lib/frames-mode.js";
 import { useRowSelectionIsolation } from "./lib/row-selection-isolation.js";
-import { scanAllSites, RE_ENZYMES } from "../../restriction-db.js";
+import { scanAllSites } from "../../restriction-db.js";
 import { stickyEnds as computeStickyEnds } from "./lib/selection-ops.js";
 import { FEATURE_STROKE } from "../../feature-palette.js";
 import { enclosingRegionId } from "../../annotation-model.js";
@@ -413,6 +417,7 @@ const SequenceView = forwardRef(function SequenceView({
   // RS-C4 — the «active set» enzyme allow-list (null = no active set). Restricts
   // which enzymes' sites are visible, applied on TOP of the cut-count filter.
   const activeSetEnzymes = useStore(selectActiveSetEnzymes);
+  const mergedREEnzymes = useStore(selectMergedREEnzymes);
 
   const predictionsSettings = settings.predictions || EMPTY_PREDICTIONS;
   // M-X.1 K3 — predicted regions stay transient. When an embedding host has
@@ -520,23 +525,31 @@ const SequenceView = forwardRef(function SequenceView({
     // Override (allow-list) shows its enzymes' sites regardless of the global
     // toggle; otherwise honour showReSites + the cut-count / active-set filter.
     if (!fullSeq || (!override && !showReSites)) return [];
-    const scan = scanAllSites(fullSeq, { circular, minSiteLen: reMinSiteLen || 6 });
+    const scan = scanAllSites(fullSeq, {
+      circular,
+      minSiteLen: reMinSiteLen || 6,
+      enzymes: mergedREEnzymes,
+    });
     if (override) {
       return flattenSites(scan, { enzymes: reEnzKey.split('|') });
     }
     return flattenSites(scan, { mode: reFilter, enzymes: activeSetEnzymes });
-  }, [showReSites, fullSeq, circular, reMinSiteLen, reFilter, activeSetEnzymes, reEnzKey]);
+  }, [showReSites, fullSeq, circular, reMinSiteLen, reFilter, activeSetEnzymes, reEnzKey, mergedREEnzymes]);
   // The primer editor's template preview is contextual evidence, not the
   // optional global RE track. Compute it only while that editor is open, but
   // keep the same allow-list / cut-count semantics even when showReSites=false.
   const primerTemplateReSites = useMemo(() => {
     if (!primerDraft || !fullSeq) return [];
-    const scan = scanAllSites(fullSeq, { circular, minSiteLen: reMinSiteLen || 6 });
+    const scan = scanAllSites(fullSeq, {
+      circular,
+      minSiteLen: reMinSiteLen || 6,
+      enzymes: mergedREEnzymes,
+    });
     if (reEnzKey != null) {
       return flattenSites(scan, { enzymes: reEnzKey.split('|') });
     }
     return flattenSites(scan, { mode: reFilter, enzymes: activeSetEnzymes });
-  }, [primerDraft, fullSeq, circular, reMinSiteLen, reFilter, activeSetEnzymes, reEnzKey]);
+  }, [primerDraft, fullSeq, circular, reMinSiteLen, reFilter, activeSetEnzymes, reEnzKey, mergedREEnzymes]);
 
   // «Липкие концы» — when the current selection's ends land on restriction cuts
   // (reSites[].position is the top-strand cut), derive the per-end overhang so
@@ -545,8 +558,8 @@ const SequenceView = forwardRef(function SequenceView({
     selStart: Math.min(caretAnchor, caretPos),
     selEnd: Math.max(caretAnchor, caretPos),
     sites: reSites,
-    enzymes: RE_ENZYMES,
-  }), [caretAnchor, caretPos, reSites]);
+    enzymes: mergedREEnzymes,
+  }), [caretAnchor, caretPos, reSites, mergedREEnzymes]);
 
   // Container measurement — useLayoutEffect (not useEffect) so the
   // remeasure happens BEFORE the first paint. Switching to
@@ -1543,6 +1556,7 @@ const SequenceView = forwardRef(function SequenceView({
           documentHash={documentHash}
           features={features}
           templateReSites={primerTemplateReSites}
+          enzymeCatalog={mergedREEnzymes}
           viewSettings={{
             showBottomStrand: effShowBottomStrand,
             primerStyle: settings.primerStyle,

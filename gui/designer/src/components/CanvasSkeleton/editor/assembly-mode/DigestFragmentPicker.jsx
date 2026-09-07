@@ -7,7 +7,7 @@
  * acquisitionParams carry the digest + the chosen band).
  */
 import { useState } from 'react';
-import { RE_ENZYMES } from '../../../../restriction-db';
+import { useStore, selectMergedREEnzymes } from '../../../../store';
 import { digestFragments } from '../../lib/digest-fragments';
 import PlasmidMapV2 from '../../../PlasmidMapV2';
 import useModalKeyboardBoundary from '../../../../hooks/useModalKeyboardBoundary';
@@ -21,7 +21,8 @@ export default function DigestFragmentPicker({
   const seq = (source && source.sequence) || '';
   const circular = !!(source && source.circular);
   const annotations = (source && source.annotations) || [];
-  const { fragments, seqLen } = digestFragments(seq, enzymes, circular, RE_ENZYMES);
+  const mergedREEnzymes = useStore(selectMergedREEnzymes);
+  const { fragments, seqLen } = digestFragments(seq, enzymes, circular, mergedREEnzymes);
   const [selected, setSelected] = useState(0);
   // Bands drawn ON the map — one selectable arc per fragment, coloured to match
   // the «gel» rows below; clicking either updates the same `selected`.
@@ -29,11 +30,18 @@ export default function DigestFragmentPicker({
     index: f.index, start: f.start, end: f.end, wraps: f.wraps,
     color: BAND_COLORS[i % BAND_COLORS.length],
   }));
-  // Click an RE cut on the map → select the band that STARTS at that cut (the
-  // marker carries the recognition position; the cut sits a few bp downstream, so
-  // pick the fragment whose start is nearest). Игорь 22.06: «кликабельные сайты».
+  // Click an unclustered RE cut on the map → select the band that STARTS at its
+  // canonical top-strand cut. Игорь 22.06: «кликабельные сайты».
   const onReSiteClick = (marker) => {
-    const p = (marker && marker.positions && marker.positions[0]) || 0;
+    if (!marker || marker.count !== 1) return;
+    const occurrences = Array.isArray(marker.occurrences)
+      ? marker.occurrences.filter(Boolean) : [];
+    const positions = Array.isArray(marker.positions)
+      ? marker.positions.filter(Number.isFinite) : [];
+    const p = occurrences.length === 1 && Number.isFinite(occurrences[0].topCut)
+      ? occurrences[0].topCut
+      : (occurrences.length === 0 && positions.length === 1 ? positions[0] : null);
+    if (!Number.isFinite(p)) return;
     let best = null; let bd = Infinity;
     for (const f of fragments) {
       const d = Math.abs(f.start - p);

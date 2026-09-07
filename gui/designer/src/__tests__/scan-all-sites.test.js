@@ -70,6 +70,17 @@ describe('scanAllSites()', () => {
     expect(enzymes8).toContain('NotI');       // 8-cutter
   });
 
+  it('counts every IUPAC position when applying minSiteLen', () => {
+    const xcmConcrete = `CCA${'A'.repeat(9)}TGG`;
+    const results = scanAllSites(xcmConcrete, { circular: false, minSiteLen: 10 });
+
+    expect(results.find((row) => row.enzyme === 'XcmI')).toMatchObject({
+      site: 'CCANNNNNNNNNTGG',
+      siteLength: 15,
+      cutCount: 1,
+    });
+  });
+
   it('sorts by cutCount then enzyme name', () => {
     const results = scanAllSites(TEST_SEQ, { circular: false });
     for (let i = 1; i < results.length; i++) {

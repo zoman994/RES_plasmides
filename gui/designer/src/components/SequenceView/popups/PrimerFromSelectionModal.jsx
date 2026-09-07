@@ -24,7 +24,7 @@ import {
 } from "../../../lib/primer-identity";
 import { tf } from "../../../i18n";
 import {
-  RE_ENZYMES, effectiveEnzymes, scanAllSites,
+  effectiveEnzymes, scanAllSites,
 } from "../../../restriction-db.js";
 import { evaluatePrimerDuplexThermodynamics } from "../../../lib/primer-duplex-thermodynamics";
 import { flattenRawOccurrences } from "../lib/feature-map.js";
@@ -98,7 +98,7 @@ function acceptDnaField(event, currentValue, setter) {
 // RE catalog, so helper-added, manually typed, and tail/binding-boundary motifs
 // all surface as future-PCR-product sites. Uses the same raw-occurrence adapter
 // the template context uses; positions are oligo-relative. GG_ENZYMES are never
-// consulted here — scanAllSites walks RE_ENZYMES only.
+// consulted here — scanAllSites receives this exact effective RE snapshot.
 function occurrenceTouchesPrimerDifference(occurrence, tailLength, alignment) {
   if (occurrence.start < tailLength) return true;
   if (!alignment?.runs?.length) return false;
@@ -116,12 +116,15 @@ function occurrenceTouchesPrimerDifference(occurrence, tailLength, alignment) {
   });
 }
 
-function scanPcrContext(cleanFullSeq, tailLength, alignment) {
+function scanPcrContext(cleanFullSeq, tailLength, alignment, enzymeCatalog) {
   if (!cleanFullSeq) return { occurrences: [], trackSites: [] };
-  const scan = scanAllSites(cleanFullSeq, { circular: false, minSiteLen: 6 });
+  const scan = scanAllSites(cleanFullSeq, {
+    circular: false,
+    minSiteLen: 6,
+    enzymes: enzymeCatalog,
+  });
   const occurrences = flattenRawOccurrences(scan, { mode: 'all' })
     .sort((a, b) => a.start - b.start || a.enzyme.localeCompare(b.enzyme));
-  const enzymeCatalog = effectiveEnzymes();
   const seen = new Set();
   const trackSites = occurrences
     // The product-only row explains every site introduced by the primer: in
@@ -129,12 +132,21 @@ function scanPcrContext(cleanFullSeq, tailLength, alignment) {
     .filter((occurrence) => (
       occurrenceTouchesPrimerDifference(occurrence, tailLength, alignment)
     ))
-    .map((occurrence) => ({
-      enzyme: occurrence.enzyme,
-      position: occurrence.start + (enzymeCatalog[occurrence.enzyme]?.cut?.[0] || 0),
-    }))
+    .map((rawOccurrence) => {
+      const occurrence = rawOccurrence.occurrence;
+      if (!occurrence
+        || occurrence.enzyme !== rawOccurrence.enzyme
+        || !Number.isFinite(occurrence.topCut)
+        || !occurrence.occurrenceKey) return null;
+      return {
+        enzyme: occurrence.enzyme,
+        position: occurrence.topCut,
+        occurrence,
+      };
+    })
+    .filter(Boolean)
     .filter((site) => {
-      const key = `${site.enzyme}:${site.position}`;
+      const key = site.occurrence.occurrenceKey;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -156,6 +168,7 @@ export default function PrimerFromSelectionModal({
   // annotations) plus the exact RE track data/settings used by the host
   // Sequence Viewer. The landing preview renders the same SequenceLine stack.
   features = [], templateReSites = [], viewSettings = {},
+  enzymeCatalog: suppliedEnzymeCatalog = null,
 }) {
   // Capture during render: React applies `autoFocus` during commit, before a
   // passive effect runs. Capturing inside the effect therefore remembers the
@@ -189,7 +202,7 @@ export default function PrimerFromSelectionModal({
     split ? opening.binding : draftBinding,
   );
   const [direction, setDirection] = useState(draft.direction || "forward");
-  const [activeRestrictionKey, setActiveRestrictionKey] = useState(null);
+  const [restrictionChoice, setRestrictionChoice] = useState(null);
   const openingDirection = draft.direction === "reverse" ? "reverse" : "forward";
   const activeAnchorSites = Array.isArray(anchorSites) && direction !== openingDirection
     ? anchorSites.map((site) => ({
@@ -300,8 +313,9 @@ export default function PrimerFromSelectionModal({
   // Future-PCR-product restriction occurrences over the whole oligo. The same
   // shared track now includes sites introduced by a mutagenic binding region,
   // not only those whose first base happens to be in the 5′ tail.
+  const enzymeCatalog = suppliedEnzymeCatalog || effectiveEnzymes();
   const { occurrences: pcrOccurrences, trackSites: pcrReSites } = scanPcrContext(
-    fullSeq, effectiveTailLength, alignment,
+    fullSeq, effectiveTailLength, alignment, enzymeCatalog,
   );
   // The flanking-protection warning is about a site the biolog is building in the
   // 5′ tail. Prefer the helper-clicked site; otherwise fall back to the rightmost
@@ -310,10 +324,15 @@ export default function PrimerFromSelectionModal({
     (occurrence) => occurrence.start + occurrence.length <= effectiveTailLength,
   );
   const activeRestriction = pcrOccurrences.find(
-    (occurrence) => `re:${occurrence.enzyme}:${occurrence.start}` === activeRestrictionKey,
-  ) || tailOccurrences.at(-1) || null;
+    (occurrence) => occurrence.enzyme === restrictionChoice?.enzyme
+      && occurrence.start === restrictionChoice.start,
+  ) || (restrictionChoice
+    ? tailOccurrences.filter(
+      (occurrence) => occurrence.enzyme === restrictionChoice.enzyme,
+    ).at(-1)
+    : null) || tailOccurrences.at(-1) || null;
   const activeRestrictionInfo = activeRestriction
-    ? effectiveEnzymes()[activeRestriction.enzyme]
+    ? enzymeCatalog[activeRestriction.enzyme]
     : null;
   const restrictionFlankingWarningText = activeRestriction && activeRestrictionInfo
     && activeRestriction.start < (activeRestrictionInfo.minFlanking || 0)
@@ -368,13 +387,13 @@ export default function PrimerFromSelectionModal({
     return normalized.accepted ? normalized.value + snippet : current;
   });
   const appendRestrictionSite = (name) => {
-    const info = RE_ENZYMES[name];
+    const info = enzymeCatalog[name];
     if (!info?.site) return;
     const normalizedTail = normalizeDnaFieldInput(tail);
     if (!normalizedTail.accepted) return;
     const start = normalizedTail.value.length;
     setTail(`${normalizedTail.value}${info.site}`);
-    setActiveRestrictionKey(`re:${name}:${start}`);
+    setRestrictionChoice({ enzyme: name, start });
   };
 
   // Игорь 18.05.2026: «модалка "прозрачная" для клика, кнопки не
@@ -554,7 +573,7 @@ export default function PrimerFromSelectionModal({
                 data-testid={`primer-modal-helper-re-${name}`}
                 aria-label={tf('primer.modal.helper-add-restriction-site', {
                   name,
-                  site: RE_ENZYMES[name].site,
+                  site: enzymeCatalog[name].site,
                 })}
                 aria-describedby={activeRestriction?.enzyme === name
                   ? restrictionDescriptionIds

@@ -46,9 +46,10 @@ docs/design_assets/
 !.claude/settings.json
 !.claude/agents/
 .claude/agents/*
-!.claude/agents/implementation-coder.md
-!.claude/agents/proof-coder.md
-!.claude/agents/candidate-reviewer.md
+!.claude/agents/coder.md
+!.claude/agents/creative.md
+!.claude/agents/reviewer.md
+!.claude/agents/reviewer-readonly.md
 .codex/
 .audit/
 .vscode/

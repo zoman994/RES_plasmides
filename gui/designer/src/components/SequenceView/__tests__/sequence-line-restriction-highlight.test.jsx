@@ -17,6 +17,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import SequenceLine from '../SequenceLine';
+import { scanOccurrences } from '../../../lib/restriction-occurrence';
 
 afterEach(cleanup);
 
@@ -93,5 +94,150 @@ describe('SequenceLine — restriction binding-zone highlight', () => {
     render(<SequenceLine {...baseProps} restrictionHighlightKey="EcoRI-4" />);
     const cuts = screen.getAllByTestId('sequence-view-strand-cut');
     expect(cuts.length).toBe(2);
+  });
+
+  it('uses occurrence identity and reverse-strand cuts without a catalog lookup', () => {
+    const FlipI = { site: 'ACGTTA', cut: [1, 4], isCustom: true };
+    const sequence = 'TTTTTTTTTTTAACGTTTT';
+    const [occurrence] = scanOccurrences(sequence, {
+      enzymes: { FlipI },
+      names: ['FlipI'],
+    });
+    const site = { enzyme: 'FlipI', position: occurrence.topCut, occurrence };
+
+    render(<SequenceLine
+      {...baseProps}
+      line={{ start: 0, seq: sequence, wrapsOrigin: false }}
+      fullSeq={sequence}
+      seqLength={sequence.length}
+      reSites={[site]}
+      hoveredRestrictionKey={occurrence.occurrenceKey}
+    />);
+
+    const cuts = screen.getAllByTestId('sequence-view-strand-cut');
+    expect(cuts.find((node) => node.getAttribute('data-strand') === 'top')
+      ?.getAttribute('data-cut-pos')).toBe('12');
+    expect(cuts.find((node) => node.getAttribute('data-strand') === 'bottom')
+      ?.getAttribute('data-cut-pos')).toBe('15');
+  });
+
+  it('highlights both canonical occurrences in a committed RE pair', () => {
+    const sequence = 'AAAAGAATTCTTTTAAGCTTAAAA';
+    const occurrences = scanOccurrences(sequence, {
+      enzymes: {
+        EcoRI: { site: 'GAATTC', cut: [1, 5] },
+        HindIII: { site: 'AAGCTT', cut: [1, 5] },
+      },
+    });
+    const sites = occurrences.map((occurrence) => ({
+      enzyme: occurrence.enzyme,
+      position: occurrence.topCut,
+      occurrence,
+    }));
+
+    render(<SequenceLine
+      {...baseProps}
+      line={{ start: 0, seq: sequence, wrapsOrigin: false }}
+      fullSeq={sequence}
+      seqLength={sequence.length}
+      reSites={sites}
+      restrictionHighlightKey={occurrences.map(({ occurrenceKey }) => occurrenceKey)}
+    />);
+
+    expect(screen.getAllByTestId('sequence-view-strand-cut')).toHaveLength(4);
+    expect(screen.getAllByTestId('sequence-view-re-site')
+      .filter((node) => node.getAttribute('data-highlighted') === 'true')).toHaveLength(2);
+  });
+
+  it('renders only the physical slice of an overhang whose stagger crosses the origin', () => {
+    const sequence = `GTTA${'A'.repeat(14)}AC`;
+    const [occurrence] = scanOccurrences(sequence, {
+      circular: true,
+      enzymes: { FlipI: { site: 'ACGTTA', cut: [1, 4], isCustom: true } },
+      names: ['FlipI'],
+    });
+    expect(occurrence).toMatchObject({
+      recognition: { start: 18, wrapsOrigin: true },
+      topCut: 19,
+      bottomCut: 2,
+      topCutUnwrapped: 19,
+      bottomCutUnwrapped: 22,
+    });
+
+    render(<SequenceLine
+      {...baseProps}
+      line={{ start: 10, seq: sequence.slice(10), wrapsOrigin: false }}
+      fullSeq={sequence}
+      seqLength={sequence.length}
+      reSites={[{ enzyme: 'FlipI', position: occurrence.topCut, occurrence }]}
+      restrictionHighlightKey={occurrence.occurrenceKey}
+    />);
+
+    const bands = screen.getAllByTestId('sequence-view-strand-overhang');
+    expect(bands).toHaveLength(2);
+    expect(bands.every((band) => band.style.width === '10px')).toBe(true);
+  });
+
+  it('renders the low-coordinate slice and normalized cut of an origin-crossing stagger', () => {
+    const sequence = `GTTA${'A'.repeat(14)}AC`;
+    const [occurrence] = scanOccurrences(sequence, {
+      circular: true,
+      enzymes: { FlipI: { site: 'ACGTTA', cut: [1, 4], isCustom: true } },
+      names: ['FlipI'],
+    });
+
+    render(<SequenceLine
+      {...baseProps}
+      line={{ start: 0, seq: sequence.slice(0, 10), wrapsOrigin: false }}
+      fullSeq={sequence}
+      seqLength={sequence.length}
+      reSites={[{ enzyme: 'FlipI', position: occurrence.topCut, occurrence }]}
+      restrictionHighlightKey={occurrence.occurrenceKey}
+    />);
+
+    const bands = screen.getAllByTestId('sequence-view-strand-overhang');
+    expect(bands).toHaveLength(2);
+    expect(bands.every((band) => band.style.width === '20px')).toBe(true);
+    const cuts = screen.getAllByTestId('sequence-view-strand-cut');
+    expect(cuts).toHaveLength(1);
+    expect(cuts[0].getAttribute('data-strand')).toBe('bottom');
+    expect(cuts[0].getAttribute('data-cut-pos')).toBe('2');
+  });
+
+  it('recomputes an origin cut when the same row becomes the bridge row', () => {
+    const sequence = `GTTA${'A'.repeat(14)}AC`;
+    const [occurrence] = scanOccurrences(sequence, {
+      circular: true,
+      enzymes: { FlipI: { site: 'ACGTTA', cut: [1, 4], isCustom: true } },
+      names: ['FlipI'],
+    });
+    const reSites = [{ enzyme: 'FlipI', position: occurrence.topCut, occurrence }];
+    const props = {
+      ...baseProps,
+      fullSeq: sequence,
+      seqLength: sequence.length,
+      reSites,
+      restrictionHighlightKey: occurrence.occurrenceKey,
+    };
+    const view = render(<SequenceLine
+      {...props}
+      line={{ start: 10, seq: sequence.slice(10), wrapsOrigin: false }}
+    />);
+
+    expect(screen.getAllByTestId('sequence-view-strand-cut')
+      .some((node) => node.getAttribute('data-strand') === 'bottom')).toBe(false);
+
+    view.rerender(<SequenceLine
+      {...props}
+      line={{
+        start: 10,
+        seq: sequence.slice(10) + sequence.slice(0, 10),
+        wrapsOrigin: true,
+      }}
+    />);
+
+    const bottom = screen.getAllByTestId('sequence-view-strand-cut')
+      .find((node) => node.getAttribute('data-strand') === 'bottom');
+    expect(bottom?.getAttribute('data-cut-pos')).toBe('22');
   });
 });

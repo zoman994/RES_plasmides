@@ -210,24 +210,42 @@ export function buildReMarkers(reSites, total, opts = {}) {
   if (!total || !Array.isArray(reSites) || !reSites.length) return [];
   const sorted = reSites
     .filter((s) => s && Number.isFinite(s.pos))
-    .map((s) => ({ enzyme: s.enzyme, pos: s.pos, angle: (s.pos / total) * TAU }))
+    .map((s) => ({ ...s, angle: (s.pos / total) * TAU }))
     .sort((a, b) => a.angle - b.angle);
   const groups = [];
   for (const s of sorted) {
     const last = groups[groups.length - 1];
     if (last && last.enzyme === s.enzyme && (s.angle - last.lastAngle) <= clusterArc) {
       last.positions.push(s.pos);
+      last.sites.push(s);
       last.lastAngle = s.angle;
     } else {
-      groups.push({ enzyme: s.enzyme, positions: [s.pos], firstAngle: s.angle, lastAngle: s.angle });
+      groups.push({
+        enzyme: s.enzyme,
+        positions: [s.pos],
+        sites: [s],
+        firstAngle: s.angle,
+        lastAngle: s.angle,
+      });
     }
   }
-  return groups.map((g) => ({
-    enzyme: g.enzyme,
-    positions: g.positions,
-    count: g.positions.length,
-    angle: (g.firstAngle + g.lastAngle) / 2,
-  }));
+  return groups.map((g) => {
+    const occurrenceKeys = g.sites
+      .map((site) => site.occurrence?.occurrenceKey)
+      .filter(Boolean);
+    const markerKey = g.sites
+      .map((site) => site.occurrence?.occurrenceKey || `${site.enzyme}:${site.pos}`)
+      .join('|');
+    return {
+      enzyme: g.enzyme,
+      positions: g.positions,
+      occurrences: g.sites.map((site) => site.occurrence).filter(Boolean),
+      occurrenceKeys,
+      markerKey,
+      count: g.positions.length,
+      angle: (g.firstAngle + g.lastAngle) / 2,
+    };
+  });
 }
 
 /**

@@ -65,6 +65,36 @@ describe('sequenceLineEqual — overlap-scoped arrays', () => {
     const aFar = { ...base(), reSites: [farSite] };
     expect(sequenceLineEqual(aFar, { ...aFar, reSites: [{ ...farSite, enzyme: 'BsmBI' }] })).toBe(true);
   });
+  it('re-renders a wrap bridge when an origin occurrence changes near plasmid start', () => {
+    const occurrence = {
+      occurrenceKey: 'WrapI:1:990',
+      topCut: 997,
+      bottomCut: 3,
+      recognition: {
+        matchedTop: 'ACGTTA',
+        segments: [{ start: 990, end: 1000 }, { start: 0, end: 5 }],
+      },
+    };
+    const bridge = {
+      ...base(),
+      line: { start: 990, seq: 'A'.repeat(15), wrapsOrigin: true, wrapAt: 10 },
+      fullSeq: 'A'.repeat(1000),
+      seqLength: 1000,
+      reSites: [{ enzyme: 'WrapI', position: 3, occurrence }],
+    };
+    const changed = {
+      ...bridge,
+      reSites: [{
+        ...bridge.reSites[0],
+        occurrence: {
+          ...occurrence,
+          recognition: { ...occurrence.recognition, matchedTop: 'ACGTTC' },
+        },
+      }],
+    };
+
+    expect(sequenceLineEqual(bridge, changed)).toBe(false);
+  });
   it('scopes shared primer projections to occurrences overlapping this line', () => {
     const near = {
       key: 'near', segments: [{ start: 2, end: 6 }], alignment: { runs: [{ op: 'M' }] },

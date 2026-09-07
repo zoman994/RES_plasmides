@@ -1,6 +1,6 @@
 ---
 name: sprint-report
-description: Produce the compact evidence handoff from a BodgeGene implementation writer to the Planner. Use at candidate completion or after a correction package; do not turn CURRENT_TASK.md into a session journal.
+description: Produce the compact evidence handoff from a BodgeGene Coder to the Reviewer. Use at candidate completion or after a correction package; do not turn CURRENT_TASK.md into a session journal.
 ---
 
 # Candidate handoff
@@ -14,12 +14,13 @@ Send the report as a message. Do not append it to `CURRENT_TASK.md` unless that 
 <what now works, in product language>
 
 ## Role and mode
-<writer mode; proposal/component/proof/integrated candidate; writer; Integration owner>
+<Coder assignment and writer mode; proposal/component/proof/integrated candidate;
+integration-responsible Coder>
 
 ## Base and manifest
 <accepted base SHA; exact changed manifest; preserved dirty exclusions;
 recomputable digest of changed content or candidate patch; for an integrated candidate,
-the Planner-issued integration manifest, ownership map and digests of every accepted
+the Reviewer-issued integration manifest, ownership map and digests of every accepted
 frozen input>
 
 ## Contract
@@ -29,7 +30,7 @@ frozen input>
 - RED: <test and exact pre-fix failure, or justified exception>
 - Focused: <files/tests/result>
 - Related: <files/tests/result>
-- Final gate: <Planner gate pending — normal at coder handoff; result only if Planner
+- Final gate: <Reviewer gate pending — normal at Coder handoff; result only if Reviewer
   explicitly delegated that one run>
 - Mutation: <guard → named RED, only when used>
 - Build/lint/diff: <result>
@@ -61,10 +62,10 @@ STOP. Nothing staged or committed unless separately authorized.
 - If a new test was green before implementation, say so and explain how its non-decorative value was established.
 - A repeated run on an unchanged candidate is not new evidence unless it is the single
   controlled flake retry. Name the diagnostic question for every other repeat.
-- Report a correction as a delta from the Integration owner: what changed since the
+- Report a correction as a delta from the integration-responsible Coder: what changed since the
   previous handoff and which prior claims are superseded. Do not resend the entire history.
 - List only relevant pre-existing warnings and distinguish them from new ones.
-- Do not propose or start the next package; the Planner owns prioritization and canonical tracker updates.
+- Do not propose or start the next package; the Reviewer owns triage, prioritization and canonical tracker updates.
 
 ## Git boundary
 

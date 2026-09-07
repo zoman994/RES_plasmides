@@ -14,7 +14,7 @@ import { scanAllSites } from '../restriction-db';
 import { filterReSites } from '../lib/re-site-filter';
 import { featureColorShaded, FEATURE_STROKE } from '../feature-palette';
 import { isFragmentFeature } from '../lib/feature-fragment';
-import { useStore, selectActiveSetEnzymes } from '../store';
+import { useStore, selectActiveSetEnzymes, selectMergedREEnzymes } from '../store';
 import { buildReMarkers, featuresFromFragments } from '../lib/plasmid-map-v2';
 import { lanePack, laneCount, linearTicks, bpToX } from '../lib/linear-map';
 import { getSegments, locationLength, formatUiRange } from '../lib/annotation-location';
@@ -53,6 +53,7 @@ export default function LinearMapV2({
   const setShowReSites = useStore((s) => s.setShowReSites);
   const setReFilter = useStore((s) => s.setReFilter);
   const activeSetEnzymes = useStore(selectActiveSetEnzymes);
+  const mergedREEnzymes = useStore(selectMergedREEnzymes);
 
   const total = totalBp || length || 0;
   const fullSeq = useMemo(() => (fragments || []).map((f) => f.sequence || '').join(''), [fragments]);
@@ -98,14 +99,27 @@ export default function LinearMapV2({
   const reSites = useMemo(() => {
     const effShow = reEnzKey != null ? true : showReSites;
     if (!effShow || !total || !hasSequence) return [];
-    const all = scanAllSites(fullSeq, { circular: topology === 'circular', minSiteLen: reMinSiteLen });
+    const all = scanAllSites(fullSeq, {
+      circular: topology === 'circular',
+      minSiteLen: reMinSiteLen,
+      enzymes: mergedREEnzymes,
+    });
     const filtered = reEnzKey != null
       ? filterReSites(all, { enzymes: reEnzKey.split('|') })
       : filterReSites(all, { mode: reFilter, enzymes: activeSetEnzymes });
     return filtered.flatMap((s) => (s.positions || [])
-      .map((p) => ({ enzyme: s.enzyme, pos: typeof p === 'number' ? p : (p && p.position) }))
+      .map((p) => {
+        const occurrence = p && typeof p === 'object' ? p.occurrence : null;
+        return {
+          enzyme: s.enzyme,
+          pos: Number.isFinite(occurrence?.topCut)
+            ? occurrence.topCut
+            : typeof p === 'number' ? p : p?.position,
+          occurrence,
+        };
+      })
       .filter((re) => Number.isFinite(re.pos)));
-  }, [fullSeq, showReSites, reFilter, reMinSiteLen, total, hasSequence, reEnzKey, activeSetEnzymes, topology]);
+  }, [fullSeq, showReSites, reFilter, reMinSiteLen, total, hasSequence, reEnzKey, activeSetEnzymes, topology, mergedREEnzymes]);
 
   const reMarkers = useMemo(() => buildReMarkers(reSites, total || 1, {}), [reSites, total]);
 
@@ -319,8 +333,9 @@ export default function LinearMapV2({
         {/* RE cut ticks (cross the feature band + axis) */}
         {reSites.map((re, k) => {
           const x = bpToX(re.pos, total, X0, X1);
+          const siteKey = re.occurrence?.occurrenceKey || `${re.enzyme}:${re.pos}:${k}`;
           return (
-            <line key={`re${k}`} data-testid="linear-map-v2-re-site" x1={x} y1={featTop - 4} x2={x} y2={axisY + 5}
+            <line key={siteKey} data-testid="linear-map-v2-re-site" x1={x} y1={featTop - 4} x2={x} y2={axisY + 5}
               stroke="var(--viz-re-unique, #E24B4A)" strokeWidth={1.1} strokeLinecap="round" opacity={0.9} pointerEvents="none" />
           );
         })}
@@ -330,10 +345,10 @@ export default function LinearMapV2({
           const ext = reLabelExtents[k]; const lane = reLabelLanes[k];
           const labelY = 10 + (nReLanes - 1 - lane) * RE_LABEL_H;
           const tickX = bpToX(m.positions[0], total, X0, X1);
-          const clickable = !!onReSiteClick;
+          const clickable = !!onReSiteClick && m.count === 1;
           const w = ext.text.length * 6.1 + 8;
           return (
-            <g key={`rl${k}`} data-testid={`linear-map-v2-re-label-${k}`} data-cluster={m.count > 1} data-clickable={clickable}
+            <g key={m.markerKey} data-testid={`linear-map-v2-re-label-${k}`} data-cluster={m.count > 1} data-clickable={clickable}
               style={{ pointerEvents: clickable ? 'auto' : 'none', cursor: clickable ? 'pointer' : 'default' }}
               onClick={clickable ? (e) => { e.stopPropagation(); onReSiteClick(m); } : undefined}>
               <line x1={tickX} y1={labelY + 7} x2={tickX} y2={featTop - 4} stroke="var(--viz-re-unique, #E24B4A)" strokeWidth={0.6} opacity={0.55} />

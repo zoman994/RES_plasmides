@@ -41,6 +41,29 @@ describe('plasmid-map-v2 — buildReMarkers (RE label clustering)', () => {
     expect(m[0].angle).toBeCloseTo((100 / T) * TAU, 5);
   });
 
+  it('preserves canonical occurrence identity inside the marker', () => {
+    const occurrence = { occurrenceKey: 'EcoRI:1:100', topCut: 101 };
+    const [marker] = buildReMarkers([
+      { enzyme: 'EcoRI', pos: 101, occurrence },
+    ], T, {});
+
+    expect(marker.positions).toEqual([101]);
+    expect(marker.occurrences).toEqual([occurrence]);
+    expect(marker.occurrenceKeys).toEqual(['EcoRI:1:100']);
+  });
+
+  it('builds a stable marker key from ordered canonical occurrences', () => {
+    const first = { occurrenceKey: 'EcoRI:1:100', topCut: 101 };
+    const second = { occurrenceKey: 'EcoRI:1:110', topCut: 111 };
+    const [marker] = buildReMarkers([
+      { enzyme: 'EcoRI', pos: 111, occurrence: second },
+      { enzyme: 'EcoRI', pos: 101, occurrence: first },
+    ], T, { clusterArc: 0.2 });
+
+    expect(marker.occurrenceKeys).toEqual(['EcoRI:1:100', 'EcoRI:1:110']);
+    expect(marker.markerKey).toBe('EcoRI:1:100|EcoRI:1:110');
+  });
+
   it('returns [] for empty / no total', () => {
     expect(buildReMarkers([], T)).toEqual([]);
     expect(buildReMarkers([{ enzyme: 'EcoRI', pos: 1 }], 0)).toEqual([]);

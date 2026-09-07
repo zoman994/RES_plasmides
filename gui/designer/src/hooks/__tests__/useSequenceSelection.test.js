@@ -123,6 +123,37 @@ describe('useSequenceSelection — drag-grace', () => {
 });
 
 describe('useSequenceSelection — RE strategy: pair-select', () => {
+  it('uses canonical occurrence cuts and preserves both site identities', () => {
+    const onPairCommit = vi.fn();
+    const firstOccurrence = {
+      occurrenceKey: 'RevI:-1:4', enzyme: 'RevI', topCut: 7,
+    };
+    const secondOccurrence = {
+      occurrenceKey: 'EcoRI:1:20', enzyme: 'EcoRI', topCut: 21,
+    };
+    const firstSite = { enzyme: 'RevI', position: 999, occurrence: firstOccurrence };
+    const secondSite = { enzyme: 'EcoRI', position: 998, occurrence: secondOccurrence };
+    const { result } = renderHook(() => useSequenceSelection({
+      initialCaret: 0, reBehavior: 'pair-select', reEnzymes: RE, onPairCommit,
+    }));
+
+    act(() => { result.current.onRestrictionClick(firstSite); });
+    act(() => { result.current.onRestrictionClick(secondSite); });
+
+    expect(result.current.caretAnchor).toBe(7);
+    expect(result.current.caretPos).toBe(21);
+    expect(onPairCommit).toHaveBeenCalledWith(expect.objectContaining({
+      start: 7,
+      end: 21,
+      firstPosition: 7,
+      secondPosition: 21,
+      firstKey: 'RevI:-1:4',
+      secondKey: 'EcoRI:1:20',
+      firstSite,
+      secondSite,
+    }));
+  });
+
   it('two clicks on different RE sites → [cutA,cutB] + acquisitionMethod=restriction', () => {
     const onPairCommit = vi.fn();
     const { result } = renderHook(() => useSequenceSelection({

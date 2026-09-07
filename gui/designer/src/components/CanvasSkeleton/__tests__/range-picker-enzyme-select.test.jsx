@@ -9,7 +9,9 @@
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import {
+  render, screen, fireEvent, cleanup, act,
+} from '@testing-library/react';
 import RangePickerModal from '../editor/assembly-mode/RangePickerModal';
 import { useStore } from '../../../store';
 import { resetDBForTests } from '../../../db/dexie-schema';
@@ -138,6 +140,44 @@ describe('RangePickerModal — enzyme search + набор selector', () => {
     open();
     typeSearch('XyzI');
     expect(items().some((s) => s.getAttribute('data-enzyme') === 'XyzI')).toBe(true);
+  });
+
+  it('uses one store-only custom catalog for search, audit, and unique-cut confirmation', () => {
+    const enzyme = {
+      id: 'store-only',
+      name: 'StoreOnlyI',
+      site: 'AACGTC',
+      cut: [1, 3],
+      end: '5prime',
+      overhang: 'AC',
+      isCustom: true,
+    };
+    act(() => {
+      useStore.setState((s) => { s.customEnzymes.byId = { 'store-only': enzyme }; });
+    });
+    // Deliberately keep the module registry stale: the render's Zustand snapshot
+    // is the source of truth throughout this confirmation.
+    setCustomEnzymeRegistry({});
+    let got = null;
+    render(<RangePickerModal
+      source={{
+        name: 'store-only', circular: true, annotations: [], sequence: 'TTTTAACGTCTTTT',
+      }}
+      onConfirm={(payload) => { got = payload; }}
+      onCancel={() => {}}
+    />);
+
+    typeSearch('StoreOnlyI');
+    pick((item) => item.getAttribute('data-enzyme') === 'StoreOnlyI');
+    fireEvent.click(screen.getByTestId('range-picker-confirm'));
+
+    expect(got).toMatchObject({
+      acquisitionMethod: 'restriction',
+      acquisitionParams: { enzymes: ['StoreOnlyI'], single: true },
+    });
+    expect(got.acquisitionParams.cutSites[0].occurrence).toMatchObject({
+      enzyme: 'StoreOnlyI', topCut: 5, bottomCut: 7,
+    });
   });
 
   // --- review wvv2x0oxz follow-ups ---

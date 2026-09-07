@@ -60,6 +60,20 @@ describe('auditReSites', () => {
     expect(r.ambiguous).toBe(false);
   });
 
+  it('uses the injected catalog and flags coincident top cuts with conflicting duplex geometry', () => {
+    const catalog = {
+      IsoA: { site: 'ACGTTA', cut: [1, 4], isCustom: true },
+      NeoB: { site: 'ACGTTA', cut: [1, 3], isCustom: true },
+    };
+    const r = auditReSites('GGGACGTTACCC', ['IsoA', 'NeoB'], false, catalog);
+
+    expect(r.total).toBe(1);
+    expect(r.ambiguous).toBe(true);
+    expect(r.geometryConflicts).toEqual([
+      expect.objectContaining({ position: 4, enzymes: ['IsoA', 'NeoB'] }),
+    ]);
+  });
+
   it('neoschizomers (same site, DIFFERENT cut offset) are two distinct cuts', () => {
     setCustomEnzymeRegistry({
       IsoA: { site: 'GAATTC', cut: [1, 5] }, // cut at pos+1
@@ -67,5 +81,16 @@ describe('auditReSites', () => {
     });
     const r = auditReSites('AAAAGAATTCAAAA', ['IsoA', 'NeoB'], false);
     expect(r.total).toBe(2);
+  });
+
+  it('keeps linear cuts at 0 and sequence.length distinct, but normalizes them on a circle', () => {
+    setCustomEnzymeRegistry({
+      StartI: { site: 'AACGTC', cut: [0, 0], end: 'blunt', overhang: null },
+      EndI: { site: 'CGACT', cut: [5, 5], end: 'blunt', overhang: null },
+    });
+    const sequence = 'AACGTCGACT';
+
+    expect(auditReSites(sequence, ['StartI', 'EndI'], false).total).toBe(2);
+    expect(auditReSites(sequence, ['StartI', 'EndI'], true).total).toBe(1);
   });
 });

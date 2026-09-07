@@ -37,8 +37,20 @@
 import {
   useCallback, useEffect, useMemo, useRef, useState,
 } from 'react';
+import { restrictionSiteKey } from '../lib/restriction-occurrence';
 
 export const DRAG_GRACE_MS = 250;
+
+function restrictionCutPosition(site) {
+  if (!site || typeof site !== 'object') return null;
+  if (site.occurrence !== undefined) {
+    const occurrence = site.occurrence;
+    if (!occurrence || occurrence.enzyme !== site.enzyme
+      || !Number.isFinite(occurrence.topCut)) return null;
+    return occurrence.topCut;
+  }
+  return Number.isFinite(site.position) ? site.position : null;
+}
 
 export function useSequenceSelection({
   initialCaret = null,
@@ -135,15 +147,19 @@ export function useSequenceSelection({
       return;
     }
     if (reBehavior !== 'pair-select') return; // 'off' — display-only
-    if (!site || typeof site.position !== 'number') return;
+    const position = restrictionCutPosition(site);
+    const key = restrictionSiteKey(site);
+    if (!Number.isFinite(position) || !key) return;
     const stored = firstRESiteRef.current;
-    if (stored && stored.position !== site.position) {
+    const storedPosition = restrictionCutPosition(stored);
+    const storedKey = restrictionSiteKey(stored);
+    if (stored && storedKey !== key && storedPosition !== position) {
       // V155 — `site.position` is ALREADY the top-strand cut (flattenSites adds
       // cut[0]), so the fragment between the two cuts is just [posA, posB]. The
       // old `+ cut[0]` double-offset placed the selection (and the inserted
       // fragment) one base PAST the cut.
-      const lo = Math.min(stored.position, site.position);
-      const hi = Math.max(stored.position, site.position);
+      const lo = Math.min(storedPosition, position);
+      const hi = Math.max(storedPosition, position);
       setCaretAnchor(lo);
       setCaretPos(hi);
       firstRESiteRef.current = null;
@@ -153,9 +169,13 @@ export function useSequenceSelection({
         start: lo,
         end: hi,
         firstEnzyme: stored.enzyme,
-        firstPosition: stored.position,
+        firstPosition: storedPosition,
         secondEnzyme: site.enzyme,
-        secondPosition: site.position,
+        secondPosition: position,
+        firstKey: storedKey,
+        secondKey: key,
+        firstSite: stored,
+        secondSite: site,
       });
       return;
     }

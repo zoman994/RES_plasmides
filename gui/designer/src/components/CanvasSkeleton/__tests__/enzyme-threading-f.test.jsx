@@ -14,14 +14,19 @@
  *   • realise — the assembly op params carry the enzyme.
  *   • protocol — Golden Gate / лигирование steps name the chosen enzyme.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   seedJunction, defaultEnzymeForMethod, pairKeyFor,
 } from '../lib/junction-derive';
-import { deriveAutoPrimers, enzymeTailParams } from '../lib/primer-derive';
+import {
+  buildOverlapTail, deriveAutoPrimers, enzymeTailParams,
+} from '../lib/primer-derive';
+import { setCustomEnzymeRegistry } from '../../../restriction-db';
 import { realiseAssembly } from '../lib/zone-pieces-to-dag';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 import { buildProtocol } from '../canvas/operations/protocol-export';
+
+afterEach(() => setCustomEnzymeRegistry({}));
 
 // ─── F1 — config layer ────────────────────────────────────────────────────
 describe('F1 — junction config carries an enzyme', () => {
@@ -107,9 +112,24 @@ describe('F2 — enzymeTailParams resolves the enzyme → tail chemistry', () =>
     expect(enzymeTailParams('restriction', 'BamHI')).toEqual({ reSite: 'GGATCC' });
     expect(enzymeTailParams('restriction', 'HindIII')).toEqual({ reSite: 'AAGCTT' });
   });
-  it('unknown / missing enzyme → safe default (no broken tail)', () => {
+  it('GG keeps its method default, while an unknown RE fails closed', () => {
     expect(enzymeTailParams('golden_gate').recognition).toBe('GGTCTC'); // BsaI
-    expect(enzymeTailParams('restriction').reSite).toBe('GAATTC'); // EcoRI
+    expect(enzymeTailParams('restriction', 'MissingI')).toEqual({});
+    expect(buildOverlapTail('fwd', '', { method: 'restriction' })).toBe('');
+  });
+  it('custom RE enzyme → its recognition site', () => {
+    setCustomEnzymeRegistry({
+      CustomI: { site: 'AACGTC', cut: [1, 3], end: '5prime', overhang: 'AC' },
+    });
+    expect(enzymeTailParams('restriction', 'CustomI')).toEqual({ reSite: 'AACGTC' });
+  });
+
+  it('rejects a palindromic custom site whose cut metadata has no unique strand interpretation', () => {
+    setCustomEnzymeRegistry({
+      AmbiguousI: { site: 'GAATTC', cut: [1, 4], isCustom: true },
+    });
+
+    expect(enzymeTailParams('restriction', 'AmbiguousI')).toEqual({});
   });
 });
 
@@ -146,6 +166,16 @@ describe('F2 — deriveAutoPrimers threads the junction enzyme into the tail', (
     const { primers } = deriveWithJunction('restriction', 'BamHI');
     const fwd = primerFor(primers, 'p2', 'fwd');
     expect(fwd.tail.includes('GGATCC')).toBe(true);
+  });
+
+  it('restriction(custom) uses the custom site, while a missing enzyme emits no tail', () => {
+    setCustomEnzymeRegistry({
+      CustomI: { site: 'AACGTC', cut: [1, 3], end: '5prime', overhang: 'AC' },
+    });
+    const custom = primerFor(deriveWithJunction('restriction', 'CustomI').primers, 'p2', 'fwd');
+    const missing = primerFor(deriveWithJunction('restriction', 'MissingI').primers, 'p2', 'fwd');
+    expect(custom.tail).toContain('AACGTC');
+    expect(missing.tail).toBe('');
   });
 });
 

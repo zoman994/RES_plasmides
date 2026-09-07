@@ -66,11 +66,24 @@ function overlapBySpanEqual(pa, na, start, end, margin) {
 }
 
 // RE sites are keyed by `position` (+ recognition length), not start/end.
-function overlapByPositionEqual(pa, na, start, end, margin) {
+function overlapByPositionEqual(pa, na, start, end, margin, wrapsOrigin) {
   if (pa === na) return true;
+  if (wrapsOrigin) return JSON.stringify(pa || []) === JSON.stringify(na || []);
   const lo = start - margin;
   const hi = end + margin;
-  const keep = (e) => e && Number.isFinite(e.position) && e.position >= lo && e.position <= hi;
+  const keep = (e) => {
+    if (!e) return false;
+    if (Number.isFinite(e.position) && e.position >= lo && e.position <= hi) return true;
+    const occurrence = e.occurrence;
+    if (!occurrence) return false;
+    const segments = occurrence.recognition?.segments || [];
+    if (segments.some((segment) => spanOverlapsLine(
+      segment?.start, segment?.end, lo, hi,
+    ))) return true;
+    return [occurrence.topCut, occurrence.bottomCut].some(
+      (cut) => Number.isFinite(cut) && cut >= lo && cut <= hi,
+    );
+  };
   const p = (Array.isArray(pa) ? pa : []).filter(keep);
   const n = (Array.isArray(na) ? na : []).filter(keep);
   return JSON.stringify(p) === JSON.stringify(n);
@@ -174,7 +187,14 @@ export function sequenceLineEqual(prev, next) {
 
   if (!overlapBySpanEqual(prev.features, next.features, start, end, 0)) return false;
   if (!overlapBySpanEqual(prev.orfRanges, next.orfRanges, start, end, 0)) return false;
-  if (!overlapByPositionEqual(prev.reSites, next.reSites, start, end, RE_MARGIN)) return false;
+  if (!overlapByPositionEqual(
+    prev.reSites,
+    next.reSites,
+    start,
+    end,
+    RE_MARGIN,
+    ln.wrapsOrigin || (prev.line || {}).wrapsOrigin,
+  )) return false;
   if (!primerOccurrencesEqual(
     prev.primerOccurrences,
     next.primerOccurrences,

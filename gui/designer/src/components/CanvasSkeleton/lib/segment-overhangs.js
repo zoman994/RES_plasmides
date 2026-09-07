@@ -22,7 +22,26 @@ export function segmentOverhangs(segment, reEnzymes) {
   const ap = segment.acquisitionParams || {};
   const enzymes = Array.isArray(ap.enzymes) ? ap.enzymes : [];
   const cutSites = Array.isArray(ap.cutSites) ? ap.cutSites : [];
-  const endInfo = (enzName) => {
+  const endInfo = (enzName, cutSite) => {
+    const hasCanonical = cutSite && (
+      Object.prototype.hasOwnProperty.call(cutSite, 'occurrence')
+      || Object.prototype.hasOwnProperty.call(cutSite, 'occurrenceKey')
+    );
+    if (hasCanonical) {
+      const occurrence = cutSite.occurrence;
+      if (!occurrence || occurrence.enzyme !== enzName
+        || !Number.isFinite(occurrence.topCutOffset)
+        || !Number.isFinite(occurrence.bottomCutOffset)
+        || !occurrence.overhang
+        || (cutSite.occurrenceKey && cutSite.occurrenceKey !== occurrence.occurrenceKey)
+        || (Number.isFinite(cutSite.position) && cutSite.position !== occurrence.topCut)) return null;
+      const delta = occurrence.bottomCutOffset - occurrence.topCutOffset;
+      const type = occurrence.overhang.type === '5overhang'
+        ? '5prime'
+        : occurrence.overhang.type === '3overhang' ? '3prime' : 'blunt';
+      const seq = type === 'blunt' ? '' : String(occurrence.overhang.seq || '');
+      return { enzyme: enzName, delta, type, seq, label: overhangLabel({ type, seq }) };
+    }
     const e = reEnzymes && reEnzymes[enzName];
     if (!e || !Array.isArray(e.cut) || e.cut.length < 2) return null;
     const delta = e.cut[1] - e.cut[0];
@@ -30,21 +49,41 @@ export function segmentOverhangs(segment, reEnzymes) {
     const seq = e.overhang || '';
     return { enzyme: enzName, delta, type, seq, label: overhangLabel({ type, seq }) };
   };
+  if (Object.prototype.hasOwnProperty.call(ap, 'boundaryCuts')) {
+    const b = ap.boundaryCuts;
+    if (!b || typeof b !== 'object'
+      || !Object.prototype.hasOwnProperty.call(b, 'left')
+      || !Object.prototype.hasOwnProperty.call(b, 'right')) return null;
+    const resolveBoundary = (boundary) => {
+      if (boundary === null) return { ok: true, value: null };
+      if (!boundary || typeof boundary !== 'object'
+        || typeof boundary.enzyme !== 'string'
+        || !boundary.occurrence) return { ok: false, value: null };
+      const value = endInfo(boundary.enzyme, boundary);
+      return { ok: !!value, value };
+    };
+    const left = resolveBoundary(b.left);
+    const right = resolveBoundary(b.right);
+    if (!left.ok || !right.ok || (!left.value && !right.value)) return null;
+    return segment.reverseComplement
+      ? { left: right.value, right: left.value }
+      : { left: left.value, right: right.value };
+  }
   // #4 (single-cut linearize) — one enzyme cut once → BOTH ends carry that
   // enzyme's overhang (the linearized plasmid's two compatible ends).
   if ((ap.single || (enzymes.length === 1 && cutSites.length === 1)) && enzymes[0]) {
-    const info = endInfo(enzymes[0]);
+    const info = endInfo(enzymes[0], cutSites[0]);
     return info ? { left: info, right: info } : null;
   }
   if (enzymes.length < 2 || cutSites.length < 2) return null;
   const pairs = [
-    { enzyme: enzymes[0], pos: cutSites[0] && cutSites[0].position },
-    { enzyme: enzymes[1], pos: cutSites[1] && cutSites[1].position },
+    { enzyme: enzymes[0], pos: cutSites[0] && cutSites[0].position, cutSite: cutSites[0] },
+    { enzyme: enzymes[1], pos: cutSites[1] && cutSites[1].position, cutSite: cutSites[1] },
   ].filter((p) => Number.isFinite(p.pos));
   if (pairs.length < 2) return null;
   pairs.sort((a, b) => a.pos - b.pos);
-  const lowEnd = endInfo(pairs[0].enzyme); // lower source position
-  const highEnd = endInfo(pairs[1].enzyme); // higher source position
+  const lowEnd = endInfo(pairs[0].enzyme, pairs[0].cutSite); // lower source position
+  const highEnd = endInfo(pairs[1].enzyme, pairs[1].cutSite); // higher source position
   if (!lowEnd && !highEnd) return null;
   // RC-ORIENT (Игорь 25.06) — a fragment placed REVERSED (segment.reverseComplement)
   // has its physical ends swapped: the lower-source-position cut is now its RIGHT end

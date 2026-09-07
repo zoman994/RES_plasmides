@@ -4,8 +4,24 @@ import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { bootstrapStore, useStore } from '../../store';
 import PlasmidMapV2 from '../PlasmidMapV2';
 
-beforeEach(() => { try { bootstrapStore(); } catch { /* idempotent */ } });
-afterEach(cleanup);
+const LIVE_ENZYME = {
+  id: 'plasmid-live', name: 'PlasmidLiveI', site: 'AACGTC', cut: [1, 3],
+  end: '5prime', overhang: 'AC', isCustom: true,
+};
+
+function setCustomEnzymes(byId) {
+  const current = useStore.getState().customEnzymes || {};
+  useStore.setState({ customEnzymes: { ...current, byId } });
+}
+
+beforeEach(() => {
+  try { bootstrapStore(); } catch { /* idempotent */ }
+  setCustomEnzymes({});
+});
+afterEach(() => {
+  cleanup();
+  setCustomEnzymes({});
+});
 
 const ANNS = [
   { id: 'a', level: 'region', type: 'promoter', name: 'PglaA', start: 250, end: 950, strand: 1 },
@@ -144,6 +160,22 @@ describe('PlasmidMapV2 — RE sites from sequence (fragments mode)', () => {
   const RE_SEQ = 'A'.repeat(20) + 'GAATTC' + 'A'.repeat(34);
   const RE_FRAG = [{ id: 'p', name: 'pRE', type: 'plasmid', length: RE_SEQ.length, sequence: RE_SEQ, annotations: [] }];
 
+  it('does not invent an origin-spanning site for a linear topology', () => {
+    const linearSeq = `AATTC${'A'.repeat(20)}G`;
+    const fragments = [{
+      id: 'linear', length: linearSeq.length, sequence: linearSeq, annotations: [],
+    }];
+
+    render(<PlasmidMapV2
+      fragments={fragments}
+      totalBp={linearSeq.length}
+      topology="linear"
+      reEnzymesFilter={['EcoRI']}
+    />);
+
+    expect(screen.queryAllByTestId(/^plasmid-v2-re-label-/)).toHaveLength(0);
+  });
+
   it('renders the RE marker at FINITE coords (positions are {position} objects, not numbers)', () => {
     // Bug 21.06: reSites mapped `s.positions` (array of {position} objects)
     // as if each element were a number → re.pos = object → NaN coords →
@@ -169,7 +201,7 @@ describe('PlasmidMapV2 — RE sites from sequence (fragments mode)', () => {
     const TWO = `GAATTC${'A'.repeat(194)}GAATTC${'A'.repeat(194)}`; // 400 bp
     const FRAG = [{ id: 'p', name: 'p2', length: TWO.length, sequence: TWO, annotations: [] }];
     act(() => { useStore.setState({ showReSites: true, reFilter: 'all' }); });
-    render(<PlasmidMapV2 fragments={FRAG} totalBp={TWO.length} />);
+    render(<PlasmidMapV2 fragments={FRAG} totalBp={TWO.length} reEnzymesFilter={['EcoRI']} />);
     const labels = screen.getAllByTestId(/^plasmid-v2-re-label-/);
     expect(labels.length).toBe(2);
     // each external label carries the enzyme name + a leader polyline
@@ -183,11 +215,21 @@ describe('PlasmidMapV2 — RE sites from sequence (fragments mode)', () => {
     // repeats don't pull in other enzymes' sites.
     const TIGHT = `GAATTCGAATTCGAATTC${'A'.repeat(982)}`; // 1000 bp, 3 sites in first 18 bp
     const FRAG = [{ id: 'p', name: 'pc', length: TIGHT.length, sequence: TIGHT, annotations: [] }];
-    render(<PlasmidMapV2 fragments={FRAG} totalBp={TIGHT.length} reEnzymesFilter={['EcoRI']} />);
+    const onReSiteClick = vi.fn();
+    render(<PlasmidMapV2
+      fragments={FRAG}
+      totalBp={TIGHT.length}
+      reEnzymesFilter={['EcoRI']}
+      onReSiteClick={onReSiteClick}
+    />);
     const labels = screen.getAllByTestId(/^plasmid-v2-re-label-/);
     expect(labels.length).toBe(1);
     expect(labels[0].textContent).toMatch(/EcoRI\s*×3/);
     expect(labels[0].getAttribute('data-cluster')).toBe('true');
+    expect(labels[0].getAttribute('data-clickable')).toBe('false');
+    expect(labels[0].querySelector('rect[fill="transparent"]')).toBeNull();
+    fireEvent.click(labels[0]);
+    expect(onReSiteClick).not.toHaveBeenCalled();
   });
 
   it('reEnzymesFilter restricts RE markers to the named enzyme(s) + hides the toolbar', () => {
@@ -209,7 +251,11 @@ describe('PlasmidMapV2 — RE sites from sequence (fragments mode)', () => {
     fireEvent.click(screen.getByTestId('plasmid-v2-re-label-0'));
     expect(onRe).toHaveBeenCalledTimes(1);
     expect(onRe.mock.calls[0][0]).toMatchObject({ enzyme: 'EcoRI' });
-    expect(Array.isArray(onRe.mock.calls[0][0].positions)).toBe(true);
+    expect(onRe.mock.calls[0][0].positions).toEqual([11]);
+    expect(onRe.mock.calls[0][0].occurrences[0]).toMatchObject({
+      occurrenceKey: 'EcoRI:1:10',
+      topCut: 11,
+    });
   });
 
   it('RE labels stay display-only (pointer-events:none) without onReSiteClick', () => {
@@ -218,6 +264,22 @@ describe('PlasmidMapV2 — RE sites from sequence (fragments mode)', () => {
     const FRAG = [{ id: 'p', name: 'p', length: MIX.length, sequence: MIX, annotations: [] }];
     render(<PlasmidMapV2 fragments={FRAG} totalBp={MIX.length} />);
     expect(screen.getByTestId('plasmid-v2-re-label-0').getAttribute('style')).toMatch(/pointer-events:\s*none/i);
+  });
+
+  it('recomputes markers when a custom enzyme is added to the store', () => {
+    const sequence = 'TTTTAACGTCTTTT';
+    const fragments = [{ id: 'live', length: sequence.length, sequence, annotations: [] }];
+    render(<PlasmidMapV2
+      fragments={fragments}
+      totalBp={sequence.length}
+      topology="linear"
+      reEnzymesFilter={['PlasmidLiveI']}
+    />);
+    expect(screen.queryAllByTestId(/^plasmid-v2-re-label-/)).toHaveLength(0);
+
+    act(() => { setCustomEnzymes({ 'plasmid-live': LIVE_ENZYME }); });
+
+    expect(screen.getAllByTestId(/^plasmid-v2-re-label-/)).toHaveLength(1);
   });
 });
 

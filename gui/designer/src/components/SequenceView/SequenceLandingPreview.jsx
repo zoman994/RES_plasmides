@@ -10,6 +10,7 @@ import { buildWrapBridgeLine } from "./lib/wrap-tail";
 import { resolveFramesMode } from "./lib/frames-mode";
 import { detectORFRanges } from "./lib/orf-ranges";
 import { LABEL_WIDTH } from "./constants";
+import { restrictionSiteKey } from "../../lib/restriction-occurrence.js";
 import "./popups/PrimerBindingInspector.css";
 
 const DEFAULT_CHAR_PX = 7.2;
@@ -189,7 +190,7 @@ function SharedTrackRows({
           orfRanges={frameContext.orfRanges}
           renderHybrid={frameContext.renderHybrid}
           onRestrictionClick={(site) => setHighlightedRestriction(
-            `${site.enzyme}-${site.position}`,
+            restrictionSiteKey(site),
           )}
           restrictionHighlightKey={highlightedRestriction}
           hoveredRestrictionKey={hoveredRestriction}

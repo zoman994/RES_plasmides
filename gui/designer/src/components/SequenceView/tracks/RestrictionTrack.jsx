@@ -21,8 +21,9 @@
 
 import { memo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { RE_ENZYMES } from "../../../restriction-db";
+import { effectiveEnzymes } from "../../../restriction-db";
 import { lanePack, laneCount } from "../../../lib/linear-map";
+import { restrictionSiteKey } from "../../../lib/restriction-occurrence";
 
 const ROW_HEIGHT_RE = 18;
 const CUT_BAR_HEIGHT = 6;
@@ -85,7 +86,7 @@ function complementOf(seq) {
 const DEGENERATE_RE = /[RYMKSWHBVDN]/i;
 
 function siteKey(site) {
-  return `${site.enzyme}-${site.position}`;
+  return restrictionSiteKey(site);
 }
 
 function compareLineSites(a, b) {
@@ -96,17 +97,31 @@ function compareLineSites(a, b) {
 
 function HoverTooltip({ site, count, anchorX, anchorY }) {
   if (typeof document === 'undefined') return null;
-  const enz = RE_ENZYMES[site.enzyme];
-  if (!enz) return null;
+  const occurrence = site.occurrence;
+  const enz = effectiveEnzymes()[site.enzyme];
+  if (!occurrence && !enz) return null;
 
-  const recogTop = enz.site.toUpperCase();
+  const recogTop = String(
+    occurrence?.recognition?.matchedTop || enz?.site || '',
+  ).toUpperCase();
+  const pattern = String(
+    occurrence?.recognition?.pattern || enz?.site || '',
+  ).toUpperCase();
+  if (!recogTop) return null;
   const recogBot = complementOf(recogTop);
-  const cutFwd = enz.cut[0];
-  const cutRev = enz.cut[1];
-  const isSticky = enz.end !== 'blunt';
-  const degenerate = DEGENERATE_RE.test(recogTop);
+  const cutFwd = Number.isFinite(occurrence?.topCutOffset)
+    ? occurrence.topCutOffset
+    : enz.cut[0];
+  const cutRev = Number.isFinite(occurrence?.bottomCutOffset)
+    ? occurrence.bottomCutOffset
+    : enz.cut[1];
+  const isSticky = occurrence
+    ? occurrence.overhang?.length > 0
+    : enz.end !== 'blunt';
+  const degenerate = DEGENERATE_RE.test(pattern);
   const showWarning = isSticky && degenerate;
-  const cutKind = !isSticky ? 'blunt' : (cutFwd < cutRev ? '5overhang' : '3overhang');
+  const cutKind = occurrence?.overhang?.type
+    || (!isSticky ? 'blunt' : (cutFwd < cutRev ? '5overhang' : '3overhang'));
 
   const seqCharPx = 11;
   const lineH = 14;
@@ -330,6 +345,9 @@ function RestrictionTrack({
   seqLength,
 }) {
   const [hoverAnchor, setHoverAnchor] = useState(null); // { key, x, y } viewport
+  const highlightedKeys = new Set(
+    (Array.isArray(highlightedKey) ? highlightedKey : [highlightedKey]).filter(Boolean),
+  );
   // V97 — one ref per track instance dedupes the mousedown→click pair.
   // A single gesture's mousedown + click always land on the SAME <g>,
   // so a shared flag across all sites in this instance is sufficient.
@@ -417,7 +435,7 @@ function RestrictionTrack({
       ? labelsBlockH - verticalLaneOffsets[slot.lane] - 2
       : (nLanes - 1 - slot.lane) * LANE_STEP + (LANE_STEP - 3);
     const cutY = cutBaseY;
-    const isHi = highlightedKey === slot.key;
+    const isHi = highlightedKeys.has(slot.key);
     const isHover = hoveredKey === slot.key;
     const emph = isHover || isHi;
     const pivotX = isVertical ? slot.slotX + LABEL_CENTER_OFFSET : slot.slotX;

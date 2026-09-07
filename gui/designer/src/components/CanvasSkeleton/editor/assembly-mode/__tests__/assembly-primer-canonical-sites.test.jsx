@@ -28,6 +28,7 @@ const { addPrimerToPool, storeState } = vi.hoisted(() => {
       currentProjectId: null,
       primersById: {},
       searchHits: null,
+      customEnzymes: { byId: {}, sets: {}, _hydrated: true },
     },
   };
 });

@@ -1,6 +1,6 @@
 # PROJECT_STATE — BodgeGene
 
-Обновлено: 06.09.2026 (ASM-6A checkpointed).
+Обновлено: 07.09.2026 (PROC-3R-FREEZE принят; ожидает checkpoint).
 
 ## Текущий снимок
 
@@ -53,13 +53,32 @@
 
 ## Текущий пакет
 
-**ASM-6A checkpointed** как `864bc76deabada4b47f84cdecb5f2d31ff2314c9`
-на base `47f72a2198dbc9b9b79bfe42bea93b22120b8b2b`. Frozen candidate: 21 файл,
-SHA-256 package digest `14fc82dace0cc8ebdca684206a87e9d36a5ff578a1dbbd5296ae04919a0da3be`;
-два read-only reviewer дали ACCEPT после единственного correction pass. BG-078/BG-079
-закрыты и удалены из BUGS.md. Остаток DOC-09 разделён: transient surfaces остаются в
-BACKLOG, editor-flow — в последовательных пакетах, BG-005/BG-013 — в high-risk MUT-1
-после решений по KLD и annotation materialization.
+**PROC-3R-FREEZE принят; активного Кодера нет.** Единственный correction C1 закрыл обе
+P1: AUD хранит evidence/risk без теневого disposition, а REF разделён на immutable
+metadata-wrapper и payload с `SIDECAR`/`POINTER_ONLY`, dual pin и честным `UNVERIFIED`.
+Semantic и forensic линзы дали ACCEPT. Final correction 9-path `7e27fdcf…`, unified
+process 20-path `47e3843e…`. Frozen audit `AUD-2026-09-07-004` (`99b0b2cb…`) и matching
+`PACKAGE_REVIEW/ACCEPT` DISP (`0f094c2d…`) фиксируют приёмку. Рабочее дерево: 76 dirty =
+74 frozen paths (`9b1e09f8…`) + 2 Reviewer control-plane; staged/commit/push отсутствуют.
+Tests/build/browser не запускались: docs/policy-only. Следующий пакет ждёт checkpoint.
+
+**PROC-3R STOP / REPLAN, не принят.** Его 19 process-файлов физически остаются в main и
+побайтово совпадают с source (`3bb1fda1…`), но candidate отклонён: shared-record
+одновременно объявлялся frozen и допускал append disposition, инвалидирующий SHA.
+Второй correction pass не выполнялся. Content pin `AUD-2026-09-07-002` проверен; audit
+выбран как read-only evidence нового replan. Source-worktree сохраняется; живой файл
+Креативщика не принят, не прочитан и не перенесён в main.
+
+**ASM-5B остаётся STOP и не принят.** На base/HEAD `bd710973112ad8712c81c619eefd7fc6c755858d`
+заморожен product/proof candidate: 49 путей, payload 6 594 B, SHA-256 `d78a7b61…`.
+Обе named read-only линзы приняли correction; focused correction 35/35, related gate
+466/466 файлов и 4 480 тестов, exit 0. Единственный полный module-aware gate потерял
+`gui/designer/src/components/SequenceView/__tests__/out-of-range-mask-v87.test.jsx`
+(4 теста): expected 864, lifecycle ended 863, raw exit 1, один unhandled fork error;
+строгие inventory/RSS неполны. BG-022 остаётся открыт, полного
+retry нет. Build, scoped lint и browser smoke после STOP не запускались; BG-062/063/086
+не закрыты. Product/test-файлы не менялись после freeze; tracker-sync выполнен отдельно
+на blocker-границе. Stage/commit/push отсутствуют.
 
 ## Открытые направления после SYNC-1
 

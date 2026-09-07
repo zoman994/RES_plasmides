@@ -17,7 +17,7 @@ import { scanAllSites } from '../restriction-db';
 import { filterReSites } from '../lib/re-site-filter';
 import { featureColorShaded, FEATURE_STROKE } from '../feature-palette';
 import { isFragmentFeature } from '../lib/feature-fragment';
-import { useStore, selectActiveSetEnzymes } from '../store';
+import { useStore, selectActiveSetEnzymes, selectMergedREEnzymes } from '../store';
 import {
   TAU, polar, featureArrow, smallMarker, layoutLabels, rulerStep, buildReMarkers,
   featuresFromFragments, wrapLabel, arcBand, arcStrokePath, collectIntronsByParent,
@@ -63,6 +63,7 @@ export default function PlasmidMapV2({
   // RS-C4 — «active set» enzyme allow-list (null = none). Ignored when a digest
   // enzyme-list (reEnzymesFilter) is in force.
   const activeSetEnzymes = useStore(selectActiveSetEnzymes);
+  const mergedREEnzymes = useStore(selectMergedREEnzymes);
   const setReFilter = useStore((s) => s.setReFilter);
 
   const total = totalBp || length || 0;
@@ -164,7 +165,11 @@ export default function PlasmidMapV2({
     if (!effShow || !total || !hasSequence) return [];
     const fullSeq = (fragments || []).map((f) => f.sequence || '').join('');
     if (!fullSeq) return [];
-    const all = scanAllSites(fullSeq, { circular: true, minSiteLen: reMinSiteLen });
+    const all = scanAllSites(fullSeq, {
+      circular: topology === 'circular',
+      minSiteLen: reMinSiteLen,
+      enzymes: mergedREEnzymes,
+    });
     // RS-B1 — shared filter (the SAME helper the linear SequenceView uses). A
     // digest enzyme-list (reEnzymesFilter) overrides the global cut-count filter;
     // otherwise apply the global `reFilter` mode.
@@ -176,9 +181,18 @@ export default function PlasmidMapV2({
     // the object straight to `re.pos` made `pos/total` NaN → markers off-canvas
     // («на карте не видны сайты», Игорь 21.06). Finite-guard so it can't resurface.
     return filtered.flatMap((s) => (s.positions || [])
-      .map((p) => ({ enzyme: s.enzyme, pos: typeof p === 'number' ? p : (p && p.position) }))
+      .map((p) => {
+        const occurrence = p && typeof p === 'object' ? p.occurrence : null;
+        return {
+          enzyme: s.enzyme,
+          pos: Number.isFinite(occurrence?.topCut)
+            ? occurrence.topCut
+            : typeof p === 'number' ? p : p?.position,
+          occurrence,
+        };
+      })
       .filter((re) => Number.isFinite(re.pos)));
-  }, [fragments, showReSites, reFilter, reMinSiteLen, total, hasSequence, reEnzKey, activeSetEnzymes]);
+  }, [fragments, showReSites, reFilter, reMinSiteLen, total, hasSequence, reEnzKey, activeSetEnzymes, topology, mergedREEnzymes]);
 
   // RE markers (cluster-collapsed) → external de-collided labels in the SAME two
   // side columns as features, so an RE label can never overlap a feature label
@@ -188,7 +202,7 @@ export default function PlasmidMapV2({
     () => reMarkers.map((m, k) => {
       const text = m.count > 1 ? `${m.enzyme} ×${m.count}` : `${m.enzyme} · ${m.positions[0] + 1}`;
       return {
-        isRe: true, reKey: k, marker: m, midAngle: m.angle + rotRad,
+        isRe: true, reKey: m.markerKey, reIndex: k, marker: m, midAngle: m.angle + rotRad,
         name: text, lines: [text], lineCount: 1,
       };
     }),
@@ -316,8 +330,9 @@ export default function PlasmidMapV2({
           {reSites.map((re, k) => {
             const a = (re.pos / total) * TAU;
             const o = polar(cx, cy, fIn - 4, a); const inn = polar(cx, cy, fOut + 4, a);
+            const siteKey = re.occurrence?.occurrenceKey || `${re.enzyme}:${re.pos}:${k}`;
             return (
-              <line key={`re${k}`} data-testid="plasmid-v2-re-site" x1={o.x} y1={o.y} x2={inn.x} y2={inn.y}
+              <line key={siteKey} data-testid="plasmid-v2-re-site" x1={o.x} y1={o.y} x2={inn.x} y2={inn.y}
                 stroke="var(--viz-re-unique, #E24B4A)" strokeWidth={1.1} strokeLinecap="round" opacity={0.9} pointerEvents="none" />
             );
           })}
@@ -444,9 +459,10 @@ export default function PlasmidMapV2({
               : `${m.enzyme} · ${m.positions[0] + 1}`;
             const w = label.length * 6.3 + 10;
             const pillX = l.side === 1 ? textX - 4 : textX - w + 4;
-            const reClickable = !!onReSiteClick;
+            const reClickable = !!onReSiteClick && m.count === 1;
             return (
-              <g key={`rl${l.reKey}`} data-testid={`plasmid-v2-re-label-${l.reKey}`} data-cluster={m.count > 1}
+              <g key={l.reKey} data-testid={`plasmid-v2-re-label-${l.reIndex}`} data-cluster={m.count > 1}
+                data-clickable={reClickable}
                 style={{ pointerEvents: reClickable ? 'auto' : 'none', cursor: reClickable ? 'pointer' : 'default' }}
                 onClick={reClickable ? (e) => { e.stopPropagation(); onReSiteClick(m); } : undefined}>
                 {/* Wider invisible hit-area so the thin text/leader is easy to click. */}

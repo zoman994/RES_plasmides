@@ -9,7 +9,7 @@ import {
   describe, it, expect, afterEach, beforeEach, vi,
 } from 'vitest';
 import {
-  render, screen, cleanup, fireEvent, within,
+  render, screen, cleanup, fireEvent, within, act,
 } from '@testing-library/react';
 import SequenceView from '../index';
 import { useStore, bootstrapStore } from '../../../store';
@@ -18,9 +18,23 @@ import { useStore, bootstrapStore } from '../../../store';
 const SEQ = `GGATCC${'A'.repeat(20)}GAATTC${'T'.repeat(20)}GAATTC${'C'.repeat(10)}`;
 const FRAG = { id: 'f', name: 'pTest', type: 'plasmid', sequence: SEQ, strand: 1, annotations: [] };
 
-afterEach(cleanup);
+const LIVE_ENZYME = {
+  id: 'live-i', name: 'LiveI', site: 'AACGTC', cut: [1, 3],
+  end: '5prime', overhang: 'AC', isCustom: true,
+};
+
+function setCustomEnzymes(byId) {
+  const current = useStore.getState().customEnzymes || {};
+  useStore.setState({ customEnzymes: { ...current, byId } });
+}
+
+afterEach(() => {
+  cleanup();
+  setCustomEnzymes({});
+});
 beforeEach(() => {
   try { bootstrapStore(); } catch { /* idempotent */ }
+  setCustomEnzymes({});
   useStore.setState({
     showReSites: false, // empty-list fallback must then show nothing
     reFilter: 'all',
@@ -105,5 +119,20 @@ describe('SequenceView — reEnzymesFilter override (RS-PICK4)', () => {
     openPrimerContext({ reEnzymesFilter: ['EcoRI'] });
     expect(templateContextEnzymes()).toContain('EcoRI');
     expect(templateContextEnzymes()).not.toContain('BamHI');
+  });
+
+  it('recomputes visible sites when the custom-enzyme catalog changes', () => {
+    const liveSequence = 'TTTTAACGTCTTTT';
+    const liveFragment = { ...FRAG, id: 'live', sequence: liveSequence };
+    render(<SequenceView
+      fragments={[liveFragment]}
+      reEnzymesFilter={['LiveI']}
+    />);
+    expect(globalReSites()).toHaveLength(0);
+
+    act(() => { setCustomEnzymes({ 'live-i': LIVE_ENZYME }); });
+
+    expect(globalReSites()).toHaveLength(1);
+    expect(globalReSites()[0].getAttribute('data-enzyme')).toBe('LiveI');
   });
 });

@@ -24,6 +24,11 @@ function locationKind(annotation, segmentCount) {
     : LOCATION_KINDS.JOIN;
 }
 
+function normalizeDestinationSegments(segments) {
+  return segments.map((segment) => ({ ...segment }))
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
 function withCanonicalSegments(annotation, segments, strand = annotation?.strand) {
   if (!Array.isArray(segments) || segments.length === 0) return null;
   const location = makeLocation(locationKind(annotation, segments.length), segments);
@@ -61,7 +66,7 @@ function normaliseRanges(ranges) {
 function projectSegments(sourceSegments, ranges) {
   const segments = [];
   const orientations = new Set();
-  // Source segment order is biological 5′→3′ and stays authoritative under RC.
+  // Collect every source contribution before canonical destination ordering.
   for (const source of sourceSegments) {
     for (const range of ranges) {
       const clippedStart = Math.max(source.start, range.start);
@@ -104,7 +109,7 @@ export function projectAnnotationGeometry(annotation, rawRanges) {
   const strand = Number(annotation.strand) || 1;
   return withCanonicalSegments(
     annotation,
-    projected.segments,
+    normalizeDestinationSegments(projected.segments),
     projected.rc ? -strand : strand,
   );
 }
@@ -226,7 +231,7 @@ export function transferAnnotationsForRanges(
           ...(source.origin !== undefined ? { sourceOrigin: source.origin } : {}),
         },
       },
-      projected.segments,
+      normalizeDestinationSegments(projected.segments),
       projected.rc ? -(Number(source.strand) || 1) : (Number(source.strand) || 1),
     );
     if (next) copied.push({ source, next, index });

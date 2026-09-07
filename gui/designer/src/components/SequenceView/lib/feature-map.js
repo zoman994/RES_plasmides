@@ -183,9 +183,13 @@ export function flattenSites(scanResult, filter) {
   for (const re of rows) {
     const cutOffset = (eff[re.enzyme] && eff[re.enzyme].cut[0]) || 0;
     for (const pos of re.positions) {
+      const occurrence = pos && pos.occurrence;
       out.push({
         enzyme: re.enzyme,
-        position: pos.position + cutOffset,
+        position: Number.isFinite(occurrence?.topCut)
+          ? occurrence.topCut
+          : pos.position + cutOffset,
+        occurrence,
       });
     }
   }
@@ -211,12 +215,16 @@ export function flattenRawOccurrences(scanResult, filter) {
   const out = [];
   for (const re of rows) {
     for (const pos of re.positions) {
+      const occurrence = pos && pos.occurrence;
       out.push({
         enzyme: re.enzyme,
-        site: re.site,
-        start: pos.position,
-        length: re.siteLength ?? (re.site ? re.site.length : 0),
-        strand: pos.strand === "-" ? -1 : 1,
+        site: occurrence?.recognition?.site || re.site,
+        start: occurrence?.recognition?.start ?? pos.position,
+        length: occurrence?.recognition?.length
+          ?? re.siteLength
+          ?? (re.site ? re.site.length : 0),
+        strand: occurrence?.strand ?? (pos.strand === "-" ? -1 : 1),
+        occurrence,
       });
     }
   }

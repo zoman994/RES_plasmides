@@ -15,8 +15,12 @@ import { registerHandler, runHotkeyResolver } from "../../../lib/hotkeys";
 import { evaluatePrimerWarnings } from "../../../lib/primer-live-workflow";
 import { tf } from "../../../i18n";
 import { calcTm } from "../../../tm-calculator";
+import { RE_ENZYMES, setCustomEnzymeRegistry } from "../../../restriction-db";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  setCustomEnzymeRegistry({});
+});
 
 const draft = { direction: "forward", start: 4, end: 16, sequence: "ATGCAAAGGGCC" };
 
@@ -384,6 +388,46 @@ describe("PrimerFromSelectionModal", () => {
     expect(within(product).getByTestId("sequence-view-restriction")).toBeTruthy();
     expect(within(product).getAllByTestId("sequence-view-re-site")
       .some((site) => site.dataset.enzyme === "EcoRI")).toBe(true);
+  });
+
+  it("places a reverse custom site at its canonical product cut", () => {
+    const enzymeCatalog = {
+      ...RE_ENZYMES,
+      RevI: { site: "AACGTC", cut: [1, 3], end: "5prime", overhang: "AC" },
+    };
+    const template = "TTTTACGTTGCAACGTTGCAGGGG";
+    const binding = template.slice(4, 20);
+    render(
+      <PrimerFromSelectionModal
+        draft={{
+          primerId: "reverse-site-primer", name: "reverse site", direction: "forward",
+          tail: "", binding, sequence: binding, bindingModel: "aligned-v1",
+        }}
+        anchorSites={[{
+          id: "reverse-site",
+          target: { entryId: "entry", resourceHash: "hash", topology: "linear" },
+          location: { kind: "single", segments: [{ start: 4, end: 20 }] },
+          strand: 1,
+          annealedSequence: binding,
+          tail: "",
+        }]}
+        template={template}
+        topology="linear"
+        enzymeCatalog={enzymeCatalog}
+        entryId="entry"
+        documentHash="hash"
+        onCreate={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByTestId("primer-modal-tail"), {
+      target: { value: "GACGTT" },
+    });
+    const product = screen.getByTestId("primer-binding-product-preview");
+    const site = within(product).getAllByTestId("sequence-view-re-site")
+      .find((node) => node.dataset.enzyme === "RevI");
+    expect(site).toBeTruthy();
+    expect(site.dataset.position).toBe("3");
   });
 
   // Regression — Игорь 18.05.2026: «модалка появляется в центре

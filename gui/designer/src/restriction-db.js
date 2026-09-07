@@ -16,6 +16,11 @@
  */
 
 import { RE_ENZYMES_REBASE } from './restriction-db-rebase.js';
+import {
+  scanOccurrences,
+  siteToRegex as occurrenceSiteToRegex,
+} from './lib/restriction-occurrence.js';
+import { digestCircular } from './lib/restriction-digest.js';
 
 // Curated, richly-annotated common enzymes (temp / buffer / isoschizomers / dam·dcm
 // — hand-maintained NEB values). Merged UNDER the full REBASE commercial catalog
@@ -172,23 +177,7 @@ function lookupEnzyme(name) {
 // ═══════════════════════════════════════════════════════
 // IUPAC ambiguity codes for site matching
 // ═══════════════════════════════════════════════════════
-const IUPAC = {
-  A: 'A', T: 'T', G: 'G', C: 'C',
-  R: '[AG]', Y: '[CT]', M: '[AC]', K: '[GT]',
-  S: '[GC]', W: '[AT]', H: '[ACT]', B: '[GCT]',
-  V: '[ACG]', D: '[AGT]', N: '[ATGC]',
-};
-
-export function siteToRegex(site) {
-  return new RegExp(site.split('').map(c => IUPAC[c] || c).join(''), 'gi');
-}
-
-function reverseComplement(seq) {
-  const comp = { A: 'T', T: 'A', G: 'C', C: 'G',
-    R: 'Y', Y: 'R', M: 'K', K: 'M', S: 'S', W: 'W',
-    H: 'D', D: 'H', B: 'V', V: 'B', N: 'N' };
-  return seq.split('').reverse().map(c => comp[c.toUpperCase()] || c).join('');
-}
+export const siteToRegex = occurrenceSiteToRegex;
 
 /**
  * Search enzymes by name, recognition site, or overhang.
@@ -260,36 +249,15 @@ export function getIsoschizomers(enzymeName) {
 export function findSitesInSequence(enzymeName, sequence, circular = false) {
   const enzyme = lookupEnzyme(enzymeName);
   if (!enzyme || !sequence) return [];
-
-  const seq = sequence.toUpperCase();
-  const seqLen = seq.length;
-  // L13 (audit) — a circular template can carry a site STRADDLING the origin
-  // (last bases + first bases). Search a wrapped copy (mirrors scanAllSites) and
-  // drop wrap-duplicates whose start is in the appended tail (position >= seqLen).
-  const MAX_SITE = 13; // longest recognition site (SfiI)
-  const searchSeq = circular ? seq + seq.slice(0, MAX_SITE) : seq;
-  const sites = [];
-
-  // Forward strand
-  const fwdRe = siteToRegex(enzyme.site);
-  let match;
-  while ((match = fwdRe.exec(searchSeq)) !== null) {
-    if (match.index < seqLen) sites.push({ position: match.index, strand: '+' });
-    // Prevent infinite loop on zero-length matches
-    if (match.index === fwdRe.lastIndex) fwdRe.lastIndex++;
-  }
-
-  // Reverse complement strand
-  const rcSite = reverseComplement(enzyme.site);
-  if (rcSite !== enzyme.site) {
-    const revRe = siteToRegex(rcSite);
-    while ((match = revRe.exec(searchSeq)) !== null) {
-      if (match.index < seqLen) sites.push({ position: match.index, strand: '-' });
-      if (match.index === revRe.lastIndex) revRe.lastIndex++;
-    }
-  }
-
-  return sites;
+  return scanOccurrences(sequence, {
+    circular: !!circular,
+    enzymes: { [enzymeName]: enzyme },
+    names: [enzymeName],
+  }).map((occurrence) => ({
+    position: occurrence.recognition.start,
+    strand: occurrence.strand === -1 ? '-' : '+',
+    occurrence,
+  }));
 }
 
 /**
@@ -338,26 +306,29 @@ export const COMPATIBLE_OVERHANGS = {
  */
 export function scanAllSites(sequence, options = {}) {
   const { circular = false, minSiteLen = 6 } = options;
-  const seq = sequence.toUpperCase();
-  const seqLen = seq.length;
-
-  // Circular: extend to catch wrap-around sites
-  const MAX_SITE = 13; // SfiI = 13bp
-  const searchSeq = circular ? seq + seq.slice(0, MAX_SITE) : seq;
-
+  const seq = String(sequence || '').toUpperCase();
+  if (!seq) return [];
+  const enzymes = options.enzymes || effectiveEnzymes();
+  const names = Object.entries(enzymes)
+    .filter(([name, info]) => {
+      if (name === 'DpnI' || name === 'DpnII' || name === 'MboI') return false;
+      return String(info && info.site || '').length >= minSiteLen;
+    })
+    .map(([name]) => name);
+  const occurrences = scanOccurrences(seq, {
+    circular, enzymes, names, minSiteLen,
+  });
+  const byEnzyme = new Map();
+  for (const occurrence of occurrences) {
+    const list = byEnzyme.get(occurrence.enzyme) || [];
+    list.push(occurrence);
+    byEnzyme.set(occurrence.enzyme, list);
+  }
   const results = [];
-  for (const [name, info] of Object.entries(effectiveEnzymes())) {
-    // Skip methylation-only enzymes (DpnI, DpnII, MboI) — they're special
-    if (name === 'DpnI' || name === 'DpnII' || name === 'MboI') continue;
-    // Filter by site length (using only ATGC chars, ignoring IUPAC ambiguity)
-    const pureLen = info.site.replace(/[^ATGC]/gi, '').length;
-    if (pureLen < minSiteLen) continue;
-
-    const sites = findSitesInSequence(name, searchSeq);
-    // Filter: keep only sites starting within original sequence
-    const filtered = sites.filter(s => s.position < seqLen);
-
-    if (filtered.length > 0) {
+  for (const name of names) {
+    const info = enzymes[name];
+    const enzymeOccurrences = byEnzyme.get(name) || [];
+    if (enzymeOccurrences.length > 0) {
       results.push({
         enzyme: name,
         site: info.site,
@@ -368,9 +339,14 @@ export function scanAllSites(sequence, options = {}) {
         temp: info.temp,
         damSensitive: info.damSensitive || false,
         dcmSensitive: info.dcmSensitive || false,
-        positions: filtered,
-        cutCount: filtered.length,
-        isUnique: filtered.length === 1,
+        positions: enzymeOccurrences.map((occurrence) => ({
+          position: occurrence.recognition.start,
+          strand: occurrence.strand === -1 ? '-' : '+',
+          occurrence,
+        })),
+        occurrences: enzymeOccurrences,
+        cutCount: enzymeOccurrences.length,
+        isUnique: enzymeOccurrences.length === 1,
       });
     }
   }
@@ -531,199 +507,5 @@ export function checkDoubleDigest(enzyme1, enzyme2) {
  * @returns {Object} Digest result
  */
 export function digest(sequence, annotations, enzyme1, enzyme2 = null) {
-  const e1Info = lookupEnzyme(enzyme1);
-  if (!e1Info) return { error: `Unknown enzyme: ${enzyme1}` };
-
-  // digest() operates on CIRCULAR templates (the cut adapter routes linear ones
-  // to the legacy slice path) → search wrapped so origin-straddling sites count (L13).
-  const sites1 = findSitesInSequence(enzyme1, sequence, true);
-
-  // Two different enzymes → each must cut exactly once
-  if (enzyme2 && enzyme2 !== enzyme1) {
-    const e2Info = lookupEnzyme(enzyme2);
-    if (!e2Info) return { error: `Unknown enzyme: ${enzyme2}` };
-
-    const sites2 = findSitesInSequence(enzyme2, sequence, true);
-    if (sites1.length !== 1) return { error: `${enzyme1} cuts ${sites1.length} times (need exactly 1)` };
-    if (sites2.length !== 1) return { error: `${enzyme2} cuts ${sites2.length} times (need exactly 1)` };
-
-    return _exciseTwoEnzymes(sequence, annotations, enzyme1, e1Info, sites1[0], enzyme2, e2Info, sites2[0]);
-  }
-
-  // Single enzyme
-  if (sites1.length === 0) return { error: `${enzyme1} cuts 0 times in this sequence` };
-  if (sites1.length === 1) return _linearize(sequence, annotations, enzyme1, e1Info, sites1[0]);
-  if (sites1.length === 2) return _exciseSameEnzyme(sequence, annotations, enzyme1, e1Info, sites1[0], sites1[1]);
-  return { error: `${enzyme1} cuts ${sites1.length} times (need 1 or 2)` };
-}
-
-// ── Internal helpers ──
-
-function _computeEnd(enzymeInfo) {
-  return {
-    overhang: enzymeInfo.overhang,
-    overhangType: enzymeInfo.end,
-  };
-}
-
-function _cutPosition(sitePos, enzymeInfo) {
-  // Forward cut position on top strand
-  return sitePos + enzymeInfo.cut[0];
-}
-
-function _shiftAnnotations(annotations, cutPos, seqLen) {
-  const rot = (p) => (((p - cutPos) % seqLen) + seqLen) % seqLen;
-  const out = [];
-  for (const ann of annotations) {
-    // V122 fix: a feature spanning the linearization point becomes two arcs on
-    // the linear molecule — split into [tail..end] + [0..head] instead of
-    // producing a single start>end (invalid) annotation.
-    if (ann.start < cutPos && ann.end > cutPos) {
-      out.push({ ...ann, start: rot(ann.start), end: seqLen });
-      out.push({ ...ann, start: 0, end: ann.end - cutPos });
-      continue;
-    }
-    // Non-straddling: rotate both ends. A feature ending exactly at the cut
-    // maps end→0, which means "the very end of the linear molecule" → seqLen.
-    const s = rot(ann.start);
-    const e = rot(ann.end) || seqLen;
-    out.push({ ...ann, start: s, end: e });
-  }
-  return out;
-}
-
-/**
- * CH-4 — clip annotations onto an EXCISE backbone (= source [pos2..seqLen) ++
- * [0..pos1)). A feature crossing a cut boundary (pos1 or pos2) USED to be dropped
- * (`return null`), silently losing it from the product — whereas _linearize (V122)
- * splits such features. Here we intersect each feature with the backbone's two
- * source ranges and keep the mapped portion(s): straddling one cut → one clipped
- * arc; straddling BOTH cuts → two arcs; fully inside the excised region → dropped
- * (correct — it belongs to the excised fragment). Matches the old coord mapping
- * exactly for non-straddling features (and also cures the old start>end edge for
- * a feature ending exactly at a cut). 0-based end-exclusive [start, end).
- */
-function _clipToBackbone(annotations, pos1, pos2, seqLen) {
-  const shiftHigh = -pos2; // source [pos2, seqLen) → backbone [0, seqLen-pos2)
-  const shiftLow = seqLen - pos2; // source [0, pos1) → backbone [seqLen-pos2, …)
-  const out = [];
-  for (const a of (annotations || [])) {
-    const s = Number(a.start);
-    const e = Number(a.end);
-    if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) continue;
-    // ∩ R_high = [pos2, seqLen)
-    const hLo = Math.max(s, pos2);
-    const hHi = Math.min(e, seqLen);
-    if (hLo < hHi) out.push({ ...a, start: hLo + shiftHigh, end: hHi + shiftHigh });
-    // ∩ R_low = [0, pos1)
-    const lLo = Math.max(s, 0);
-    const lHi = Math.min(e, pos1);
-    if (lLo < lHi) out.push({ ...a, start: lLo + shiftLow, end: lHi + shiftLow });
-  }
-  return out;
-}
-
-function _linearize(sequence, annotations, enzymeName, enzymeInfo, site) {
-  const seqLen = sequence.length;
-  const cutPos = _cutPosition(site.position, enzymeInfo);
-
-  // Rotate sequence: start from cut position
-  const linearSeq = sequence.slice(cutPos) + sequence.slice(0, cutPos);
-  const shiftedAnns = _shiftAnnotations(annotations, cutPos, seqLen);
-  const endObj = { ..._computeEnd(enzymeInfo), enzymeUsed: enzymeName };
-
-  return {
-    type: 'linearize',
-    backbone: {
-      sequence: linearSeq,
-      annotations: shiftedAnns,
-      length: seqLen,
-      leftEnd: endObj,
-      rightEnd: { ...endObj },
-    },
-    excised: null,
-    enzymes: [{ name: enzymeName, position: site.position, ...enzymeInfo }],
-    isDirectional: false,
-    selfLigationRisk: true, // same ends → can self-ligate
-  };
-}
-
-function _exciseTwoEnzymes(sequence, annotations, name1, info1, site1, name2, info2, site2) {
-  const seqLen = sequence.length;
-  let pos1 = _cutPosition(site1.position, info1);
-  let pos2 = _cutPosition(site2.position, info2);
-
-  // Ensure pos1 < pos2 (swap if needed, keeping enzyme association)
-  let leftName = name1, rightName = name2, leftInfo = info1, rightInfo = info2;
-  if (pos1 > pos2) {
-    [pos1, pos2] = [pos2, pos1];
-    [leftName, rightName] = [rightName, leftName];
-    [leftInfo, rightInfo] = [rightInfo, leftInfo];
-  }
-
-  // Backbone = [pos2..seqLen] + [0..pos1], Excised = [pos1..pos2]
-  const backboneSeq = sequence.slice(pos2) + sequence.slice(0, pos1);
-  const excisedSeq = sequence.slice(pos1, pos2);
-
-  // Annotations onto the backbone — straddling features are CLIPPED, not dropped
-  // (CH-4). Fully-inside-excised features fall out naturally (empty intersection).
-  const backboneAnns = _clipToBackbone(annotations, pos1, pos2, seqLen);
-
-  const leftEnd = { ..._computeEnd(leftInfo), enzymeUsed: leftName };
-  const rightEnd = { ..._computeEnd(rightInfo), enzymeUsed: rightName };
-
-  // Directional if different overhangs/types
-  const sameOverhang = leftInfo.overhang === rightInfo.overhang && leftInfo.end === rightInfo.end;
-  const isDirectional = !sameOverhang;
-
-  return {
-    type: 'excise',
-    backbone: {
-      sequence: backboneSeq,
-      annotations: backboneAnns,
-      length: backboneSeq.length,
-      leftEnd: rightEnd, // backbone left gets the right enzyme's end (after rotation)
-      rightEnd: leftEnd, // backbone right gets the left enzyme's end
-    },
-    excised: { sequence: excisedSeq, length: excisedSeq.length },
-    enzymes: [
-      { name: leftName, position: site1.position, ...leftInfo },
-      { name: rightName, position: site2.position, ...rightInfo },
-    ],
-    isDirectional,
-    selfLigationRisk: !isDirectional,
-  };
-}
-
-function _exciseSameEnzyme(sequence, annotations, enzymeName, enzymeInfo, site1, site2) {
-  const seqLen = sequence.length;
-  let pos1 = _cutPosition(site1.position, enzymeInfo);
-  let pos2 = _cutPosition(site2.position, enzymeInfo);
-  if (pos1 > pos2) [pos1, pos2] = [pos2, pos1];
-
-  const backboneSeq = sequence.slice(pos2) + sequence.slice(0, pos1);
-  const excisedSeq = sequence.slice(pos1, pos2);
-
-  // CH-4 — clip straddling features onto the backbone instead of dropping them.
-  const backboneAnns = _clipToBackbone(annotations, pos1, pos2, seqLen);
-
-  const endObj = { ..._computeEnd(enzymeInfo), enzymeUsed: enzymeName };
-
-  return {
-    type: 'excise',
-    backbone: {
-      sequence: backboneSeq,
-      annotations: backboneAnns,
-      length: backboneSeq.length,
-      leftEnd: { ...endObj },
-      rightEnd: { ...endObj },
-    },
-    excised: { sequence: excisedSeq, length: excisedSeq.length },
-    enzymes: [
-      { name: enzymeName, position: site1.position, ...enzymeInfo },
-      { name: enzymeName, position: site2.position, ...enzymeInfo },
-    ],
-    isDirectional: false,
-    selfLigationRisk: true, // same enzyme → same overhangs → can self-ligate
-  };
+  return digestCircular(sequence, annotations, enzyme1, enzyme2, effectiveEnzymes());
 }

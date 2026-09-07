@@ -6,36 +6,52 @@
  *
  * The built-in `digest()` only resolves 1–2 cuts; this generalises to N cuts.
  *
- * Top-strand cut position = recognition.start + enzyme.cut[0] (mod len for a
- * circular template). Fragments lie between consecutive cuts:
+ * Fragment boundaries use each canonical occurrence's physical top-strand cut;
+ * the scanner already accounts for strand and circular wrapping. Fragments lie
+ * between consecutive cuts:
  *   - circular: N cuts → N fragments (the last WRAPS the origin → it is taken as
  *     the multi-range [start..len] + [0..end] the assembly model now supports);
  *   - linear:   N cuts → N+1 fragments, the two outer ones keeping native ends.
  *
- * Pure. Reuses findSitesInSequence (circular-wrap-aware) from restriction-db.
+ * Pure. Uses the shared canonical occurrence scanner.
  */
-import { findSitesInSequence, RE_ENZYMES } from '../../../restriction-db';
+import { effectiveEnzymes } from '../../../restriction-db';
+import { restrictionBreakKey, scanOccurrences } from '../../../lib/restriction-occurrence';
 
-export function digestFragments(sequence, enzymeNames, circular = true, reEnzymes = RE_ENZYMES) {
+export function digestFragments(sequence, enzymeNames, circular = true, reEnzymes = null) {
   const seq = String(sequence || '');
   const seqLen = seq.length;
   const enzymes = [...new Set((enzymeNames || []).filter(Boolean))];
-  const cuts = [];
-  for (const name of enzymes) {
-    const info = reEnzymes[name];
-    if (!info || !Array.isArray(info.cut)) continue;
-    for (const site of findSitesInSequence(name, seq, !!circular)) {
-      if (!Number.isFinite(site.position)) continue;
-      const cutPos = seqLen > 0
-        ? (((site.position + info.cut[0]) % seqLen) + seqLen) % seqLen
-        : 0;
-      cuts.push({ position: cutPos, enzyme: name });
+  const catalog = reEnzymes || effectiveEnzymes();
+  const cuts = scanOccurrences(seq, {
+    circular: !!circular,
+    enzymes: catalog,
+    names: enzymes,
+  })
+    .filter((occurrence) => Number.isFinite(occurrence.topCut))
+    .map((occurrence) => ({
+      position: occurrence.topCut,
+      enzyme: occurrence.enzyme,
+      occurrence,
+    }));
+  cuts.sort((a, b) => a.position - b.position);
+  // Collapse only identical double-strand breaks. The same top-strand bond with
+  // a different bottom cut is conflicting chemistry, never an interchangeable
+  // duplicate chosen by scan order.
+  const uniq = [];
+  for (const cut of cuts) {
+    const previous = uniq[uniq.length - 1];
+    if (!previous || previous.position !== cut.position) {
+      uniq.push(cut);
+      continue;
+    }
+    if (restrictionBreakKey(previous.occurrence) !== restrictionBreakKey(cut.occurrence)) {
+      return {
+        fragments: [], cuts: [], circular: !!circular, seqLen,
+        error: `Conflicting cut geometry at ${cut.position}: ${previous.enzyme} and ${cut.enzyme}`,
+      };
     }
   }
-  cuts.sort((a, b) => a.position - b.position);
-  // Drop duplicate cut positions (two enzymes nicking the same bond is rare but
-  // possible) — keep the first enzyme name.
-  const uniq = cuts.filter((c, i) => i === 0 || c.position !== cuts[i - 1].position);
   if (uniq.length === 0) return { fragments: [], cuts: [], circular: !!circular, seqLen };
 
   const fragments = [];
@@ -54,6 +70,8 @@ export function digestFragments(sequence, enzymeNames, circular = true, reEnzyme
         wraps: end <= start, // crosses the origin → multi-range on selection
         leftEnzyme: a.enzyme,
         rightEnzyme: b.enzyme,
+        leftCut: a,
+        rightCut: b,
       });
     }
   } else {
@@ -67,6 +85,8 @@ export function digestFragments(sequence, enzymeNames, circular = true, reEnzyme
         wraps: false,
         leftEnzyme: i === 0 ? null : uniq[i - 1].enzyme,
         rightEnzyme: i === bounds.length - 2 ? null : uniq[i].enzyme,
+        leftCut: i === 0 ? null : uniq[i - 1],
+        rightCut: i === bounds.length - 2 ? null : uniq[i],
       });
     }
   }

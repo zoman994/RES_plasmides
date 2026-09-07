@@ -6,6 +6,10 @@ import {
   checkReadingFrame,
   generateRETail,
 } from '../restriction-db.js';
+import { digestCircular } from '../lib/restriction-digest.js';
+import {
+  getSegments, makeLocation, normalizeLocation,
+} from '../lib/annotation-location.js';
 
 // ═══════════════════════════════════════════════════════
 // Helper: build a circular plasmid with one site of each enzyme
@@ -89,6 +93,200 @@ describe('digest()', () => {
     expect(result.excised).toBeDefined();
     expect(result.selfLigationRisk).toBe(true); // same enzyme → same overhangs
     expect(result.isDirectional).toBe(false);
+  });
+
+  it('uses concrete XcmI overhang bases for directionality', () => {
+    const first = `CCA${'A'.repeat(9)}TGG`;
+    const second = `CCA${'C'.repeat(9)}TGG`;
+    const result = digest(`${first}${'T'.repeat(10)}${second}${'T'.repeat(10)}`, [], 'XcmI');
+
+    expect(result.error).toBeUndefined();
+    expect(result.enzymes.map((cut) => cut.occurrence.overhang.seq)).toEqual(['A', 'C']);
+    expect(result.isDirectional).toBe(true);
+    expect(result.selfLigationRisk).toBe(false);
+  });
+
+  it('keeps BauI forward and reverse concrete overhangs distinct', () => {
+    const result = digest(`CACGAG${'A'.repeat(10)}CTCGTG${'A'.repeat(10)}`, [], 'BauI');
+
+    expect(result.error).toBeUndefined();
+    expect(result.enzymes.map((cut) => cut.occurrence.overhang.seq)).toEqual(['ACGA', 'TCGT']);
+    expect(result.isDirectional).toBe(true);
+    expect(result.selfLigationRisk).toBe(false);
+  });
+
+  it('fails closed when opposite strands claim incompatible cuts at one locus', () => {
+    const enzymes = {
+      OverlapI: { site: 'AN', cut: [0, 1], end: '5prime', overhang: 'A', isCustom: true },
+    };
+    const result = digestCircular('ATGGGG', [], 'OverlapI', null, enzymes);
+
+    expect(result.error).toMatch(/ambiguous opposite-strand occurrence/i);
+  });
+
+  it('deduplicates different recognition starts that resolve to one physical DSB', () => {
+    const enzymes = {
+      CoincidentI: { site: 'ACGTAA', cut: [1, 3], isCustom: true },
+    };
+    const result = digestCircular('TTACGTAA', [], 'CoincidentI', null, enzymes);
+
+    expect(result.error).toBeUndefined();
+    expect(result.type).toBe('linearize');
+    expect(result.excised).toBeNull();
+    expect(result.enzymes).toHaveLength(1);
+    expect(result.enzymes[0].occurrence).toMatchObject({ topCut: 3, bottomCut: 5 });
+  });
+
+  it('fails closed when two enzymes share a top cut but claim different duplex geometry', () => {
+    const enzymes = {
+      IsoA: { site: 'ACGTTA', cut: [1, 4], isCustom: true },
+      NeoB: { site: 'ACGTTA', cut: [1, 3], isCustom: true },
+    };
+    const result = digestCircular('GGGACGTTACCC', [], 'IsoA', 'NeoB', enzymes);
+
+    expect(result.error).toMatch(/conflicting cut geometry/i);
+    expect(result.backbone).toBeUndefined();
+    expect(result.excised).toBeUndefined();
+  });
+
+  it('derives a blunt end from occurrence geometry, not inconsistent catalog text', () => {
+    const enzymes = {
+      FlatI: { site: 'GATATC', cut: [3, 3], end: '5prime', overhang: 'ATA', isCustom: true },
+    };
+    const result = digestCircular('AAAGATATCAAA', [], 'FlatI', null, enzymes);
+
+    expect(result.error).toBeUndefined();
+    expect(result.backbone.leftEnd).toMatchObject({ overhangType: 'blunt', overhang: null });
+  });
+
+  it('preserves canonical compound annotation geometry while rotating', () => {
+    const annotation = {
+      id: 'compound', name: 'compound', level: 'region', start: 120, end: 180,
+      location: makeLocation('join', [
+        { start: 120, end: 140 },
+        { start: 160, end: 180 },
+      ]),
+    };
+    const result = digest(SEQ_ECORI, [annotation], 'EcoRI');
+    const [projected] = result.backbone.annotations;
+
+    expect(getSegments(projected)).toEqual([
+      { start: 19, end: 39 },
+      { start: 59, end: 79 },
+    ]);
+    expect(projected).toMatchObject({ start: 19, end: 79 });
+    expect(() => normalizeLocation(projected, { length: 500, topology: 'linear' }))
+      .not.toThrow();
+  });
+
+  it('does not coalesce adjacent join components away from the circular origin seam', () => {
+    const annotation = {
+      id: 'adjacent-join', name: 'adjacent-join', level: 'region', start: 120, end: 160,
+      location: makeLocation('join', [
+        { start: 120, end: 140 },
+        { start: 140, end: 160 },
+      ]),
+    };
+    const result = digest(SEQ_ECORI, [annotation], 'EcoRI');
+    const [projected] = result.backbone.annotations;
+
+    expect(projected.location).toEqual({
+      kind: 'join',
+      segments: [{ start: 19, end: 39 }, { start: 39, end: 59 }],
+    });
+    expect(projected).toMatchObject({ start: 19, end: 59 });
+  });
+
+  it('does not infer an origin seam from endpoint coordinates in the wrong source order', () => {
+    const annotation = {
+      id: 'endpoint-join', name: 'endpoint-join', level: 'region', start: 0, end: 500,
+      location: makeLocation('join', [
+        { start: 0, end: 50 },
+        { start: 450, end: 500 },
+      ]),
+    };
+    const result = digest(SEQ_ECORI, [annotation], 'EcoRI');
+    const [projected] = result.backbone.annotations;
+
+    expect(projected.location).toEqual({
+      kind: 'join',
+      segments: [{ start: 349, end: 399 }, { start: 399, end: 449 }],
+    });
+    expect(projected).toMatchObject({ start: 349, end: 449 });
+  });
+
+  it('canonicalizes an origin-spanning feature that becomes contiguous after rotation', () => {
+    const annotation = {
+      id: 'origin-compound',
+      name: 'origin-compound',
+      level: 'region',
+      strand: 1,
+      start: 450,
+      end: 50,
+      location: makeLocation('join', [
+        { start: 450, end: 500 },
+        { start: 0, end: 50 },
+      ]),
+      qualifiers: { note: ['keep'] },
+    };
+    const result = digest(SEQ_ECORI, [annotation], 'EcoRI');
+
+    expect(result.backbone.annotations).toEqual([
+      expect.objectContaining({
+        id: 'origin-compound',
+        start: 349,
+        end: 449,
+        strand: 1,
+        location: { kind: 'single', segments: [{ start: 349, end: 449 }] },
+        qualifiers: { note: ['keep'] },
+      }),
+    ]);
+    expect(result.backbone.annotations[0].segments).toBeUndefined();
+  });
+
+  it('sorts and coalesces a compound cut at the new linear boundary', () => {
+    const annotation = {
+      id: 'cut-compound',
+      name: 'cut-compound',
+      level: 'region',
+      strand: 1,
+      start: 450,
+      end: 150,
+      location: makeLocation('join', [
+        { start: 450, end: 500 },
+        { start: 0, end: 150 },
+      ]),
+    };
+    const result = digest(SEQ_ECORI, [annotation], 'EcoRI');
+    const [projected] = result.backbone.annotations;
+
+    expect(projected).toMatchObject({
+      id: 'cut-compound',
+      start: 0,
+      end: 500,
+      location: {
+        kind: 'join',
+        segments: [{ start: 0, end: 49 }, { start: 349, end: 500 }],
+      },
+    });
+    expect(() => normalizeLocation(projected, { length: 500, topology: 'linear' }))
+      .not.toThrow();
+  });
+
+  it('preserves an excised annotation and both physical RE ends', () => {
+    const annotation = {
+      id: 'insert', name: 'insert', level: 'region', start: 150, end: 200,
+      location: makeLocation('single', [{ start: 150, end: 200 }]),
+    };
+    const result = digest(SEQ_ECORI_BAMHI, [annotation], 'EcoRI', 'BamHI');
+
+    expect(result.excised.annotations).toHaveLength(1);
+    expect(getSegments(result.excised.annotations[0])).toEqual([{ start: 49, end: 99 }]);
+    expect(result.excised.leftEnd.enzymeUsed).toBe('EcoRI');
+    expect(result.excised.rightEnd.enzymeUsed).toBe('BamHI');
+    expect(() => normalizeLocation(result.excised.annotations[0], {
+      length: result.excised.length, topology: 'linear',
+    })).not.toThrow();
   });
 
   it('returns error when enzyme cuts 0 times', () => {

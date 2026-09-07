@@ -32,6 +32,44 @@ describe('digestFragments', () => {
   it('no sites → empty', () => {
     expect(digestFragments('AAAATTTT', ['EcoRI'], true).fragments).toEqual([]);
   });
+
+  it('uses the injected catalog and the canonical top cut for a reverse occurrence', () => {
+    const catalog = {
+      RevI: {
+        site: 'AACGTC', cut: [1, 3], end: '5prime', overhang: 'AC',
+      },
+    };
+    const { cuts, fragments } = digestFragments(
+      'TTTTGACGTTTT',
+      ['RevI'],
+      false,
+      catalog,
+    );
+
+    expect(cuts).toHaveLength(1);
+    expect(cuts[0]).toMatchObject({ enzyme: 'RevI', position: 7 });
+    expect(cuts[0].occurrence).toMatchObject({
+      strand: -1,
+      topCut: 7,
+      bottomCut: 9,
+      overhang: { seq: 'GT' },
+    });
+    expect(fragments.map((fragment) => fragment.length)).toEqual([7, 5]);
+    expect(fragments[0].rightCut).toBe(cuts[0]);
+    expect(fragments[1].leftCut).toBe(cuts[0]);
+  });
+
+  it('fails closed when coincident top cuts have different bottom-strand geometry', () => {
+    const catalog = {
+      IsoA: { site: 'ACGTTA', cut: [1, 4], isCustom: true },
+      NeoB: { site: 'ACGTTA', cut: [1, 3], isCustom: true },
+    };
+    const result = digestFragments('GGGACGTTACCC', ['IsoA', 'NeoB'], false, catalog);
+
+    expect(result.error).toMatch(/conflicting cut geometry/i);
+    expect(result.cuts).toEqual([]);
+    expect(result.fragments).toEqual([]);
+  });
 });
 
 describe('fragmentRanges', () => {

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   segmentOverhangs, overhangLabel, stickyEndExtent, terminalStagger,
 } from '../segment-overhangs.js';
+import { scanOccurrences } from '../../../../lib/restriction-occurrence.js';
 
 const ENZ = {
   EcoRI: { site: 'GAATTC', cut: [1, 5], end: '5prime', overhang: 'AATT' },
@@ -67,7 +68,77 @@ describe('segment-overhangs — single-cut (#4 linearize)', () => {
   });
 });
 
+describe('segment-overhangs — explicit digest-band boundaries', () => {
+  const [occurrence] = scanOccurrences('AAAAGAATTCAAAA', {
+    enzymes: { EcoRI: ENZ.EcoRI },
+    names: ['EcoRI'],
+  });
+  const cut = {
+    enzyme: 'EcoRI',
+    position: occurrence.topCut,
+    occurrenceKey: occurrence.occurrenceKey,
+    occurrence,
+  };
+  const segment = (boundaryCuts) => ({
+    acquisitionMethod: 'restriction',
+    acquisitionParams: {
+      enzymes: ['EcoRI'],
+      cutSites: [cut],
+      boundaryCuts,
+    },
+  });
+
+  it('keeps the left terminus native for the first band of a linear digest', () => {
+    expect(segmentOverhangs(segment({ left: null, right: cut }), {})).toEqual({
+      left: null,
+      right: expect.objectContaining({ enzyme: 'EcoRI', type: '5prime', seq: 'AATT' }),
+    });
+  });
+
+  it('keeps the right terminus native for the last band of a linear digest', () => {
+    expect(segmentOverhangs(segment({ left: cut, right: null }), {})).toEqual({
+      left: expect.objectContaining({ enzyme: 'EcoRI', type: '5prime', seq: 'AATT' }),
+      right: null,
+    });
+  });
+
+  it('fails closed when an explicit restriction boundary contradicts its occurrence', () => {
+    expect(segmentOverhangs(segment({
+      left: null,
+      right: { ...cut, enzyme: 'PstI' },
+    }), {})).toBeNull();
+  });
+});
+
 describe('segment-overhangs — segmentOverhangs', () => {
+  it('uses the actual reverse occurrence geometry without a catalog lookup', () => {
+    const [occurrence] = scanOccurrences('TTTTGACGTTTT', {
+      enzymes: { RevI: { site: 'AACGTC', cut: [1, 3], isCustom: true } },
+      names: ['RevI'],
+    });
+    const segment = {
+      acquisitionMethod: 'restriction',
+      acquisitionParams: {
+        enzymes: ['RevI'],
+        cutSites: [{
+          position: occurrence.topCut,
+          occurrenceKey: occurrence.occurrenceKey,
+          occurrence,
+        }],
+        single: true,
+      },
+    };
+
+    expect(segmentOverhangs(segment, {})).toEqual({
+      left: expect.objectContaining({
+        enzyme: 'RevI', delta: 2, type: '5prime', seq: 'GT',
+      }),
+      right: expect.objectContaining({
+        enzyme: 'RevI', delta: 2, type: '5prime', seq: 'GT',
+      }),
+    });
+  });
+
   it('maps each end to its enzyme by cut position (left = lower)', () => {
     // EcoRI cut at 5 (left), PstI cut at 31 (right)
     const r = segmentOverhangs(reSeg(['EcoRI', 'PstI'], [5, 31]), ENZ);

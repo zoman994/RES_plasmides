@@ -4,10 +4,24 @@
  * RE sites on a horizontal axis; scans circular:false so no phantom origin site.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import LinearMapV2 from '../LinearMapV2';
+import { useStore } from '../../store';
 
-afterEach(cleanup);
+const LIVE_ENZYME = {
+  id: 'linear-live', name: 'LinearLiveI', site: 'AACGTC', cut: [1, 3],
+  end: '5prime', overhang: 'AC', isCustom: true,
+};
+
+function setCustomEnzymes(byId) {
+  const current = useStore.getState().customEnzymes || {};
+  useStore.setState({ customEnzymes: { ...current, byId } });
+}
+
+afterEach(() => {
+  cleanup();
+  setCustomEnzymes({});
+});
 
 // Linear fragment: EcoRI (GAATTC) at 0 and at 26; one CDS feature 6..26.
 const SEQ = `GAATTC${'A'.repeat(20)}GAATTC${'T'.repeat(20)}`;
@@ -53,12 +67,52 @@ describe('LinearMapV2', () => {
     expect(labels.length).toBeGreaterThan(0);
     fireEvent.click(labels[0]);
     expect(onReSiteClick).toHaveBeenCalledWith(expect.objectContaining({ enzyme: 'EcoRI' }));
+    expect(onReSiteClick.mock.calls[0][0].positions[0]).toBe(1);
+    expect(onReSiteClick.mock.calls[0][0].occurrences[0]).toMatchObject({
+      occurrenceKey: 'EcoRI:1:0',
+      topCut: 1,
+    });
   });
 
   it('RE labels are display-only (no pointer) when onReSiteClick is absent', () => {
     renderMap();
     const g = screen.getAllByTestId(/^linear-map-v2-re-label-/)[0];
     expect(g.getAttribute('data-clickable')).toBe('false');
+  });
+
+  it('keeps a multi-occurrence cluster display-only even when a click handler exists', () => {
+    const onReSiteClick = vi.fn();
+    const sequence = `GAATTCGAATTCGAATTC${'A'.repeat(982)}`;
+    render(<LinearMapV2
+      fragments={[{ sequence, length: sequence.length, annotations: [] }]}
+      totalBp={sequence.length}
+      topology="linear"
+      reEnzymesFilter={['EcoRI']}
+      onReSiteClick={onReSiteClick}
+    />);
+    const [label] = screen.getAllByTestId(/^linear-map-v2-re-label-/);
+
+    expect(label.getAttribute('data-cluster')).toBe('true');
+    expect(label.getAttribute('data-clickable')).toBe('false');
+    expect(label.querySelector('rect[fill="transparent"]')).toBeNull();
+    fireEvent.click(label);
+    expect(onReSiteClick).not.toHaveBeenCalled();
+  });
+
+  it('recomputes markers when a custom enzyme is added to the store', () => {
+    const sequence = 'TTTTAACGTCTTTT';
+    const fragments = [{ sequence, length: sequence.length, annotations: [] }];
+    render(<LinearMapV2
+      fragments={fragments}
+      totalBp={sequence.length}
+      topology="linear"
+      reEnzymesFilter={['LinearLiveI']}
+    />);
+    expect(screen.queryAllByTestId(/^linear-map-v2-re-label-/)).toHaveLength(0);
+
+    act(() => { setCustomEnzymes({ 'linear-live': LIVE_ENZYME }); });
+
+    expect(screen.getAllByTestId(/^linear-map-v2-re-label-/)).toHaveLength(1);
   });
 });
 

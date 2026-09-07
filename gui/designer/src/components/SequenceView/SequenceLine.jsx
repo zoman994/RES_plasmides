@@ -29,7 +29,8 @@ import { memo, useMemo } from "react";
 import { LABEL_WIDTH, __IS_TEST_ENV__ } from "./constants.js";
 import { buildLineAnnMap } from "./lib/feature-map.js";
 import { sequenceLineEqual } from "./lib/sequence-line-equal.js";
-import { RE_ENZYMES } from "../../restriction-db.js";
+import { effectiveEnzymes } from "../../restriction-db.js";
+import { restrictionSiteKey } from "../../lib/restriction-occurrence.js";
 import RulerTrack from "./tracks/RulerTrack.jsx";
 import StrandsTrack from "./tracks/StrandsTrack.jsx";
 import AnnotationTrack from "./tracks/AnnotationTrack.jsx";
@@ -180,8 +181,13 @@ const SequenceLine = memo(function SequenceLine({
     // (restrictionHighlightKey). Все-сайты-всегда было визуальным
     // шумом — Игорь UX-pass.
     const activeKeys = new Set();
-    if (hoveredRestrictionKey) activeKeys.add(hoveredRestrictionKey);
-    if (restrictionHighlightKey) activeKeys.add(restrictionHighlightKey);
+    const addKeys = (value) => {
+      for (const key of (Array.isArray(value) ? value : [value])) {
+        if (key) activeKeys.add(key);
+      }
+    };
+    addKeys(hoveredRestrictionKey);
+    addKeys(restrictionHighlightKey);
     if (activeKeys.size === 0) return empty;
 
     const topCuts = [];
@@ -189,34 +195,58 @@ const SequenceLine = memo(function SequenceLine({
     const overhangs = [];
     const bindingHighlights = [];
 
-    const parseKey = (key) => {
-      const lastDash = key.lastIndexOf('-');
-      if (lastDash <= 0) return null;
-      return { enzyme: key.slice(0, lastDash), position: Number(key.slice(lastDash + 1)) };
-    };
-
     for (const k of activeKeys) {
-      const parsed = parseKey(k);
-      if (!parsed) continue;
-      const s = reSites.find(
-        (x) => x.enzyme === parsed.enzyme && x.position === parsed.position,
-      );
+      const s = reSites.find((candidate) => restrictionSiteKey(candidate) === k);
       if (!s) continue;
-      const enz = RE_ENZYMES[s.enzyme];
-      if (!enz) continue;
-      // V155 — `s.position` is ALREADY the top-strand cut (flattenSites adds
-      // cut[0]). The bottom cut sits `cut[1]-cut[0]` away; the recognition site
-      // starts `cut[0]` BEFORE the top cut. (Was double-offset before.)
-      const tAbs = s.position;
-      const bAbs = s.position + (enz.cut[1] - enz.cut[0]);
-      const recogStart = s.position - enz.cut[0];
-      const baseKey = `${s.enzyme}-${s.position}`;
+      const occurrence = s.occurrence;
+      const enz = occurrence ? null : effectiveEnzymes()[s.enzyme];
+      if (!occurrence && !enz) continue;
+      const projectToLine = (absolutePosition) => (
+        line.wrapsOrigin && Number.isFinite(seqLength) && absolutePosition < line.start
+          ? absolutePosition + seqLength
+          : absolutePosition
+      );
+      const tAbs = projectToLine(
+        Number.isFinite(occurrence?.topCut) ? occurrence.topCut : s.position,
+      );
+      const cutDelta = occurrence
+        ? occurrence.bottomCutUnwrapped - occurrence.topCutUnwrapped
+        : enz.cut[1] - enz.cut[0];
+      if (!Number.isFinite(tAbs) || !Number.isFinite(cutDelta)) continue;
+      const bAbs = occurrence && !line.wrapsOrigin
+        ? occurrence.bottomCut
+        : tAbs + cutDelta;
+      if (!Number.isFinite(bAbs)) continue;
+      const baseKey = restrictionSiteKey(s);
       topCuts.push({ key: `${baseKey}-top`, pos: tAbs });
       botCuts.push({ key: `${baseKey}-bot`, pos: bAbs });
-      if (enz.end !== 'blunt' && tAbs !== bAbs) {
-        const lo = Math.min(tAbs, bAbs);
-        const hi = Math.max(tAbs, bAbs);
-        overhangs.push({ key: `${baseKey}-ov`, startPos: lo, endPos: hi });
+      const isSticky = occurrence
+        ? occurrence.overhang?.length > 0
+        : enz.end !== 'blunt';
+      if (isSticky && tAbs !== bAbs) {
+        let spans = [{ startPos: Math.min(tAbs, bAbs), endPos: Math.max(tAbs, bAbs) }];
+        const rawTop = occurrence?.topCutUnwrapped;
+        const rawBottom = occurrence?.bottomCutUnwrapped;
+        if (!line.wrapsOrigin && Number.isFinite(seqLength) && seqLength > 0
+          && Number.isFinite(rawTop) && Number.isFinite(rawBottom)) {
+          const span = Math.abs(rawBottom - rawTop);
+          if (span > seqLength) {
+            spans = [];
+          } else {
+            const rawLo = Math.min(rawTop, rawBottom);
+            const physicalLo = ((rawLo % seqLength) + seqLength) % seqLength;
+            const physicalHi = physicalLo + span;
+            spans = physicalHi <= seqLength
+              ? [{ startPos: physicalLo, endPos: physicalHi }]
+              : [
+                { startPos: physicalLo, endPos: seqLength },
+                { startPos: 0, endPos: physicalHi - seqLength },
+              ];
+          }
+        }
+        for (const [spanIndex, span] of spans.entries()) {
+          overhangs.push({ key: `${baseKey}-ov-${spanIndex}`, ...span });
+        }
       }
       // Recognition-site (binding) box — ТОЛЬКО при наведении на НАЗВАНИЕ
       // рестриктазы (Игорь 22.06: «выделение сайта связывания только при
@@ -224,15 +254,28 @@ const SequenceLine = memo(function SequenceLine({
       // overhang stay) but must NOT paint the whole binding zone — that was the
       // visual noise. So binding is gated to the hovered key alone.
       if (k === hoveredRestrictionKey) {
-        bindingHighlights.push({
-          key: `${baseKey}-bind`,
-          startPos: recogStart,
-          endPos: recogStart + enz.site.length,
-        });
+        const segments = occurrence?.recognition?.segments || [{
+          start: s.position - enz.cut[0],
+          end: s.position - enz.cut[0] + enz.site.length,
+        }];
+        for (const [segmentIndex, segment] of segments.entries()) {
+          bindingHighlights.push({
+            key: `${baseKey}-bind-${segmentIndex}`,
+            startPos: projectToLine(segment.start),
+            endPos: projectToLine(segment.end),
+          });
+        }
       }
     }
     return { topCuts, botCuts, overhangs, bindingHighlights };
-  }, [reSites, restrictionHighlightKey, hoveredRestrictionKey]);
+  }, [
+    reSites,
+    restrictionHighlightKey,
+    hoveredRestrictionKey,
+    line.start,
+    line.wrapsOrigin,
+    seqLength,
+  ]);
 
   // Virtualization placeholder: off-screen line index. Keep the SAME outer
   // <div> with every data-attribute the DOM-measuring machinery relies on

@@ -27,7 +27,8 @@ import { draftFromZone } from './zone-pieces-to-dag';
 import { segmentBoundaries } from './assembly-model';
 import { pairKeyFor } from './junction-derive';
 import { GG_ENZYMES } from '../../../golden-gate';
-import { RE_ENZYMES } from '../../../restriction-db';
+import { effectiveEnzymes } from '../../../restriction-db';
+import { isValidRestrictionEnzyme } from '../../../lib/restriction-occurrence';
 
 const DEFAULT_BINDING_LEN = 20;   // no-Tm fallback length (when bindingTm unset)
 const DEFAULT_BINDING_TM = 60;    // annealing Tm target — same goal as findBinding
@@ -58,9 +59,9 @@ const TEMP_JUNCTION_CFG = {
  * F — resolve an enzyme name → the buildOverlapTail chemistry params for its
  * method. Golden Gate: the Type IIS recognition + spacer (+ overhang length, for
  * deriving the seamless overhang from the real junction bases). RE: the
- * recognition site. An unknown/missing enzyme falls back to the method default
- * (BsaI / EcoRI) so a tail is never silently broken — the UI gates the explicit
- * choice. Non-enzyme methods → {} (buildOverlapTail uses its own defaults).
+ * recognition site. Golden Gate keeps its historical BsaI default; an unknown
+ * classic restriction enzyme fails closed so it cannot silently become EcoRI.
+ * Non-enzyme methods → {} (buildOverlapTail uses its own defaults).
  */
 export function enzymeTailParams(method, enzyme) {
   if (method === 'golden_gate') {
@@ -72,8 +73,8 @@ export function enzymeTailParams(method, enzyme) {
     };
   }
   if (method === 'restriction') {
-    const enz = RE_ENZYMES[enzyme] || RE_ENZYMES.EcoRI;
-    return { reSite: enz.site };
+    const enz = effectiveEnzymes()[enzyme];
+    return isValidRestrictionEnzyme(enz) ? { reSite: enz.site } : {};
   }
   return {};
 }
@@ -188,6 +189,7 @@ export function buildOverlapTail(side, neighbourSeq, opts = {}) {
         ? `${recognition}${spacer}${overhang}`
         : `${recognition}${spacer}${reverseComplement(overhang)}`;
     case 'restriction':
+      if (!reSite) return '';
       return side === 'fwd'
         ? `${protective}${reSite}GG`
         : reverseComplement(`${reSite}GG`);

@@ -78,10 +78,9 @@ export function invertedStickyStrandRanges({
 
 /**
  * Sticky-end overhangs at the selection boundaries. A selection end coincides
- * with a restriction cut when it equals a scanned site's `position` (which
- * `flattenSites` already stores as the TOP-strand cut = recognition + cut[0]).
- * The BOTTOM-strand cut at that end is `position + (cut[1] - cut[0])`, so the
- * bottom strand's selection edge is offset from the top edge by `delta`.
+ * with a restriction cut when it equals a scanned site's `position`.
+ * Canonical sites carry their physical top/bottom cuts and actual overhang;
+ * legacy direct callers fall back to the catalog cut delta.
  *
  *   delta > 0  → 5' overhang (top strand protrudes / recessed bottom)
  *   delta < 0  → 3' overhang
@@ -96,6 +95,31 @@ export function stickyEnds({ selStart, selEnd, sites, enzymes }) {
   const endInfo = (cutPos) => {
     for (const s of sites) {
       if (!s || s.position !== cutPos) continue;
+      if (s.occurrence) {
+        const occurrence = s.occurrence;
+        const rawTop = occurrence.topCutUnwrapped;
+        const rawBottom = occurrence.bottomCutUnwrapped;
+        const overhang = occurrence.overhang;
+        if (occurrence.enzyme !== s.enzyme
+          || occurrence.topCut !== s.position
+          || !Number.isFinite(rawTop)
+          || !Number.isFinite(rawBottom)
+          || !overhang
+          || !Number.isFinite(overhang.length)
+          || typeof overhang.seq !== 'string') continue;
+        const delta = rawBottom - rawTop;
+        if (Math.abs(delta) !== overhang.length || overhang.seq.length !== overhang.length) continue;
+        const type = overhang.type === '5overhang'
+          ? '5prime'
+          : (overhang.type === '3overhang' ? '3prime' : overhang.type);
+        if (!['5prime', '3prime', 'blunt'].includes(type)) continue;
+        return {
+          enzyme: s.enzyme,
+          delta,
+          type,
+          overhang: overhang.length > 0 ? overhang.seq : null,
+        };
+      }
       const enz = enzymes[s.enzyme];
       if (!enz || !Array.isArray(enz.cut) || enz.cut.length < 2) continue;
       const delta = enz.cut[1] - enz.cut[0];

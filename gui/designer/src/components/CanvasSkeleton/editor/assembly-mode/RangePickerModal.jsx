@@ -28,7 +28,7 @@ import SequenceTab from '../../../Library/inspector/tabs/SequenceTab';
 import { useStore } from '../../../../store';
 import { selectAllEnzymeSets, selectMergedREEnzymes } from '../../../../store/customEnzymesSlice';
 import { resolveEnzymeSet } from '../../../../lib/custom-enzymes';
-import { RE_ENZYMES, scanAllSites } from '../../../../restriction-db';
+import { scanAllSites } from '../../../../restriction-db';
 import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
 import { toUiCoords, fromUiCoords } from '../../../../lib/annotation-edit';
 import { stickyEndExtent, segmentOverhangs } from '../../lib/segment-overhangs';
@@ -39,6 +39,7 @@ import { resolveSingleLinearizeCut } from './re-single-cut';
 import DigestFragmentPicker from './DigestFragmentPicker';
 import PlasmidMapV2 from '../../../PlasmidMapV2';
 import LinearMapV2 from '../../../LinearMapV2';
+import { restrictionSiteKey } from '../../../../lib/restriction-occurrence';
 
 // WT-UX-14 — Tm readout is meaningful only for primer-sized oligos. Above
 // this length the selection is a fragment, and a «Tm 77°» on it misleads
@@ -127,11 +128,22 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
   // individual digest enzyme shows all its sites. One scan, derived two ways.
   const uniqueSites = useMemo(() => {
     if (!seq) return [];
-    return scanAllSites(seq, { circular: !!(source && source.circular) })
+    return scanAllSites(seq, {
+      circular: !!(source && source.circular),
+      enzymes: mergedEnzymes,
+    })
       .filter((s) => s.isUnique)
-      .map((s) => ({ enzyme: s.enzyme, site: s.site, pos: (s.positions && s.positions[0] && s.positions[0].position) || 0 }))
+      .map((s) => {
+        const occurrence = s.positions?.[0]?.occurrence;
+        return {
+          enzyme: s.enzyme,
+          site: s.site,
+          pos: Number.isFinite(occurrence?.topCut) ? occurrence.topCut : (s.positions?.[0]?.position || 0),
+          occurrence,
+        };
+      })
       .sort((a, b) => a.pos - b.pos);
-  }, [seq, source]);
+  }, [seq, source, mergedEnzymes]);
   const uniqueEnzymes = useMemo(() => uniqueSites.map((u) => u.enzyme), [uniqueSites]);
 
   // SPEC_VIEWER_UNIFICATION — controlled selection + V88 RE pair-select
@@ -140,14 +152,21 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
   const sel = useSequenceSelection({
     initialCaret: 0,
     reBehavior: 'pair-select',
-    reEnzymes: RE_ENZYMES,
+    reEnzymes: mergedEnzymes,
     onPairCommit: ({
       firstEnzyme, firstPosition, secondEnzyme, secondPosition,
+      firstKey, secondKey, firstSite, secondSite,
     }) => {
-      setReHighlightKey(`${firstEnzyme}-${firstPosition}|${secondEnzyme}-${secondPosition}`);
+      setReHighlightKey([firstKey, secondKey].filter(Boolean));
+      const cutRecord = (site, key, position) => (site?.occurrence
+        ? { position, occurrenceKey: key, occurrence: site.occurrence }
+        : { position });
       setReParams({
         enzymes: [firstEnzyme, secondEnzyme],
-        cutSites: [{ position: firstPosition }, { position: secondPosition }],
+        cutSites: [
+          cutRecord(firstSite, firstKey, firstPosition),
+          cutRecord(secondSite, secondKey, secondPosition),
+        ],
       });
       setMethodOverride(null); // hook sets acquisitionMethod='restriction'
     },
@@ -173,7 +192,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
   // would duplicate the overhang at every ligation junction).
   const reAcquisition = acquisitionMethod === 'restriction' && reParams;
   const maskRange = reAcquisition
-    ? stickyEndExtent({ start, end, acquisitionParams: reParams, reEnzymes: RE_ENZYMES, seqLen: seq.length })
+    ? stickyEndExtent({ start, end, acquisitionParams: reParams, reEnzymes: mergedEnzymes, seqLen: seq.length })
     // Forward [lo,hi] so the mask renders for a bottom-up (anchor>pos) drag too.
     : { start: Math.min(Number(start), Number(end)), end: Math.max(Number(start), Number(end)) };
   // V193/V195 — the PREVIEW overhangs must model the piece the biolog will confirm.
@@ -188,13 +207,13 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
       acquisitionParams: reParams,
       originWrap: invert && sourceCircular,
       reverseComplement: rc,
-    }, RE_ENZYMES)
+    }, mergedEnzymes)
     : null;
   // #3 (visual-acceptance) — uniqueness check: do the chosen RE(s) cut only at
   // the fragment ends, or elsewhere in the plasmid too? Extra sites → the
   // digest yields >2 pieces and the fragment is ambiguous.
   const reAudit = reAcquisition
-    ? auditReSites(seq, reParams.enzymes, !!(source && source.circular))
+    ? auditReSites(seq, reParams.enzymes, !!(source && source.circular), mergedEnzymes)
     : null;
   // #5 — offer the digest «gel» fragment picker when the fragment is ambiguous.
   // RS-A1 — enzymes chosen from the dropdown take precedence over a click pair /
@@ -204,7 +223,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
     ? pickedEnzymes
     : (reParams ? reParams.enzymes : (firstRESite ? [firstRESite.enzyme] : null));
   const digestAudit = digestEnzymes
-    ? auditReSites(seq, digestEnzymes, !!(source && source.circular)) : null;
+    ? auditReSites(seq, digestEnzymes, !!(source && source.circular), mergedEnzymes) : null;
   const cutCount = digestAudit ? digestAudit.total : 0;
   // A single clicked RE site is only directly usable when that enzyme is a
   // UNIQUE cutter (1 cut → linearize the whole plasmid). If it cuts ≥2× the
@@ -364,22 +383,31 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
 
   // Визуал tab — clicking an RE site on the map marks the CUT (same as clicking it
   // in the sequence): a first click stores the site, a second commits the pair.
-  // The marker carries the RECOGNITION position; the top-strand cut is recog+cut[0]
-  // (V155 convention), so convert before feeding the hook (Игорь 22.06).
+  // A single marker carries the canonical occurrence selected on the map. A cluster
+  // is deliberately not guessable: the biolog must choose a physical label/site.
   const onPickReSiteFromMap = (marker) => {
     if (!marker || !marker.enzyme) return;
-    const recog = (marker.positions && marker.positions[0]) || 0;
-    const e = RE_ENZYMES[marker.enzyme];
-    const cut0 = e && Array.isArray(e.cut) ? e.cut[0] : 0;
-    const len = seq.length || 1;
-    const pos = ((recog + cut0) % len + len) % len;
-    sel.onRestrictionClick({ enzyme: marker.enzyme, position: pos });
+    const occurrences = Array.isArray(marker.occurrences)
+      ? marker.occurrences.filter(Boolean) : [];
+    if (occurrences.length > 1) return;
+    if (occurrences.length === 1) {
+      const occurrence = occurrences[0];
+      sel.onRestrictionClick({
+        enzyme: occurrence.enzyme,
+        position: occurrence.topCut,
+        occurrence,
+      });
+      return;
+    }
+    const positions = Array.isArray(marker.positions) ? marker.positions : [];
+    if (positions.length !== 1 || !Number.isFinite(positions[0])) return;
+    sel.onRestrictionClick({ enzyme: marker.enzyme, position: positions[0] });
   };
 
   // First-click RE snap highlights the single site; the pair commit
   // (onPairCommit) sets the dual key. firstRESite drives the single.
   const reHighlight = firstRESite
-    ? `${firstRESite.enzyme}-${firstRESite.position}`
+    ? restrictionSiteKey(firstRESite)
     : reHighlightKey;
 
   // V88 — test escape hatch. SequenceView's RE-click goes through deep
@@ -432,6 +460,20 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
   // the one enzyme + its cut whether the biolog CLICKED the site or PICKED the enzyme.
   const confirmSingleCut = () => {
     if (!singleCut) return;
+    const sourceSite = firstRESite?.enzyme === singleCut.enzyme
+      ? firstRESite
+      : uniqueSites.find((site) => site.enzyme === singleCut.enzyme && site.pos === singleCut.position);
+    const occurrence = sourceSite?.occurrence;
+    if (occurrence && (occurrence.enzyme !== singleCut.enzyme
+      || occurrence.topCut !== singleCut.position
+      || !occurrence.occurrenceKey)) return;
+    const cutSite = occurrence
+      ? {
+        position: occurrence.topCut,
+        occurrenceKey: occurrence.occurrenceKey,
+        occurrence,
+      }
+      : { position: singleCut.position };
     onConfirm({
       start: 0,
       end: seq.length,
@@ -439,7 +481,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
       acquisitionMethod: 'restriction',
       acquisitionParams: {
         enzymes: [singleCut.enzyme],
-        cutSites: [{ position: singleCut.position }],
+        cutSites: [cutSite],
         single: true,
       },
     });
@@ -451,7 +493,28 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
     setDigestOpen(false);
     if (!fragment) return;
     const ranges = fragmentRanges(fragment, seq.length, rc ? 'reverse' : 'forward');
-    const ends = [fragment.leftEnzyme, fragment.rightEnzyme].filter(Boolean);
+    const boundaryRecord = (cut) => {
+      if (!cut) return null;
+      const occurrence = cut.occurrence;
+      if (occurrence && (occurrence.enzyme !== cut.enzyme
+        || occurrence.topCut !== cut.position
+        || !occurrence.occurrenceKey)) return null;
+      return occurrence ? {
+        enzyme: cut.enzyme,
+        position: cut.position,
+        occurrenceKey: occurrence.occurrenceKey,
+        occurrence,
+      } : { enzyme: cut.enzyme, position: cut.position };
+    };
+    const boundaryCuts = {
+      left: boundaryRecord(fragment.leftCut),
+      right: boundaryRecord(fragment.rightCut),
+    };
+    if ((fragment.leftCut && !boundaryCuts.left)
+      || (fragment.rightCut && !boundaryCuts.right)) return;
+    const physicalCuts = [boundaryCuts.left, boundaryCuts.right].filter(Boolean);
+    const cutSites = physicalCuts.map(({ enzyme, ...cutSite }) => cutSite);
+    const ends = physicalCuts.map((cut) => cut.enzyme);
     onConfirm({
       start: fragment.start,
       end: fragment.wraps ? seq.length : fragment.end,
@@ -459,10 +522,10 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
       acquisitionMethod: 'restriction',
       acquisitionParams: {
         enzymes: ends,
-        cutSites: [{ position: fragment.start }, { position: fragment.end }],
+        cutSites,
+        boundaryCuts,
         // Context: this band came from a restriction digest → gel → extraction.
         digest: { enzymes: digestEnzymes, selectedIndex: fragment.index, gelExtracted: true },
-        ...(ends.length === 1 ? { single: true } : {}),
       },
       ranges: ranges.length > 1 ? ranges : undefined,
     });

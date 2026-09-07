@@ -10,7 +10,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import RangePickerModal from '../RangePickerModal';
-import { RE_ENZYMES } from '../../../../../restriction-db';
+import { RE_ENZYMES, scanAllSites } from '../../../../../restriction-db';
+import { flattenSites } from '../../../../SequenceView/lib/feature-map';
+import { segmentOverhangs } from '../../../lib/segment-overhangs';
 
 afterEach(cleanup);
 
@@ -100,6 +102,121 @@ describe('V88 — RE-site pair two-click selection', () => {
     // Make sure RE_ENZYMES still exposes expected cut shape (regression).
     expect(RE_ENZYMES.EcoRI.cut[0]).toBe(1);
     expect(RE_ENZYMES.HindIII.cut[0]).toBe(1);
+  });
+
+  it('preserves canonical occurrences from scanner through the confirmed RE pair', () => {
+    let got = null;
+    const sites = flattenSites(
+      scanAllSites(SRC.sequence, { circular: false }),
+      { mode: 'all', enzymes: ['EcoRI', 'HindIII'] },
+    );
+    const siteA = sites.find((site) => site.enzyme === 'EcoRI');
+    const siteB = sites.find((site) => site.enzyme === 'HindIII');
+    expect(siteA).toMatchObject({ position: 5 });
+    expect(siteB).toMatchObject({ position: 15 });
+
+    render(
+      <RangePickerModal
+        source={SRC}
+        onConfirm={(payload) => { got = payload; }}
+        onCancel={() => {}}
+      />,
+    );
+    act(() => {
+      window.dispatchEvent(new CustomEvent('__v88_re_click__', { detail: siteA }));
+      window.dispatchEvent(new CustomEvent('__v88_re_click__', { detail: siteB }));
+    });
+    act(() => { fireEvent.click(screen.getByTestId('range-picker-confirm')); });
+
+    expect(got).toMatchObject({ start: 5, end: 15, acquisitionMethod: 'restriction' });
+    expect(got.acquisitionParams.cutSites).toEqual([
+      expect.objectContaining({
+        position: 5,
+        occurrenceKey: siteA.occurrence.occurrenceKey,
+        occurrence: siteA.occurrence,
+      }),
+      expect.objectContaining({
+        position: 15,
+        occurrenceKey: siteB.occurrence.occurrenceKey,
+        occurrence: siteB.occurrence,
+      }),
+    ]);
+  });
+
+  it('preserves the canonical occurrence when a unique cutter linearizes the whole source', () => {
+    let got = null;
+    const [site] = flattenSites(
+      scanAllSites(SRC.sequence, { circular: false }),
+      { mode: 'all', enzymes: ['EcoRI'] },
+    );
+    render(
+      <RangePickerModal
+        source={SRC}
+        onConfirm={(payload) => { got = payload; }}
+        onCancel={() => {}}
+      />,
+    );
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('__v88_re_click__', { detail: site }));
+    });
+    act(() => { fireEvent.click(screen.getByTestId('range-picker-confirm')); });
+
+    expect(got.acquisitionParams.cutSites).toEqual([
+      expect.objectContaining({
+        position: site.occurrence.topCut,
+        occurrenceKey: site.occurrence.occurrenceKey,
+        occurrence: site.occurrence,
+      }),
+    ]);
+  });
+
+  it('aligns a linear gel band provenance with its one non-native RE boundary', () => {
+    const sequence = `${'GAATTC'}${'AAAAAAAAAA'}`.repeat(3);
+    const source = { name: 'linear-multi', sequence, circular: false, annotations: [] };
+    const [site] = flattenSites(
+      scanAllSites(sequence, { circular: false }),
+      { mode: 'all', enzymes: ['EcoRI'] },
+    );
+    let got = null;
+    render(
+      <RangePickerModal
+        source={source}
+        onConfirm={(payload) => { got = payload; }}
+        onCancel={() => {}}
+      />,
+    );
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('__v88_re_click__', { detail: site }));
+    });
+    act(() => { fireEvent.click(screen.getByTestId('range-picker-confirm')); });
+    expect(screen.getByTestId('digest-fragment-picker')).toBeTruthy();
+    act(() => { fireEvent.click(screen.getByTestId('digest-confirm')); });
+
+    expect(got).toMatchObject({ start: 0, end: 1, acquisitionMethod: 'restriction' });
+    expect(got.acquisitionParams.enzymes).toEqual(['EcoRI']);
+    expect(got.acquisitionParams.cutSites).toEqual([
+      expect.objectContaining({
+        position: 1,
+        occurrenceKey: site.occurrence.occurrenceKey,
+        occurrence: site.occurrence,
+      }),
+    ]);
+    expect(got.acquisitionParams.single).toBeUndefined();
+    expect(got.acquisitionParams.boundaryCuts).toEqual({
+      left: null,
+      right: expect.objectContaining({
+        enzyme: 'EcoRI',
+        position: 1,
+        occurrenceKey: site.occurrence.occurrenceKey,
+        occurrence: site.occurrence,
+      }),
+    });
+    expect(segmentOverhangs(got, RE_ENZYMES)).toEqual({
+      left: null,
+      right: expect.objectContaining({ enzyme: 'EcoRI', type: '5prime', seq: 'AATT' }),
+    });
   });
 
   it('cursor select after RE pair resets acquisitionMethod to cursor', () => {

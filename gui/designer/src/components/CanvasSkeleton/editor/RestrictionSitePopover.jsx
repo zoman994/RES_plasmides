@@ -20,12 +20,12 @@
  *   - Кнопка «Отмена» / ESC / × → закрыть.
  */
 import { useEffect } from 'react';
-import { RE_ENZYMES } from '../../../restriction-db';
+import { effectiveEnzymes } from '../../../restriction-db';
+import { iupacComplement } from '../../../lib/iupac';
 import { Icon } from '../../icons/Icon';
 
-function reverseComplement(seq) {
-  const comp = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
-  return (seq || '').split('').reverse().map((c) => comp[c.toUpperCase()] || c).join('');
+function complement(seq) {
+  return (seq || '').split('').map(iupacComplement).join('');
 }
 
 /**
@@ -45,24 +45,25 @@ function reverseComplement(seq) {
  *  Top:    5' - GAT | ATC - 3'
  *  Bot:    3' - CTA | TAG - 5'
  */
-function buildCutVisual(enzymeName, info) {
-  const site = info.site;
-  const rev = reverseComplement(site);
-  const cutTop = info.cut[0];
-  const cutBot = info.cut[1];
-  const endType = info.end;
+function buildCutVisual(info, occurrence) {
+  const pattern = occurrence?.recognition?.pattern || info?.site || '';
+  const site = occurrence?.recognition?.matchedTop || pattern;
+  const bottom = complement(site);
+  const cutTop = Number.isFinite(occurrence?.topCutOffset)
+    ? occurrence.topCutOffset
+    : info.cut[0];
+  const cutBot = Number.isFinite(occurrence?.bottomCutOffset)
+    ? occurrence.bottomCutOffset
+    : info.cut[1];
+  const endType = occurrence?.overhang?.type || info?.end;
 
   // Pre-split top + bottom strand at cuts.
   const topLeft = site.slice(0, cutTop);
   const topRight = site.slice(cutTop);
-  // Bottom strand displayed 3'→5' = reverseComplement of site but
-  // shown left-to-right same as top. Cut on bottom is at cutBot from
-  // start of site → on the bottom-strand "shown" representation the
-  // cut is at the same character index (since reverseComplement of
-  // site read left-to-right matches the bottom strand displayed in
-  // SnapGene convention).
-  const botLeft = rev.slice(0, cutBot);
-  const botRight = rev.slice(cutBot);
+  // Bottom strand is displayed 3'→5' left-to-right, so it is the direct
+  // complement of the displayed top strand, not its reverse complement.
+  const botLeft = bottom.slice(0, cutBot);
+  const botRight = bottom.slice(cutBot);
 
   const isBlunt = endType === 'blunt' || cutTop === cutBot;
 
@@ -77,6 +78,10 @@ function buildCutVisual(enzymeName, info) {
       ],
       overhangLen: 0,
       overhangText: '',
+      pattern,
+      matchedTop: site,
+      cutTop,
+      cutBot,
     };
   }
 
@@ -114,7 +119,11 @@ function buildCutVisual(enzymeName, info) {
         { label: "3'", left: botLeft, mark: ' ', right: pad + botRight, suffix: "5'" },
       ],
       overhangLen,
-      overhangText: site.slice(cutTop, cutBot),
+      overhangText: occurrence?.overhang?.seq || site.slice(cutTop, cutBot),
+      pattern,
+      matchedTop: site,
+      cutTop,
+      cutBot,
     };
   }
   // 3' overhang (PstI-style — site CTGCAG, cut [5,1]).
@@ -132,7 +141,11 @@ function buildCutVisual(enzymeName, info) {
       { label: "3'", left: pad + botLeft, mark: ' ', right: botRight, suffix: "5'" },
     ],
     overhangLen,
-    overhangText: site.slice(cutBot, cutTop),
+    overhangText: occurrence?.overhang?.seq || site.slice(cutBot, cutTop),
+    pattern,
+    matchedTop: site,
+    cutTop,
+    cutBot,
   };
 }
 
@@ -154,14 +167,19 @@ export default function RestrictionSitePopover({
   }, [onCancel]);
 
   if (!site) return null;
-  const info = RE_ENZYMES[site.enzyme];
-  if (!info) return null;
+  const occurrence = site.occurrence;
+  const info = effectiveEnzymes()[site.enzyme];
+  if (!occurrence && !info) return null;
 
-  const visual = buildCutVisual(site.enzyme, info);
-  // Cut position absolute: site.position is start-of-site index in
-  // full sequence; top-strand cut is at site.position + cut[0].
-  const cutTopAbs = site.position + info.cut[0];
-  const cutBotAbs = site.position + info.cut[1];
+  const visual = buildCutVisual(info, occurrence);
+  // Canonical scan/flatten paths carry the physical cuts. Keep the raw
+  // recognition-start fallback only for legacy direct component callers.
+  const cutTopAbs = Number.isFinite(site.occurrence?.topCut)
+    ? site.occurrence.topCut
+    : site.position + info.cut[0];
+  const cutBotAbs = Number.isFinite(site.occurrence?.bottomCut)
+    ? site.occurrence.bottomCut
+    : site.position + info.cut[1];
 
   // Position anchored near click event; clamp into viewport.
   const left = Math.max(8, Math.min(position?.x ?? 200, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 360));
@@ -249,16 +267,21 @@ export default function RestrictionSitePopover({
             data-testid="skeleton-re-popover-cuts"
             style={{ fontSize: 11, color: 'var(--text-secondary, #57534e)' }}
           >
-            Recognition: <code style={{ fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-primary, #1c1917)' }}>{info.site}</code>
+            Recognition: <code style={{ fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-primary, #1c1917)' }}>{visual.pattern}</code>
+            {visual.matchedTop !== visual.pattern && (
+              <> → <code style={{ fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-primary, #1c1917)' }}>{visual.matchedTop}</code></>
+            )}
             <br />
             Cut (top strand): позиция <strong>{cutTopAbs + 1}</strong>
-            {info.cut[0] !== info.cut[1] && (
+            {visual.cutTop !== visual.cutBot && (
               <>
                 {' '}· (bottom): <strong>{cutBotAbs + 1}</strong>
               </>
             )}
-            <br />
-            T° {info.temp}°C · Buffer: {info.buffer}
+            {(Number.isFinite(info?.temp) || info?.buffer) && <br />}
+            {Number.isFinite(info?.temp) && <>T° {info.temp}°C</>}
+            {Number.isFinite(info?.temp) && info?.buffer && <> · </>}
+            {info?.buffer && <>Buffer: {info.buffer}</>}
             {visual.overhangText && (
               <>
                 {' '}· Overhang: <code style={{ fontFamily: 'var(--font-mono, monospace)' }}>{visual.overhangText}</code>
@@ -268,6 +291,8 @@ export default function RestrictionSitePopover({
 
           <pre
             data-testid="skeleton-re-popover-visual"
+            data-top-cut-offset={visual.cutTop}
+            data-bottom-cut-offset={visual.cutBot}
             style={{
               margin: 0,
               padding: '8px 10px',

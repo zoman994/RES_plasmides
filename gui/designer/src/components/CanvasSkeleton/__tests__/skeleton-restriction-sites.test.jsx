@@ -18,16 +18,61 @@
  *  - ESC / × / backdrop → onCancel.
  */
 import 'fake-indexeddb/auto';
+import { useState } from 'react';
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import RestrictionTrack from '../../SequenceView/tracks/RestrictionTrack';
+import { flattenSites } from '../../SequenceView/lib/feature-map';
+import { scanAllSites } from '../../../restriction-db';
+import { scanOccurrences } from '../../../lib/restriction-occurrence';
 import RestrictionSitePopover from '../editor/RestrictionSitePopover';
+import { useSequenceSelection } from '../../../hooks/useSequenceSelection';
+import { restrictionSiteKey } from '../../../lib/restriction-occurrence';
 
 afterEach(cleanup);
 
 const wrapInSvg = (jsx) => (
   <svg width={800} height={100}>{jsx}</svg>
 );
+
+function CanonicalCutHarness({ site, onCut, onTransport }) {
+  const [popoverSite, setPopoverSite] = useState(null);
+  const selection = useSequenceSelection({
+    reBehavior: 'cut',
+    onCutHere: (clicked) => {
+      onTransport('hook', restrictionSiteKey(clicked));
+      setPopoverSite(clicked);
+    },
+  });
+  return (
+    <>
+      <RestrictionTrack
+        sites={[site]}
+        lineStart={0}
+        lineLen={150}
+        charPx={5}
+        labelChars={6}
+        reOrientation="horizontal"
+        highlightedKey={popoverSite ? restrictionSiteKey(popoverSite) : null}
+        onSiteClick={(clicked, event) => {
+          onTransport('track', restrictionSiteKey(clicked));
+          selection.onRestrictionClick(clicked, event);
+        }}
+      />
+      {popoverSite && (
+        <RestrictionSitePopover
+          site={popoverSite}
+          position={{ x: 200, y: 200 }}
+          onCut={(cut) => {
+            onTransport('popover', restrictionSiteKey(popoverSite));
+            onCut(cut);
+          }}
+          onCancel={() => setPopoverSite(null)}
+        />
+      )}
+    </>
+  );
+}
 
 describe('RestrictionTrack — clickable mode (12.05.2026)', () => {
   const sites = [
@@ -98,6 +143,33 @@ describe('RestrictionTrack — clickable mode (12.05.2026)', () => {
 });
 
 describe('RestrictionTrack — hover tooltip (SnapGene-style)', () => {
+  it('renders the actual top-strand match and reverse cuts from a custom occurrence', () => {
+    const FlipI = { site: 'ACGTTA', cut: [1, 4], isCustom: true };
+    const [occurrence] = scanOccurrences('TTTTTTTTTTTAACGTTTT', {
+      enzymes: { FlipI },
+      names: ['FlipI'],
+    });
+    render(
+      <RestrictionTrack
+        sites={[{ enzyme: 'FlipI', position: occurrence.topCut, occurrence }]}
+        lineStart={0}
+        lineLen={20}
+        charPx={8}
+        labelChars={6}
+        reOrientation="horizontal"
+      />,
+    );
+
+    fireEvent.mouseEnter(screen.getByTestId('sequence-view-re-site'));
+    expect(screen.getByTestId('sequence-view-re-tooltip-top').textContent).toBe('TAACGT');
+    expect(screen.getByTestId('sequence-view-re-tooltip-bottom').textContent).toBe('ATTGCA');
+    expect(screen.getByTestId('sequence-view-re-tooltip-cut')
+      .getAttribute('data-kind')).toBe('5overhang');
+    const topBar = screen.getByTestId('sequence-view-re-tooltip-cut-top');
+    const bottomBar = screen.getByTestId('sequence-view-re-tooltip-cut-bottom');
+    expect(Number(topBar.getAttribute('x1'))).toBeLessThan(Number(bottomBar.getAttribute('x1')));
+  });
+
   it('Hover EcoRI → tooltip shows name, count=1, recogn pattern, no warning (non-degenerate)', () => {
     const sites = [{ enzyme: 'EcoRI', position: 50 }];
     render(
@@ -280,6 +352,75 @@ describe('RestrictionTrack — hover tooltip (SnapGene-style)', () => {
 });
 
 describe('RestrictionSitePopover — sticky/blunt visualization', () => {
+  it('renders reverse/custom geometry from the occurrence without catalog state', () => {
+    const FlipI = { site: 'ACGTTA', cut: [1, 4], isCustom: true };
+    const [occurrence] = scanOccurrences('TTTTTTTTTTTAACGTTTT', {
+      enzymes: { FlipI },
+      names: ['FlipI'],
+    });
+    const calls = [];
+
+    render(<RestrictionSitePopover
+      site={{ enzyme: 'FlipI', position: occurrence.topCut, occurrence }}
+      position={{ x: 200, y: 100 }}
+      onCut={(cut) => calls.push(cut)}
+      onCancel={() => {}}
+    />);
+
+    expect(screen.getByTestId('skeleton-re-popover-cuts').textContent).toContain('TAACGT');
+    const visual = screen.getByTestId('skeleton-re-popover-visual');
+    expect(visual.getAttribute('data-top-cut-offset')).toBe('2');
+    expect(visual.getAttribute('data-bottom-cut-offset')).toBe('5');
+    fireEvent.click(screen.getByTestId('skeleton-re-popover-cut'));
+    expect(calls).toEqual([12]);
+  });
+
+  it('uses the canonical top cut from the real scan → flatten chain', () => {
+    const sequence = `${'A'.repeat(100)}GAATTC${'T'.repeat(40)}`;
+    const grouped = scanAllSites(sequence, { circular: false, minSiteLen: 6 });
+    const [site] = flattenSites(grouped, { enzymes: ['EcoRI'] });
+    const calls = [];
+
+    expect(site.position).toBe(101);
+    render(
+      <RestrictionSitePopover
+        site={site}
+        position={{ x: 200, y: 200 }}
+        onCut={(cut) => calls.push(cut)}
+        onCancel={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('skeleton-re-popover-cut'));
+    expect(calls).toEqual([101]);
+  });
+
+  it('keeps one occurrence through scan → track → hook → popover → cut', () => {
+    const sequence = `${'A'.repeat(100)}GAATTC${'T'.repeat(40)}`;
+    const [site] = flattenSites(
+      scanAllSites(sequence, { circular: false, minSiteLen: 6 }),
+      { enzymes: ['EcoRI'] },
+    );
+    const cuts = [];
+    const transport = [];
+
+    expect(site.position).toBe(101);
+    render(<CanonicalCutHarness
+      site={site}
+      onCut={(cut) => cuts.push(cut)}
+      onTransport={(stage, key) => transport.push([stage, key])}
+    />);
+    fireEvent.click(screen.getByTestId('sequence-view-re-site'));
+    expect(screen.getByTestId('skeleton-re-popover')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('skeleton-re-popover-cut'));
+
+    expect(cuts).toEqual([101]);
+    expect(transport).toEqual([
+      ['track', site.occurrence.occurrenceKey],
+      ['hook', site.occurrence.occurrenceKey],
+      ['popover', site.occurrence.occurrenceKey],
+    ]);
+  });
+
   it('EcoRI (5\' overhang AATT) → kind 5overhang + 4 nt overhang', () => {
     const site = { enzyme: 'EcoRI', position: 100 };
     render(<RestrictionSitePopover site={site} position={{ x: 200, y: 200 }} onCut={() => {}} onCancel={() => {}} />);

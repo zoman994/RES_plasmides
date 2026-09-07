@@ -8,7 +8,7 @@ description: Apply proportionate test-first proof to BodgeGene behavior changes.
 ## Before editing
 
 1. Record the accepted base commit and the pre-existing dirty-file allowlist.
-2. Record the writer mode, each owned manifest, and the Integration owner.
+2. Record the writer mode, each owned manifest, and the integration-responsible Coder.
 3. State the observable contract and the cheapest layer that can prove it.
 4. For cross-layer defects, make the RED use the real production-shaped path. A synthetic helper fixture is not enough when the bug is in transport, state, or wiring.
 5. When a mock is necessary, stub the function production actually calls and assert that
@@ -22,12 +22,12 @@ description: Apply proportionate test-first proof to BodgeGene behavior changes.
 3. Implement the coherent package. Do not interrupt the coder after every file when the accepted contract spans several layers.
 4. Run focused tests while iterating, limited to the writer's owned surface.
 5. Preliminary proposals/components/proofs do not duplicate the related or full gate.
-   The Integration owner runs the related set once on the assembled candidate, bound to
+   The integration-responsible Coder runs the related set once on the assembled candidate, bound to
    the accepted base SHA (`--changed <base-sha>`) or an explicit manifest-derived test
    list. Record collected files/tests. Zero collected tests for a product-code candidate
    is FAIL/unverified; only a predeclared docs/comment/permission-only exception may skip it.
 6. Freeze and hand off the candidate. After consolidated review/correction, the
-   Planner runs the full frontend/backend gate once; the coder and reviewers
+   Reviewer runs the full frontend/backend gate once; Coders and read-only Reviewers
    do not duplicate it.
 
 Never weaken an assertion, wrap malformed data into a valid shape, or update a fixture merely to obtain green. When a contract changes intentionally, name the old assumption and prove the new one.
@@ -42,7 +42,7 @@ is forbidden, except for the single controlled retry allowed by the flake protoc
 Once a RED localizes the failing contract, change the implementation or report an exact
 blocker. Do not substitute a broader suite for diagnosis. A further run is informative
 only after a relevant code/test/fixture/mutation change or under a named, falsifiable
-environment hypothesis. If two consecutive Planner↔coder cycles contain only reruns or
+environment hypothesis. If two consecutive Reviewer↔Coder cycles contain only reruns or
 review with neither such a change nor a new causal diagnosis, stop and replan before a
 third cycle.
 

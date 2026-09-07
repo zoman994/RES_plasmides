@@ -746,6 +746,19 @@ run-end = JSON inventories **863 / 863**: 9 339 тестов, 9 318 passed, 21 s
 0 failed, raw exit 0. Это доказывает регрессионный gate ASM-6A, но не устанавливает
 причину интермиттентного fork crash и не выполняет критерий трёх чистых прогонов.
 
+**Наблюдение ASM-5B 07.09.2026:** единственный полный module-aware `test:gate` на
+base/HEAD `bd710973` с frozen candidate `d78a7b61…` снова завершился
+`Worker exited unexpectedly`, raw exit 1 и одним unhandled error. Expected inventory —
+864 модуля, lifecycle ended — 863; не завершился
+`gui/designer/src/components/SequenceView/__tests__/out-of-range-mask-v87.test.jsx`
+на четыре теста. Run-end и JSON
+перечислили 864/864, JSON сообщил 9 378 passed + 21 skipped, 0 failed, но RSS получил
+только 863 setup и 860 afterAll, поэтому строгий gate корректно вернул FAIL. Maximum
+2 138 607 616 bytes — worker point sample, не process-tree total и не установленная
+причина. Артефакты: `tmp/vitest-gate/2026-09-07T09-31-22-691Z-495260-ff387cb8`.
+Предшествующий related run был полным: 466/466 файлов, 4 480 тестов, exit 0. Полный
+retry запрещён; ASM-5B остановлен без попытки чинить BG-022 внутри продуктового пакета.
+
 Пять безымянных блоков `ECONNREFUSED` к `localhost:3000` печатает happy-dom
 (`node_modules/happy-dom/lib/fetch/Fetch.js:539`) через `page.console.error` для
 относительного `fetch('/common-features.json')` в

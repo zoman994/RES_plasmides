@@ -38,6 +38,7 @@ import {
 } from 'react';
 import { useStore } from '../../../store';
 import { documentIdentityOf } from '../../../lib/primer-live-workflow';
+import { restrictionSiteKey } from '../../../lib/restriction-occurrence';
 import { useSequenceSelection } from '../../../hooks/useSequenceSelection';
 import { getRegions } from '../../../annotation-model';
 import { buildCurrentDocument } from '../../../lib/library-current-document';
@@ -452,7 +453,7 @@ export default function ContainerEditorSkeleton() {
   }, [tabContainerId, actions]);
   const onRestrictionCancel = useCallback(() => setRePopover(null), []);
   const restrictionHighlightKey = rePopover?.site
-    ? `${rePopover.site.enzyme}-${rePopover.site.position}`
+    ? restrictionSiteKey(rePopover.site)
     : null;
 
   // ─── derived for tabs — ONE coherent currentDocument ─────────────
